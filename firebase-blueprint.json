@@ -1,0 +1,136 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Artisan salt product details",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "price": { "type": "number" },
+        "sizeOz": { "type": "number" },
+        "heatLevel": { "type": "number" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "shortDescription": { "type": "string" },
+        "flavorNotes": { "type": "array", "items": { "type": "string" } },
+        "pairings": { "type": "array", "items": { "type": "string" } },
+        "active": { "type": "boolean" },
+        "featured": { "type": "boolean" },
+        "currentInventory": { "type": "integer" },
+        "reorderThreshold": { "type": "integer" },
+        "stripePriceId": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "slug", "price", "currentInventory"]
+    },
+    "InventoryMovement": {
+      "title": "Inventory Movement",
+      "description": "Tracking stock changes",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "delta": { "type": "integer" },
+        "reason": { "type": "string", "enum": ["initial_stock", "manual_adjustment", "order_paid", "refund", "restock"] },
+        "orderId": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["productId", "delta", "reason", "createdAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer order details",
+      "type": "object",
+      "properties": {
+        "stripeSessionId": { "type": "string" },
+        "paymentStatus": { "type": "string" },
+        "fulfillmentStatus": { "type": "string", "enum": ["pending", "fulfilled", "shipped", "cancelled"] },
+        "customerEmail": { "type": "string" },
+        "customerName": { "type": "string" },
+        "shippingAddress": { "type": "object" },
+        "subtotal": { "type": "number" },
+        "shipping": { "type": "number" },
+        "tax": { "type": "number" },
+        "total": { "type": "number" },
+        "items": { "type": "array", "items": { "type": "object" } },
+        "resendEmailStatus": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["stripeSessionId", "customerEmail", "total", "items", "createdAt"]
+    },
+    "Subscriber": {
+      "title": "Subscriber",
+      "description": "Newsletter subscribers",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "source": { "type": "string", "enum": ["footer", "popup", "checkout_opt_in"] },
+        "consent": { "type": "boolean" },
+        "status": { "type": "string" },
+        "resendAudienceId": { "type": "string" },
+        "resendContactId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "consent", "createdAt"]
+    },
+    "ContactMessage": {
+      "title": "Contact Message",
+      "description": "Messages from the contact form",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "message", "createdAt"]
+    },
+    "EmailEvent": {
+      "title": "Email Event",
+      "description": "Tracking sent emails",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["order_confirmation", "shipping_update", "welcome_email", "newsletter_signup", "contact_autoresponse"] },
+        "recipientEmail": { "type": "string" },
+        "relatedOrderId": { "type": "string" },
+        "payload": { "type": "object" },
+        "status": { "type": "string" },
+        "provider": { "type": "string" },
+        "sentAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "recipientEmail", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "products": {
+      "schema": "Product",
+      "description": "Collection of artisan salt products"
+    },
+    "inventory_movements": {
+      "schema": "InventoryMovement",
+      "description": "Stock change history"
+    },
+    "orders": {
+      "schema": "Order",
+      "description": "Customer orders"
+    },
+    "subscribers": {
+      "schema": "Subscriber",
+      "description": "Newsletter subscribers"
+    },
+    "contact_messages": {
+      "schema": "ContactMessage",
+      "description": "Customer contact form submissions"
+    },
+    "email_events": {
+      "schema": "EmailEvent",
+      "description": "Log of emails sent via Resend"
+    }
+  }
+}

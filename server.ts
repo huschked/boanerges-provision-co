@@ -1,0 +1,312 @@
+import express from "express";
+import { createServer as createViteServer } from "vite";
+import path from "path";
+import { fileURLToPath } from "url";
+import Stripe from "stripe";
+import { Resend } from "resend";
+import admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
+import bodyParser from "body-parser";
+import dotenv from "dotenv";
+import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
+
+dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Initialize Firebase Admin
+if (!admin.apps.length) {
+  admin.initializeApp({
+    projectId: firebaseConfig.projectId,
+    credential: admin.credential.applicationDefault(),
+  });
+}
+const db = getFirestore(firebaseConfig.firestoreDatabaseId);
+
+// Test Firestore connection
+async function testConnection() {
+  console.log(`Testing Firestore connection to project: ${firebaseConfig.projectId}`);
+  
+  // Try named database
+  try {
+    const namedDb = getFirestore(firebaseConfig.firestoreDatabaseId);
+    const snapshot = await namedDb.collection("products").limit(1).get();
+    console.log(`Firestore connection to named database (${firebaseConfig.firestoreDatabaseId}) successful. Found products:`, snapshot.size);
+  } catch (error: any) {
+    console.error(`Firestore connection to named database (${firebaseConfig.firestoreDatabaseId}) failed:`, error.message);
+  }
+
+  // Try default database
+  try {
+    const defaultDb = getFirestore();
+    const snapshot = await defaultDb.collection("products").limit(1).get();
+    console.log("Firestore connection to (default) database successful. Found products:", snapshot.size);
+  } catch (error: any) {
+    console.error("Firestore connection to (default) database failed:", error.message);
+  }
+}
+testConnection();
+
+// Initialize Stripe & Resend
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+const resend = new Resend(process.env.RESEND_API_KEY || "");
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  // Stripe Webhook (needs raw body)
+  app.post("/api/webhooks/stripe", bodyParser.raw({ type: "application/json" }), async (req, res) => {
+    const sig = req.headers["stripe-signature"];
+    let event;
+
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig as string,
+        process.env.STRIPE_WEBHOOK_SECRET || ""
+      );
+    } catch (err: any) {
+      console.error(`Webhook Error: ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object as Stripe.Checkout.Session;
+      await handleSuccessfulCheckout(session);
+    }
+
+    res.json({ received: true });
+  });
+
+  // Standard JSON parsing for other routes
+  app.use(express.json());
+
+  // API Routes
+  app.post("/api/checkout/create-session", async (req, res) => {
+    try {
+      const { items, customerEmail } = req.body;
+
+      const lineItems = items.map((item: any) => ({
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: item.name,
+            images: [item.imageUrl],
+          },
+          unit_amount: Math.round(item.price * 100),
+        },
+        quantity: item.quantity,
+      }));
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: lineItems,
+        mode: "payment",
+        customer_email: customerEmail,
+        success_url: `${process.env.APP_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.APP_URL}/cart`,
+        metadata: {
+          items: JSON.stringify(items.map((i: any) => ({ id: i.id, quantity: i.quantity }))),
+        },
+      });
+
+      res.json({ id: session.id, url: session.url });
+    } catch (error: any) {
+      console.error("Stripe Session Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Newsletter Signup
+  app.post("/api/subscribers", async (req, res) => {
+    try {
+      const { email, source, consent } = req.body;
+      if (!email || !consent) return res.status(400).json({ error: "Email and consent required" });
+
+      const subscriberRef = db.collection("subscribers").doc(email);
+      const doc = await subscriberRef.get();
+
+      if (doc.exists) {
+        return res.status(200).json({ message: "Already subscribed" });
+      }
+
+      await subscriberRef.set({
+        email,
+        source,
+        consent,
+        status: "active",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Send Welcome Email
+      await resend.emails.send({
+        from: "Boanerges Provision Co <orders@boanergesprovision.co>",
+        to: email,
+        subject: "Welcome to the Provision Co.",
+        html: `<h1>Welcome!</h1><p>Thanks for joining our newsletter. Stay tuned for new flavors and restocks.</p>`,
+      });
+
+      res.status(201).json({ success: true });
+    } catch (error: any) {
+      console.error("Subscriber Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Contact Form
+  app.post("/api/contact", async (req, res) => {
+    try {
+      const { name, email, message } = req.body;
+      
+      if (!name || !email || !message) {
+        return res.status(400).json({ error: "Name, email, and message are required." });
+      }
+
+      await db.collection("contact_messages").add({
+        name,
+        email,
+        message,
+        status: "new",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Auto-response to customer (redirected to admin for testing)
+      await resend.emails.send({
+        from: "Boanerges Provision Co <support@boanergesprovision.co>",
+        to: "huschked@gmail.com",
+        subject: "We've received your message",
+        html: `<p>Hi ${name},</p><p>Thanks for reaching out. We'll get back to you shortly.</p>`,
+      });
+
+      // Notification to admin
+      await resend.emails.send({
+        from: "Boanerges Provision Co <admin@boanergesprovision.co>",
+        to: "huschked@gmail.com",
+        subject: `New Inquiry from ${name}`,
+        html: `
+          <h3>New Contact Form Submission</h3>
+          <p><strong>Name:</strong> ${name}</p>
+          <p><strong>Email:</strong> ${email}</p>
+          <p><strong>Message:</strong></p>
+          <p>${message}</p>
+        `,
+      });
+
+      res.status(201).json({ success: true });
+    } catch (error: any) {
+      console.error("Contact Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Vite middleware
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
+  const orderId = session.id;
+  const orderRef = db.collection("orders").doc(orderId);
+
+  // Check for idempotency
+  const orderDoc = await orderRef.get();
+  if (orderDoc.exists) return;
+
+  const itemsMetadata = JSON.parse(session.metadata?.items || "[]");
+  const customerEmail = session.customer_email || "";
+  const customerName = session.customer_details?.name || "";
+  const total = (session.amount_total || 0) / 100;
+
+  // Start Transaction for Inventory
+  await db.runTransaction(async (transaction) => {
+    const orderItems = [];
+
+    for (const item of itemsMetadata) {
+      const productRef = db.collection("products").doc(item.id);
+      const productDoc = await transaction.get(productRef);
+
+      if (!productDoc.exists) continue;
+
+      const productData = productDoc.data()!;
+      const newInventory = (productData.currentInventory || 0) - item.quantity;
+
+      if (newInventory < 0) {
+        throw new Error(`Insufficient inventory for ${productData.name}`);
+      }
+
+      transaction.update(productRef, {
+        currentInventory: newInventory,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Log Movement
+      const movementRef = db.collection("inventory_movements").doc();
+      transaction.set(movementRef, {
+        productId: item.id,
+        delta: -item.quantity,
+        reason: "order_paid",
+        orderId: orderId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdBy: "system",
+      });
+
+      orderItems.push({
+        productId: item.id,
+        name: productData.name,
+        price: productData.price,
+        quantity: item.quantity,
+        heatLevel: productData.heatLevel,
+      });
+    }
+
+    transaction.set(orderRef, {
+      stripeSessionId: session.id,
+      paymentStatus: "paid",
+      fulfillmentStatus: "pending",
+      customerEmail,
+      customerName,
+      total,
+      items: orderItems,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+
+  // Send Confirmation Email
+  try {
+    await resend.emails.send({
+      from: "Boanerges Provision Co <orders@boanergesprovision.co>",
+      to: customerEmail,
+      subject: `Order Confirmation #${orderId.slice(-6).toUpperCase()}`,
+      html: `
+        <h1>Thank you for your order, ${customerName}!</h1>
+        <p>Your artisan salts are being prepared for shipment.</p>
+        <p>Order Total: $${total.toFixed(2)}</p>
+        <p>We'll notify you when it ships.</p>
+      `,
+    });
+    await orderRef.update({ resendEmailStatus: "sent" });
+  } catch (emailError) {
+    console.error("Email Error:", emailError);
+    await orderRef.update({ resendEmailStatus: "failed" });
+  }
+}
+
+startServer();
