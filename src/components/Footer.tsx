@@ -22,9 +22,9 @@ export const Footer: React.FC = () => {
               Handcrafted finishing salts inspired by old-world traditions and bold, modern flavors. Small-batch excellence from our kitchen to yours.
             </p>
             <div className="flex gap-6 pt-6">
-              <a href="#" className="text-brand-parchment/60 hover:text-brand-gold transition-colors"><Instagram size={20} /></a>
-              <a href="#" className="text-brand-parchment/60 hover:text-brand-gold transition-colors"><Facebook size={20} /></a>
-              <a href="#" className="text-brand-parchment/60 hover:text-brand-gold transition-colors"><Twitter size={20} /></a>
+              <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="text-brand-parchment/60 hover:text-brand-gold transition-colors"><Instagram size={20} /></a>
+              <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="text-brand-parchment/60 hover:text-brand-gold transition-colors"><Facebook size={20} /></a>
+              <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="text-brand-parchment/60 hover:text-brand-gold transition-colors"><Twitter size={20} /></a>
             </div>
           </div>
 

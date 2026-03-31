@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck, Lock, CreditCard, ArrowLeft, ChevronRight, Zap, Award, Loader2 } from 'lucide-react';
 import { useCart } from '@/src/store';
+import toast from 'react-hot-toast';
 
 export const Checkout: React.FC = () => {
   const { items, total } = useCart();
@@ -21,7 +22,7 @@ export const Checkout: React.FC = () => {
             id: item.product.id,
             quantity: item.quantity,
           })),
-          email: email || undefined,
+          customerEmail: email || undefined,
         }),
       });
 
@@ -33,7 +34,13 @@ export const Checkout: React.FC = () => {
       }
     } catch (error) {
       console.error('Checkout error:', error);
-      alert('There was an error initiating checkout. Please try again.');
+      toast.error('There was an error initiating checkout. Please try again.', {
+        style: {
+          background: '#1A1A1A',
+          color: '#F4ECD8',
+          border: '1px solid #C5A059'
+        }
+      });
     } finally {
       setLoading(false);
     }

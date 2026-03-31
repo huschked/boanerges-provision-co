@@ -1,5 +1,6 @@
 import admin from 'firebase-admin';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 import firebaseConfig from './firebase-applet-config.json' with { type: 'json' };
 
 if (!admin.apps.length) {
@@ -162,6 +163,22 @@ async function seed() {
       createdAt: FieldValue.serverTimestamp(),
       createdBy: "system",
     });
+  }
+
+  // Add initial admin user if they exist in Firebase Auth
+  try {
+    const userRecord = await getAuth().getUserByEmail("huschked@gmail.com");
+    if (userRecord) {
+      const userRef = db.collection("users").doc(userRecord.uid);
+      batch.set(userRef, {
+        email: "huschked@gmail.com",
+        role: "admin",
+        createdAt: FieldValue.serverTimestamp()
+      });
+      console.log("Admin role granted to huschked@gmail.com");
+    }
+  } catch (error) {
+    console.log("Note: Could not grant admin role. If this is unexpected, ensure the user has signed in at least once.");
   }
 
   await batch.commit();

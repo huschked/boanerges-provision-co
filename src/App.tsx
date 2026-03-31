@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { CartDrawer } from './components/CartDrawer';
@@ -29,6 +30,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <Toaster position="bottom-right" />
       <ScrollToTop />
       {!isAdminPage && <Header onCartClick={() => setIsCartOpen(true)} />}
       {!isAdminPage && <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />}

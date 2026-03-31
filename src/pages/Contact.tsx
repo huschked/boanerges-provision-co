@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Mail, Phone, MapPin, Send, Loader2, CheckCircle2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export const Contact: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -11,7 +12,6 @@ export const Contact: React.FC = () => {
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -20,7 +20,6 @@ export const Contact: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    setError(null);
 
     try {
       const response = await fetch('/api/contact', {
@@ -34,11 +33,15 @@ export const Contact: React.FC = () => {
         setFormData({ name: '', email: '', subject: 'General Inquiry', message: '' });
       } else {
         const data = await response.json();
-        setError(data.error || 'Failed to send message. Please try again.');
+        toast.error(data.error || 'Failed to send message. Please try again.', {
+          style: { background: '#1A1A1A', color: '#F4ECD8', border: '1px solid #C5A059' }
+        });
       }
     } catch (err) {
       console.error("Contact form error:", err);
-      setError('An unexpected error occurred. Please try again later.');
+      toast.error('An unexpected error occurred. Please try again later.', {
+        style: { background: '#1A1A1A', color: '#F4ECD8', border: '1px solid #C5A059' }
+      });
     } finally {
       setSubmitting(false);
     }
@@ -94,9 +97,9 @@ export const Contact: React.FC = () => {
             <div className="pt-8 border-t border-white/10">
               <p className="text-brand-gold text-[10px] uppercase tracking-widest font-black mb-4">Follow the Journey</p>
               <div className="flex gap-8 text-brand-parchment/60 font-black text-xs uppercase tracking-widest">
-                <a href="#" className="hover:text-brand-gold transition-colors">Instagram</a>
-                <a href="#" className="hover:text-brand-gold transition-colors">Facebook</a>
-                <a href="#" className="hover:text-brand-gold transition-colors">Pinterest</a>
+                <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="hover:text-brand-gold transition-colors">Instagram</a>
+                <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="hover:text-brand-gold transition-colors">Facebook</a>
+                <a href="https://pinterest.com" target="_blank" rel="noopener noreferrer" className="hover:text-brand-gold transition-colors">Pinterest</a>
               </div>
             </div>
           </div>
@@ -180,10 +183,6 @@ export const Contact: React.FC = () => {
                     className="w-full bg-white/5 border-b border-white/10 py-3 px-4 text-brand-parchment outline-none focus:border-brand-gold transition-colors resize-none placeholder:text-brand-parchment/20"
                   />
                 </div>
-
-                {error && (
-                  <p className="text-red-500 text-[10px] uppercase tracking-widest font-bold">{error}</p>
-                )}
 
                 <button 
                   type="submit"

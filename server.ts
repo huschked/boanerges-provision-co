@@ -8,6 +8,7 @@ import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
+import rateLimit from "express-rate-limit";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 
 dotenv.config();
@@ -83,22 +84,83 @@ async function startServer() {
   // Standard JSON parsing for other routes
   app.use(express.json());
 
+  // Rate Limiting for public endpoints
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20, // Limit each IP to 20 requests per `window`
+    message: { error: "Too many requests from this IP, please try again later." }
+  });
+
+  app.use("/api/subscribers", apiLimiter);
+  app.use("/api/contact", apiLimiter);
+
   // API Routes
   app.post("/api/checkout/create-session", async (req, res) => {
     try {
       const { items, customerEmail } = req.body;
 
-      const lineItems = items.map((item: any) => ({
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: item.name,
-            images: [item.imageUrl],
+      // 1. Validate prices from Firestore
+      const lineItems = [];
+      const orderItems = [];
+      let calculatedTotal = 0;
+
+      for (const item of items) {
+        const productRef = db.collection("products").doc(item.id);
+        const productSnap = await productRef.get();
+
+        if (!productSnap.exists) {
+          return res.status(400).json({ error: `Product ${item.id} not found` });
+        }
+
+        const productData = productSnap.data()!;
+        if (productData.currentInventory < item.quantity) {
+             return res.status(400).json({ error: `Insufficient inventory for ${productData.name}` });
+        }
+
+        lineItems.push({
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: productData.name,
+              images: [productData.imageUrl],
+            },
+            unit_amount: Math.round(productData.price * 100),
           },
-          unit_amount: Math.round(item.price * 100),
-        },
-        quantity: item.quantity,
-      }));
+          quantity: item.quantity,
+        });
+
+        orderItems.push({
+            productId: item.id,
+            name: productData.name,
+            price: productData.price,
+            quantity: item.quantity,
+            heatLevel: productData.heatLevel || 0,
+        });
+
+        calculatedTotal += productData.price * item.quantity;
+      }
+
+      // Calculate shipping (FREE if total >= 50)
+      const shippingCost = calculatedTotal >= 50 ? 0 : 5.99;
+      if (shippingCost > 0) {
+        lineItems.push({
+           price_data: {
+             currency: "usd",
+             product_data: { name: "Shipping" },
+             unit_amount: Math.round(shippingCost * 100),
+           },
+           quantity: 1,
+        });
+      }
+
+      // 2. Create pending order document
+      const pendingOrderRef = await db.collection("pending_orders").add({
+        customerEmail: customerEmail || "",
+        items: orderItems,
+        total: calculatedTotal + shippingCost,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        status: "pending"
+      });
 
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
@@ -108,7 +170,7 @@ async function startServer() {
         success_url: `${process.env.APP_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${process.env.APP_URL}/cart`,
         metadata: {
-          items: JSON.stringify(items.map((i: any) => ({ id: i.id, quantity: i.quantity }))),
+          pendingOrderId: pendingOrderRef.id
         },
       });
 
@@ -229,65 +291,109 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
   const orderDoc = await orderRef.get();
   if (orderDoc.exists) return;
 
-  const itemsMetadata = JSON.parse(session.metadata?.items || "[]");
+  const pendingOrderId = session.metadata?.pendingOrderId;
+  if (!pendingOrderId) {
+      console.error("Missing pendingOrderId in session metadata");
+      return;
+  }
+
+  const pendingOrderRef = db.collection("pending_orders").doc(pendingOrderId);
+  const pendingOrderSnap = await pendingOrderRef.get();
+  if (!pendingOrderSnap.exists) {
+      console.error("Pending order not found:", pendingOrderId);
+      return;
+  }
+  const pendingOrderData = pendingOrderSnap.data()!;
+  const orderItems = pendingOrderData.items || [];
+
   const customerEmail = session.customer_email || "";
   const customerName = session.customer_details?.name || "";
   const total = (session.amount_total || 0) / 100;
 
-  // Start Transaction for Inventory
-  await db.runTransaction(async (transaction) => {
-    const orderItems = [];
+  try {
+    // Start Transaction for Inventory
+    await db.runTransaction(async (transaction) => {
+      const movementsToSet = [];
 
-    for (const item of itemsMetadata) {
-      const productRef = db.collection("products").doc(item.id);
-      const productDoc = await transaction.get(productRef);
+      for (const item of orderItems) {
+        const productRef = db.collection("products").doc(item.productId);
+        const productDoc = await transaction.get(productRef);
 
-      if (!productDoc.exists) continue;
+        if (!productDoc.exists) continue;
 
-      const productData = productDoc.data()!;
-      const newInventory = (productData.currentInventory || 0) - item.quantity;
+        const productData = productDoc.data()!;
+        const newInventory = (productData.currentInventory || 0) - item.quantity;
 
-      if (newInventory < 0) {
-        throw new Error(`Insufficient inventory for ${productData.name}`);
+        if (newInventory < 0) {
+          throw new Error(`Insufficient inventory for ${productData.name}`);
+        }
+
+        transaction.update(productRef, {
+          currentInventory: newInventory,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Log Movement
+        const movementRef = db.collection("inventory_movements").doc();
+        movementsToSet.push({
+            ref: movementRef, 
+            data: {
+              productId: item.productId,
+              delta: -item.quantity,
+              reason: "order_paid",
+              orderId: orderId,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              createdBy: "system",
+            }
+        });
       }
 
-      transaction.update(productRef, {
-        currentInventory: newInventory,
+      for (const movement of movementsToSet) {
+          transaction.set(movement.ref, movement.data);
+      }
+
+      transaction.set(orderRef, {
+        stripeSessionId: session.id,
+        paymentStatus: "paid",
+        fulfillmentStatus: "pending",
+        customerEmail,
+        customerName,
+        total,
+        items: orderItems,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-
-      // Log Movement
-      const movementRef = db.collection("inventory_movements").doc();
-      transaction.set(movementRef, {
-        productId: item.id,
-        delta: -item.quantity,
-        reason: "order_paid",
-        orderId: orderId,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdBy: "system",
-      });
-
-      orderItems.push({
-        productId: item.id,
-        name: productData.name,
-        price: productData.price,
-        quantity: item.quantity,
-        heatLevel: productData.heatLevel,
-      });
-    }
-
-    transaction.set(orderRef, {
-      stripeSessionId: session.id,
-      paymentStatus: "paid",
-      fulfillmentStatus: "pending",
-      customerEmail,
-      customerName,
-      total,
-      items: orderItems,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      
+      transaction.update(pendingOrderRef, { status: "completed", orderId: orderId });
     });
-  });
+  } catch (error: any) {
+    console.error("Order Transaction Error:", error.message);
+    
+    // Mark order as needs manual intervention because user paid!
+    await orderRef.set({
+        stripeSessionId: session.id,
+        paymentStatus: "paid",
+        fulfillmentStatus: "needs_manual_intervention",
+        customerEmail,
+        customerName,
+        total,
+        items: orderItems,
+        error: error.message,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    
+    // Notify admin
+    await resend.emails.send({
+      from: "Boanerges Provision Co <admin@boanergesprovision.co>",
+      to: "huschked@gmail.com",
+      subject: `URGENT: Order Fulfillment Error #${orderId.slice(-6).toUpperCase()}`,
+      html: `<h3>Payment received but inventory failed to decrement!</h3>
+             <p>Error: ${error.message}</p>
+             <p>Please review order <strong>${orderId}</strong> manually.</p>`
+    });
+    return; // Stop execution, don't send confirmation to user yet
+  }
 
   // Send Confirmation Email
   try {
