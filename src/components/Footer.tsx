@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Instagram, Facebook, Twitter, MapPin, Mail, Phone } from 'lucide-react';
-import logo from '@/src/assets/BoanergesLogoSimple.png';
+import logo from '@/src/assets/BoanergesLogoTransparent.png';
 
 export const Footer: React.FC = () => {
   return (
@@ -14,7 +14,7 @@ export const Footer: React.FC = () => {
               <img 
                 src={logo} 
                 alt="Boanerges Provision Co." 
-                className="h-24 md:h-28 w-auto object-contain"
+                className="h-20 md:h-24 w-auto object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]"
                 referrerPolicy="no-referrer"
               />
             </Link>

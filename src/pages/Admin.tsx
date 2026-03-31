@@ -13,7 +13,7 @@ import {
   Search, 
   Loader2
 } from 'lucide-react';
-import logo from '@/src/assets/BoanergesLogoSimple.png';
+import logo from '@/src/assets/BoanergesLogoTransparent.png';
 import { auth, db } from '@/src/lib/firebase';
 import { cn } from '@/src/lib/utils';
 import { 
@@ -161,7 +161,7 @@ export const Admin: React.FC = () => {
               transition={{ delay: 0.2 }}
               src={logo} 
               alt="Boanerges" 
-              className="h-32 mx-auto object-contain"
+              className="h-24 mx-auto object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]"
               referrerPolicy="no-referrer"
             />
             <div className="space-y-2">
@@ -200,7 +200,7 @@ export const Admin: React.FC = () => {
             <img 
               src={logo} 
               alt="Boanerges" 
-              className="h-28 w-auto object-contain group-hover:scale-105 transition-all duration-700 relative z-10" 
+              className="h-20 w-auto object-contain group-hover:scale-105 transition-all duration-700 relative z-10 drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]" 
               referrerPolicy="no-referrer"
             />
           </Link>

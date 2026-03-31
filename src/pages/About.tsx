@@ -1,5 +1,9 @@
 import React from 'react';
 import { motion } from 'motion/react';
+import aboutHeroImage from '@/src/assets/about-hero.png';
+import aboutOriginImage from '@/src/assets/about-origin.png';
+import aboutCraftsmanshipImage from '@/src/assets/about-craftsmanship.png';
+import aboutFlavorPhilosophyImage from '@/src/assets/about-flavor-philosophy.png';
 
 export const About: React.FC = () => {
   return (
@@ -8,7 +12,7 @@ export const About: React.FC = () => {
       <section className="relative h-[70vh] flex items-center justify-center overflow-hidden bg-brand-black">
         <div className="absolute inset-0 z-0">
           <img 
-            src="https://images.unsplash.com/photo-1504196606672-aef5c9cefc92?q=80&w=1920&auto=format&fit=crop" 
+            src={aboutHeroImage} 
             alt="Artisan Salt Crystals" 
             className="w-full h-full object-cover opacity-40"
             referrerPolicy="no-referrer"
@@ -44,7 +48,7 @@ export const About: React.FC = () => {
             </div>
             <div className="relative aspect-[4/5] rounded-sm overflow-hidden shadow-2xl">
               <img 
-                src="https://images.unsplash.com/photo-1594489428504-5c0c480a15fd?q=80&w=1000&auto=format&fit=crop" 
+                src={aboutOriginImage} 
                 alt="Homegrown Peppers" 
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
@@ -62,7 +66,7 @@ export const About: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
             <div className="order-2 lg:order-1 relative aspect-[4/5] rounded-sm overflow-hidden shadow-2xl">
               <img 
-                src="https://images.unsplash.com/photo-1544070078-a212eda27b49?q=80&w=1000&auto=format&fit=crop" 
+                src={aboutCraftsmanshipImage} 
                 alt="Small-Batch Craftsmanship" 
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
@@ -120,7 +124,7 @@ export const About: React.FC = () => {
             </div>
             <div className="relative aspect-[4/5] rounded-sm overflow-hidden shadow-2xl">
               <img 
-                src="https://images.unsplash.com/photo-1516714435131-44d6b64dc6a2?q=80&w=1000&auto=format&fit=crop" 
+                src={aboutFlavorPhilosophyImage} 
                 alt="Flavor Philosophy" 
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"

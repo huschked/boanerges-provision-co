@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link, useLocation } from 'react-router-dom';
 import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
-import logo from '@/src/assets/BoanergesLogoSimple.png';
+import logo from '@/src/assets/BoanergesLogoTransparent.png';
 
 export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -83,9 +83,8 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
               src={logo} 
               alt="Boanerges Provision Co." 
               className={cn(
-                "w-auto object-contain group-hover:scale-105 transition-all duration-500",
-                isScrolled ? "h-16 md:h-24" : "h-32 md:h-56",
-                showDarkText && "brightness-0" // Make logo black on light backgrounds if it's too light
+                "w-auto max-w-[220px] md:max-w-[380px] object-contain group-hover:scale-105 transition-all duration-500 drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]",
+                isScrolled ? "h-12 md:h-16" : "h-16 md:h-20"
               )}
               referrerPolicy="no-referrer"
             />
@@ -145,6 +144,14 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
             </button>
             
             <div className="mt-20 flex flex-col gap-8">
+              <Link to="/" className="mb-4 inline-flex justify-center">
+                <img
+                  src={logo}
+                  alt="Boanerges Provision Co."
+                  className="h-20 w-auto object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]"
+                  referrerPolicy="no-referrer"
+                />
+              </Link>
               {navLinks.map((link) => (
                 <Link
                   key={link.name}

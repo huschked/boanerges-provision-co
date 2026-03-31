@@ -5,6 +5,10 @@ import { Link } from 'react-router-dom';
 import { getProducts, Product } from '@/src/services/productService';
 import { ProductCard } from '@/src/components/ProductCard';
 import heroImage from '@/src/assets/HeroImage.png';
+import brandStoryImage from '@/src/assets/brand-story-image.png';
+import spicyCategoryImage from '@/src/assets/category-spicy.png';
+import savoryCategoryImage from '@/src/assets/category-savory.png';
+import herbalCategoryImage from '@/src/assets/category-herbal.png';
 
 export const Home: React.FC = () => {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
@@ -202,7 +206,7 @@ export const Home: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
             <div className="relative aspect-[4/5] rounded-sm overflow-hidden shadow-2xl">
               <img 
-                src="https://images.unsplash.com/photo-1544070078-a212eda27b49?q=80&w=1000&auto=format&fit=crop" 
+                src={brandStoryImage} 
                 alt="Artisan Salt Craftsmanship" 
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
@@ -252,9 +256,9 @@ export const Home: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { name: 'The Heat Seekers', desc: 'Bold, fiery, and complex.', img: 'https://images.unsplash.com/photo-1588166524941-3bf61a9c41db?q=80&w=1000&auto=format&fit=crop', cat: 'Spicy' },
-              { name: 'The Savory Staples', desc: 'Rich, earthy, and umami.', img: 'https://images.unsplash.com/photo-1516714435131-44d6b64dc6a2?q=80&w=1000&auto=format&fit=crop', cat: 'Savory' },
-              { name: 'The Bright & Herbal', desc: 'Fresh, citrusy, and aromatic.', img: 'https://images.unsplash.com/photo-1506484334402-40f2269bd522?q=80&w=1000&auto=format&fit=crop', cat: 'Herbal' },
+              { name: 'The Heat Seekers', desc: 'Bold, fiery, and complex.', img: spicyCategoryImage, cat: 'Spicy' },
+              { name: 'The Savory Staples', desc: 'Rich, earthy, and umami.', img: savoryCategoryImage, cat: 'Savory' },
+              { name: 'The Bright & Herbal', desc: 'Fresh, citrusy, and aromatic.', img: herbalCategoryImage, cat: 'Herbal' },
             ].map((cat, i) => (
               <Link 
                 key={i} 

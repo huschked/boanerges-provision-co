@@ -36,19 +36,22 @@ if (!admin.apps.length) {
     credential
   });
 }
-const db = getFirestore(firebaseConfig.firestoreDatabaseId);
+const db = 'firestoreDatabaseId' in firebaseConfig && firebaseConfig.firestoreDatabaseId
+  ? getFirestore(firebaseConfig.firestoreDatabaseId)
+  : getFirestore();
 
 // Test Firestore connection
 async function testConnection() {
   console.log(`Testing Firestore connection to project: ${firebaseConfig.projectId}`);
 
-  // Try named database
-  try {
-    const namedDb = getFirestore(firebaseConfig.firestoreDatabaseId);
-    const snapshot = await namedDb.collection("products").limit(1).get();
-    console.log(`Firestore connection to named database (${firebaseConfig.firestoreDatabaseId}) successful. Found products:`, snapshot.size);
-  } catch (error: any) {
-    console.error(`Firestore connection to named database (${firebaseConfig.firestoreDatabaseId}) failed:`, error.message);
+  if ('firestoreDatabaseId' in firebaseConfig && firebaseConfig.firestoreDatabaseId) {
+    try {
+      const namedDb = getFirestore(firebaseConfig.firestoreDatabaseId);
+      const snapshot = await namedDb.collection("products").limit(1).get();
+      console.log(`Firestore connection to named database (${firebaseConfig.firestoreDatabaseId}) successful. Found products:`, snapshot.size);
+    } catch (error: any) {
+      console.error(`Firestore connection to named database (${firebaseConfig.firestoreDatabaseId}) failed:`, error.message);
+    }
   }
 
   // Try default database
@@ -109,6 +112,46 @@ async function startServer() {
   app.use("/api/contact", apiLimiter);
 
   // API Routes
+  app.get("/api/products", async (req, res) => {
+    try {
+      const category = typeof req.query.category === "string" ? req.query.category : undefined;
+      let productsQuery: FirebaseFirestore.Query = db.collection("products").where("active", "==", true);
+
+      if (category && category !== "All") {
+        productsQuery = productsQuery.where("tags", "array-contains", category);
+      }
+
+      const snapshot = await productsQuery.get();
+      const products = snapshot.docs.map((productDoc) => ({
+        id: productDoc.id,
+        ...productDoc.data(),
+      }));
+
+      res.json(products);
+    } catch (error: any) {
+      console.error("Products Fetch Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/products/:slug", async (req, res) => {
+    try {
+      const productSnap = await db.collection("products").doc(req.params.slug).get();
+
+      if (!productSnap.exists) {
+        return res.status(404).json({ error: "Product not found" });
+      }
+
+      res.json({
+        id: productSnap.id,
+        ...productSnap.data(),
+      });
+    } catch (error: any) {
+      console.error("Product Fetch Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/checkout/create-session", async (req, res) => {
     try {
       const { items, customerEmail } = req.body;

@@ -2,15 +2,22 @@ import admin from 'firebase-admin';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import firebaseConfig from './firebase-applet-config.json' with { type: 'json' };
+import fs from 'fs';
+import path from 'path';
 
 if (!admin.apps.length) {
+  const serviceAccountPath = path.join(process.cwd(), 'serviceAccountKey.json');
   admin.initializeApp({
     projectId: firebaseConfig.projectId,
-    credential: admin.credential.applicationDefault(),
+    credential: fs.existsSync(serviceAccountPath)
+      ? admin.credential.cert(JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8')))
+      : admin.credential.applicationDefault(),
   });
 }
 
-const db = getFirestore(firebaseConfig.firestoreDatabaseId);
+const db = 'firestoreDatabaseId' in firebaseConfig && firebaseConfig.firestoreDatabaseId
+  ? getFirestore(firebaseConfig.firestoreDatabaseId)
+  : getFirestore();
 
 const products = [
   {

@@ -1,10 +1,9 @@
 {
-  "projectId": "gen-lang-client-0961493621",
-  "appId": "1:768771759320:web:daca21cace4cec10014bad",
-  "apiKey": "AIzaSyA9yR5wEUW0OdjNkGWT_OXDvDGAq6ce44c",
-  "authDomain": "gen-lang-client-0961493621.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-f5df64ec-9e6b-4de3-b958-dc076099765b",
-  "storageBucket": "gen-lang-client-0961493621.firebasestorage.app",
-  "messagingSenderId": "768771759320",
+  "projectId": "boanerges-provision-co",
+  "appId": "1:367171692729:web:f88df518bdf365df2c1368",
+  "apiKey": "AIzaSyBE4Y13Mo4Rbd-mrMKdmaxwIQknERKmlEs",
+  "authDomain": "boanerges-provision-co.firebaseapp.com",
+  "storageBucket": "boanerges-provision-co.firebasestorage.app",
+  "messagingSenderId": "367171692729",
   "measurementId": ""
 }

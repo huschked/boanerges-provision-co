@@ -4,6 +4,9 @@ import { bundles, products as localProducts } from '@/src/data/products';
 import { useCart } from '@/src/store';
 import { Product as ServiceProduct } from '@/src/services/productService';
 import { Plus, Check, ArrowRight } from 'lucide-react';
+import bundleImage1 from '@/src/assets/bundle-image-1.png';
+import bundleImage2 from '@/src/assets/bundle-image-2.png';
+import bundleImage3 from '@/src/assets/bundle-image-3.png';
 
 export const Bundles: React.FC = () => {
   const addItem = useCart((state) => state.addItem);
@@ -25,9 +28,9 @@ export const Bundles: React.FC = () => {
           {bundles.map((bundle, i) => {
             const bundleProducts = localProducts.filter(p => bundle.products.includes(p.id));
             const bundleImages = [
-              'https://images.unsplash.com/photo-1594489428504-5c0c480a15fd?q=80&w=1000&auto=format&fit=crop',
-              'https://images.unsplash.com/photo-1588166524941-3bf61a9c41db?q=80&w=1000&auto=format&fit=crop',
-              'https://images.unsplash.com/photo-1516714435131-44d6b64dc6a2?q=80&w=1000&auto=format&fit=crop'
+              bundleImage1,
+              bundleImage2,
+              bundleImage3
             ];
             
             return (

@@ -1,4 +1,4 @@
-import { db, collection, getDocs, query, where, orderBy, doc, getDoc } from '../lib/firebase';
+import { db, collection, getDocs, query, where, doc, getDoc } from '../lib/firebase';
 
 export interface Product {
   id: string;
