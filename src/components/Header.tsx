@@ -78,7 +78,7 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
           </nav>
 
           {/* Logo */}
-          <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center group">
+          <Link to="/" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group z-50">
             <img 
               src={logo} 
               alt="Boanerges Provision Co." 
