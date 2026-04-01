@@ -18,6 +18,7 @@ export const Checkout: React.FC = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          origin: window.location.origin,
           items: items.map(item => ({
             id: item.product.id,
             quantity: item.quantity,
@@ -26,7 +27,12 @@ export const Checkout: React.FC = () => {
         }),
       });
 
-      const { url } = await response.json();
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create checkout session');
+      }
+
+      const { url } = data;
       if (url) {
         window.location.href = url;
       } else {

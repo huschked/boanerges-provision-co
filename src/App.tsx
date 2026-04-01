@@ -13,6 +13,7 @@ import { FAQ } from './pages/FAQ';
 import { Contact } from './pages/Contact';
 import { Bundles } from './pages/Bundles';
 import { Checkout } from './pages/Checkout';
+import { CheckoutSuccess } from './pages/CheckoutSuccess';
 import { Admin } from './pages/Admin';
 
 function ScrollToTop() {
@@ -46,6 +47,10 @@ export default function App() {
           <Route path="/contact" element={<Contact />} />
           <Route path="/bundles" element={<Bundles />} />
           <Route path="/checkout" element={<Checkout />} />
+          <Route path="/checkout/success" element={<CheckoutSuccess />} />
+          <Route path="/checkout/success/*" element={<CheckoutSuccess />} />
+          <Route path="/checkout-success" element={<CheckoutSuccess />} />
+          <Route path="/success" element={<CheckoutSuccess />} />
           <Route path="/admin" element={<Admin />} />
         </Routes>
       </main>

@@ -11,6 +11,7 @@ export interface Product {
   flavorNotes: string[];
   pairings: string[];
   tags: string[];
+  ingredients?: string[];
   active: boolean;
   featured: boolean;
   currentInventory: number;

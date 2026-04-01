@@ -154,6 +154,11 @@ async function startServer() {
 
   app.post("/api/checkout/create-session", async (req, res) => {
     try {
+      const requestOrigin =
+        typeof req.body?.origin === "string" && req.body.origin
+          ? req.body.origin
+          : req.get("origin") || `${req.protocol}://${req.get("host")}`;
+      const appUrl = (process.env.APP_URL || requestOrigin || process.env.SHARED_APP_URL || `http://localhost:${PORT}`).replace(/\/$/, "");
       const { items, customerEmail } = req.body;
 
       // 1. Validate prices from Firestore
@@ -224,8 +229,8 @@ async function startServer() {
         line_items: lineItems,
         mode: "payment",
         customer_email: customerEmail,
-        success_url: `${process.env.APP_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.APP_URL}/cart`,
+        success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${appUrl}/checkout`,
         metadata: {
           pendingOrderId: pendingOrderRef.id
         },

@@ -56,6 +56,10 @@ export const ProductDetail: React.FC = () => {
 
   if (!product) return null;
 
+  const flavorNotes = product.flavorNotes ?? [];
+  const pairings = product.pairings ?? [];
+  const ingredients = product.ingredients ?? [];
+
   return (
     <div className="pt-40 pb-32 animate-fade-in bg-brand-black relative overflow-hidden">
       <div className="absolute inset-0 opacity-10 stone-texture" />
@@ -219,9 +223,9 @@ export const ProductDetail: React.FC = () => {
             {/* Accordions */}
             <div className="space-y-4 pt-6">
               {[
-                { title: 'Flavor Notes', content: product.flavorNotes.join(', ') },
-                { title: 'Suggested Pairings', content: product.pairings.join(', ') },
-                { title: 'Ingredients', content: product.ingredients.join(', ') },
+                { title: 'Flavor Notes', content: flavorNotes.length ? flavorNotes.join(', ') : 'Flavor notes coming soon.' },
+                { title: 'Suggested Pairings', content: pairings.length ? pairings.join(', ') : 'Pairing ideas coming soon.' },
+                { title: 'Ingredients', content: ingredients.length ? ingredients.join(', ') : 'Ingredient details coming soon.' },
               ].map((item, i) => (
                 <details key={i} className="group border-b border-white/10 pb-4">
                   <summary className="flex items-center justify-between cursor-pointer list-none">
