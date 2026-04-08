@@ -3,8 +3,9 @@ import React from 'react';
 export interface Subscriber {
   id: string;
   email: string;
-  source: string;
-  subscribedAt: any;
+  source?: string;
+  subscribedAt?: any;
+  createdAt?: any;
   status: string;
 }
 
@@ -13,6 +14,8 @@ interface SubscribersViewProps {
 }
 
 export const SubscribersView: React.FC<SubscribersViewProps> = ({ subscribers }) => {
+  const getJoinedDate = (subscriber: Subscriber) => subscriber.subscribedAt || subscriber.createdAt;
+
   return (
     <div className="space-y-10">
       <div className="card-premium overflow-hidden">
@@ -41,7 +44,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({ subscribers })
                 </td>
                 <td className="px-10 py-8">
                   <span className="text-xs text-brand-parchment/60 font-medium">
-                    {sub.subscribedAt?.toDate ? sub.subscribedAt.toDate().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A'}
+                    {getJoinedDate(sub)?.toDate ? getJoinedDate(sub).toDate().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A'}
                   </span>
                 </td>
                 <td className="px-10 py-8 text-right">
@@ -51,6 +54,13 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({ subscribers })
                 </td>
               </tr>
             ))}
+            {subscribers.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-10 py-20 text-center text-brand-parchment/30 text-sm">
+                  No subscribers found yet.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

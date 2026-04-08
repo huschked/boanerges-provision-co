@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { Mail, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { db, doc, updateDoc } from '@/src/lib/firebase';
+import { db, doc, updateDoc, deleteDoc } from '@/src/lib/firebase';
 import { cn } from '@/src/lib/utils';
+import toast from 'react-hot-toast';
 
 export interface ContactMessage {
   id: string;
   name: string;
   email: string;
-  subject: string;
+  subject?: string;
   message: string;
   status: 'new' | 'read' | 'replied';
   createdAt: any;
@@ -25,9 +26,27 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ messages, onRefresh 
   const updateStatus = async (id: string, status: string) => {
     try {
       await updateDoc(doc(db, 'contact_messages', id), { status });
+      setSelectedMsg((current) => (current?.id === id ? { ...current, status: status as ContactMessage['status'] } : current));
       onRefresh();
     } catch (error) {
       console.error("Error updating message:", error);
+      toast.error('Unable to update message status.');
+    }
+  };
+
+  const deleteMessage = async (message: ContactMessage) => {
+    if (!window.confirm(`Delete the inquiry from ${message.email}?`)) {
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, 'contact_messages', message.id));
+      setSelectedMsg((current) => (current?.id === message.id ? null : current));
+      onRefresh();
+      toast.success('Inquiry deleted.');
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      toast.error('Unable to delete inquiry.');
     }
   };
 
@@ -78,7 +97,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ messages, onRefresh 
                     {msg.createdAt?.toDate ? msg.createdAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
                   </span>
                 </div>
-                <p className="text-[10px] text-brand-gold/60 font-black uppercase tracking-[0.15em] mb-2 truncate">{msg.subject}</p>
+                <p className="text-[10px] text-brand-gold/60 font-black uppercase tracking-[0.15em] mb-2 truncate">{msg.subject || 'General Inquiry'}</p>
                 <p className="text-[11px] text-brand-parchment/30 line-clamp-2 font-light italic leading-relaxed">{msg.message}</p>
               </button>
             ))}
@@ -107,7 +126,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ messages, onRefresh 
                       {selectedMsg.name[0].toUpperCase()}
                     </div>
                     <div>
-                      <h3 className="text-3xl font-serif text-brand-parchment leading-tight">{selectedMsg.subject}</h3>
+                      <h3 className="text-3xl font-serif text-brand-parchment leading-tight">{selectedMsg.subject || 'General Inquiry'}</h3>
                       <div className="flex items-center gap-3 mt-1">
                         <p className="text-[11px] text-brand-parchment font-black">{selectedMsg.name}</p>
                         <span className="w-1 h-1 rounded-full bg-white/10" />
@@ -117,10 +136,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ messages, onRefresh 
                   </div>
                 </div>
                 <div className="flex gap-3">
-                  <button className="p-4 rounded-full bg-white/5 text-brand-parchment/30 hover:text-brand-gold hover:bg-brand-gold/10 transition-all duration-500 border border-white/5">
+                  <a href={`mailto:${selectedMsg.email}?subject=${encodeURIComponent(`Re: ${selectedMsg.subject || 'General Inquiry'}`)}`} className="p-4 rounded-full bg-white/5 text-brand-parchment/30 hover:text-brand-gold hover:bg-brand-gold/10 transition-all duration-500 border border-white/5">
                     <Mail size={18} />
-                  </button>
-                  <button className="p-4 rounded-full bg-white/5 text-brand-parchment/30 hover:text-red-400 hover:bg-red-400/10 transition-all duration-500 border border-white/5">
+                  </a>
+                  <button onClick={() => deleteMessage(selectedMsg)} className="p-4 rounded-full bg-white/5 text-brand-parchment/30 hover:text-red-400 hover:bg-red-400/10 transition-all duration-500 border border-white/5">
                     <Trash2 size={18} />
                   </button>
                 </div>
@@ -155,10 +174,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({ messages, onRefresh 
                     <option value="replied">Replied</option>
                   </select>
                 </div>
-                <button className="btn-primary flex items-center gap-3 px-10">
+                <a href={`mailto:${selectedMsg.email}?subject=${encodeURIComponent(`Re: ${selectedMsg.subject || 'General Inquiry'}`)}`} className="btn-primary flex items-center gap-3 px-10">
                   <Mail size={16} strokeWidth={3} />
                   Draft Response
-                </button>
+                </a>
               </div>
             </motion.div>
           ) : (

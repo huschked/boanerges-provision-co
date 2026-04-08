@@ -4,11 +4,13 @@ import { ArrowRight, Flame, ShieldCheck, Zap, Award, Loader2, CheckCircle2 } fro
 import { Link } from 'react-router-dom';
 import { getProducts, Product } from '@/src/services/productService';
 import { ProductCard } from '@/src/components/ProductCard';
+import toast from 'react-hot-toast';
 import heroImage from '@/src/assets/HeroImage.png';
 import brandStoryImage from '@/src/assets/brand-story-image.png';
 import spicyCategoryImage from '@/src/assets/category-spicy.png';
 import savoryCategoryImage from '@/src/assets/category-savory.png';
 import herbalCategoryImage from '@/src/assets/category-herbal.png';
+import { subscribeToNewsletter } from '@/src/lib/newsletter';
 
 export const Home: React.FC = () => {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
@@ -36,17 +38,12 @@ export const Home: React.FC = () => {
     if (!email) return;
     setSubmitting(true);
     try {
-      const response = await fetch('/api/subscribers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, source: 'home_newsletter' }),
-      });
-      if (response.ok) {
-        setSubmitted(true);
-        setEmail('');
-      }
+      await subscribeToNewsletter(email, 'home_newsletter');
+      setSubmitted(true);
+      setEmail('');
     } catch (error) {
       console.error("Newsletter error:", error);
+      toast.error(error instanceof Error ? error.message : 'Unable to subscribe right now.');
     } finally {
       setSubmitting(false);
     }

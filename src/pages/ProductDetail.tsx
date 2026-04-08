@@ -7,6 +7,7 @@ import { HeatScale } from '@/src/components/HeatScale';
 import { ProductCard } from '@/src/components/ProductCard';
 import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
+import { trackAnalyticsEvent } from '@/src/lib/analytics';
 
 export const ProductDetail: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -27,6 +28,12 @@ export const ProductDetail: React.FC = () => {
         const data = await getProductBySlug(slug);
         if (data) {
           setProduct(data);
+          trackAnalyticsEvent({
+            type: 'product_view',
+            productId: data.id,
+            productName: data.name,
+            category: data.category,
+          });
           // Fetch related products (same category)
           const allProducts = await getProducts();
           const related = allProducts
@@ -186,6 +193,17 @@ export const ProductDetail: React.FC = () => {
                     for(let i = 0; i < quantity; i++) {
                       addItem(product as any);
                     }
+                    trackAnalyticsEvent({
+                      type: 'add_to_cart',
+                      productId: product.id,
+                      productName: product.name,
+                      category: product.category,
+                      quantity,
+                      value: product.price * quantity,
+                      metadata: {
+                        purchaseType,
+                      },
+                    });
                   }}
                   disabled={product.currentInventory <= 0}
                   className={cn(

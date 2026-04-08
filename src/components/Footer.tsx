@@ -1,9 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Instagram, Facebook, Twitter, MapPin, Mail, Phone } from 'lucide-react';
 import logo from '@/src/assets/BoanergesLogoTransparent.png';
+import toast from 'react-hot-toast';
+import { subscribeToNewsletter } from '@/src/lib/newsletter';
 
 export const Footer: React.FC = () => {
+  const [email, setEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!email.trim()) return;
+
+    setSubmitting(true);
+    try {
+      await subscribeToNewsletter(email.trim(), 'footer_newsletter');
+      toast.success('You are subscribed to the table.');
+      setEmail('');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to subscribe right now.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <footer className="bg-[#0A0A0A] text-brand-parchment pt-16 pb-12">
       <div className="max-w-7xl mx-auto px-6 md:px-12">
@@ -59,14 +80,17 @@ export const Footer: React.FC = () => {
             <p className="text-sm text-brand-parchment/80 leading-relaxed">
               Subscribe for exclusive flavor releases, recipes, and artisan stories.
             </p>
-            <form className="relative">
+            <form className="relative" onSubmit={handleSubmit}>
               <input 
                 type="email" 
                 placeholder="Email Address" 
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
                 className="w-full bg-transparent border-b border-brand-parchment/40 py-3 text-sm focus:border-brand-gold outline-none transition-colors placeholder:text-brand-parchment/40"
               />
-              <button className="absolute right-0 bottom-3 text-brand-gold text-[10px] uppercase tracking-widest font-black hover:translate-x-1 transition-transform">
-                Sign Up
+              <button type="submit" disabled={submitting} className="absolute right-0 bottom-3 text-brand-gold text-[10px] uppercase tracking-widest font-black hover:translate-x-1 transition-transform disabled:opacity-50">
+                {submitting ? 'Saving...' : 'Sign Up'}
               </button>
             </form>
           </div>

@@ -19,6 +19,8 @@ export interface Product {
   stripePriceId?: string;
   imageUrl: string;
   category?: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
 }
 
 export const getProducts = async (category?: string) => {

@@ -3,15 +3,27 @@ import { Link } from 'react-router-dom';
 import { ShieldCheck, Lock, CreditCard, ArrowLeft, ChevronRight, Zap, Award, Loader2 } from 'lucide-react';
 import { useCart } from '@/src/store';
 import toast from 'react-hot-toast';
+import { trackAnalyticsEvent } from '@/src/lib/analytics';
 
 export const Checkout: React.FC = () => {
   const { items, total } = useCart();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
+  const [newsletterOptIn, setNewsletterOptIn] = useState(false);
 
   const handleCheckout = async () => {
     setLoading(true);
     try {
+      trackAnalyticsEvent({
+        type: 'checkout_start',
+        quantity: items.reduce((sum, item) => sum + item.quantity, 0),
+        value: total(),
+        metadata: {
+          itemCount: items.length,
+          newsletterOptIn,
+        },
+      });
+
       const response = await fetch('/api/checkout/create-session', {
         method: 'POST',
         headers: {
@@ -90,7 +102,7 @@ export const Checkout: React.FC = () => {
                 />
                 <div className="flex items-start gap-3 pt-2">
                   <div className="pt-1">
-                    <input type="checkbox" id="newsletter" className="accent-brand-gold w-4 h-4 cursor-pointer" />
+                    <input type="checkbox" id="newsletter" checked={newsletterOptIn} onChange={(e) => setNewsletterOptIn(e.target.checked)} className="accent-brand-gold w-4 h-4 cursor-pointer" />
                   </div>
                   <label htmlFor="newsletter" className="text-[11px] uppercase tracking-widest text-brand-parchment/60 font-black cursor-pointer leading-relaxed">
                     Email me with news and limited flavor drops

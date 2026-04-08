@@ -6,8 +6,29 @@ import { Product } from '@/src/services/productService';
 export interface Order {
   id: string;
   customerEmail: string;
-  totalAmount: number;
-  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  customerName?: string;
+  customerPhone?: string;
+  totalAmount?: number;
+  subtotalAmount?: number;
+  shippingAmount?: number;
+  paymentStatus?: string;
+  stripeSessionId?: string;
+  stripePaymentIntentId?: string;
+  trackingNumber?: string;
+  trackingUrl?: string;
+  adminNotes?: string;
+  paidAt?: any;
+  shippingAddress?: {
+    name?: string;
+    line1?: string;
+    line2?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    country?: string;
+  } | null;
+  status?: 'pending' | 'processing' | 'packed' | 'shipped' | 'delivered' | 'cancelled' | 'needs_manual_intervention';
+  fulfillmentStatus?: 'pending' | 'processing' | 'packed' | 'shipped' | 'delivered' | 'cancelled' | 'needs_manual_intervention';
   createdAt: any;
   items: any[];
 }
@@ -16,9 +37,11 @@ interface DashboardViewProps {
   stats: any;
   orders: Order[];
   products: Product[];
+  onViewOrders: () => void;
+  onManageInventory: () => void;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, products }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, products, onViewOrders, onManageInventory }) => {
   return (
     <div className="space-y-16 animate-fade-in">
         {/* Stats Grid */}
@@ -72,7 +95,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, pro
               <h3 className="text-2xl font-serif text-brand-parchment">Recent Transactions</h3>
               <p className="text-[9px] uppercase tracking-[0.2em] text-brand-gold/40 font-black">Latest customer orders</p>
             </div>
-            <button className="text-[10px] uppercase tracking-[0.3em] font-black text-brand-gold hover:text-brand-parchment transition-all duration-500 border border-brand-gold/20 px-6 py-2.5 rounded-sm hover:bg-brand-gold/10">View All Orders</button>
+            <button onClick={onViewOrders} className="text-[10px] uppercase tracking-[0.3em] font-black text-brand-gold hover:text-brand-parchment transition-all duration-500 border border-brand-gold/20 px-6 py-2.5 rounded-sm hover:bg-brand-gold/10">View All Orders</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -85,27 +108,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, pro
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {orders.slice(0, 6).map((order) => (
+                {orders.slice(0, 6).map((order) => {
+                  const orderStatus = order.fulfillmentStatus || order.status || 'pending';
+                  const totalAmount = order.totalAmount ?? 0;
+
+                  return (
                   <tr key={order.id} className="hover:bg-white/[0.02] transition-colors group">
                     <td className="px-10 py-6 text-[11px] text-brand-parchment font-mono tracking-wider opacity-60 group-hover:opacity-100 transition-opacity">#{order.id.slice(0, 8).toUpperCase()}</td>
-                    <td className="px-10 py-6 text-[11px] text-brand-parchment/80 font-medium">{order.customerEmail}</td>
-                    <td className="px-10 py-6 text-sm text-brand-parchment font-black tracking-tight">${order.totalAmount?.toFixed(2)}</td>
+                    <td className="px-10 py-6 text-[11px] text-brand-parchment/80 font-medium">{order.customerName || order.customerEmail}</td>
+                    <td className="px-10 py-6 text-sm text-brand-parchment font-black tracking-tight">${totalAmount.toFixed(2)}</td>
                     <td className="px-10 py-6 text-right">
                       <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[9px] uppercase tracking-[0.2em] font-black border ${
-                        order.status === 'delivered' ? 'bg-green-400/5 text-green-400 border-green-400/10' :
-                        order.status === 'processing' ? 'bg-blue-400/5 text-blue-400 border-blue-400/10' :
+                        orderStatus === 'delivered' ? 'bg-green-400/5 text-green-400 border-green-400/10' :
+                        orderStatus === 'processing' || orderStatus === 'packed' || orderStatus === 'shipped' ? 'bg-blue-400/5 text-blue-400 border-blue-400/10' :
+                        orderStatus === 'needs_manual_intervention' ? 'bg-red-400/5 text-red-400 border-red-400/10' :
                         'bg-brand-gold/5 text-brand-gold border-brand-gold/10'
                       }`}>
                         <div className={`w-1.5 h-1.5 rounded-full ${
-                          order.status === 'delivered' ? 'bg-green-400' :
-                          order.status === 'processing' ? 'bg-blue-400' :
+                          orderStatus === 'delivered' ? 'bg-green-400' :
+                          orderStatus === 'processing' || orderStatus === 'packed' || orderStatus === 'shipped' ? 'bg-blue-400' :
+                          orderStatus === 'needs_manual_intervention' ? 'bg-red-400' :
                           'bg-brand-gold'
                         }`} />
-                        {order.status}
+                        {orderStatus.replaceAll('_', ' ')}
                       </span>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -151,7 +181,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, pro
             )}
           </div>
           <div className="p-8 bg-white/[0.01] border-t border-white/5">
-            <button className="w-full py-4 text-[10px] uppercase tracking-[0.3em] font-black text-brand-gold hover:text-brand-parchment hover:bg-brand-gold/5 transition-all duration-500 rounded-sm">Manage Inventory</button>
+            <button onClick={onManageInventory} className="w-full py-4 text-[10px] uppercase tracking-[0.3em] font-black text-brand-gold hover:text-brand-parchment hover:bg-brand-gold/5 transition-all duration-500 rounded-sm">Manage Inventory</button>
           </div>
         </div>
       </div>

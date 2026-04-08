@@ -6,6 +6,7 @@ import { Product } from '@/src/services/productService';
 import { HeatScale } from './HeatScale';
 import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
+import { trackAnalyticsEvent } from '@/src/lib/analytics';
 
 export const ProductCard: React.FC<{ product: Product; className?: string; dark?: boolean }> = ({ product, className, dark }) => {
   const addItem = useCart((state) => state.addItem);
@@ -36,6 +37,14 @@ export const ProductCard: React.FC<{ product: Product; className?: string; dark?
             onClick={(e) => {
               e.preventDefault();
               addItem(product as any);
+              trackAnalyticsEvent({
+                type: 'add_to_cart',
+                productId: product.id,
+                productName: product.name,
+                category: product.category,
+                quantity: 1,
+                value: product.price,
+              });
             }}
             className="w-full py-5 bg-brand-black text-brand-gold text-[10px] uppercase tracking-[0.3em] font-black flex items-center justify-center gap-3 hover:bg-brand-gold hover:text-brand-black transition-all duration-500 shadow-2xl active:scale-95"
           >
