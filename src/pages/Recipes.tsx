@@ -20,8 +20,8 @@ export const Recipes: React.FC = () => {
   ];
 
   return (
-    <div className="pt-40 pb-32 animate-fade-in bg-brand-black relative overflow-hidden">
-      <div className="absolute inset-0 opacity-10 stone-texture" />
+    <div className="pt-40 pb-32 animate-fade-in editorial-surface-dark relative overflow-hidden">
+      <div className="absolute inset-0 opacity-70 surface-vignette-dark" />
       <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
         <div className="text-center space-y-6 mb-24">
           <span className="text-brand-gold text-[12px] uppercase tracking-[0.4em] font-black block">Culinary Inspiration</span>
@@ -69,8 +69,8 @@ export const Recipes: React.FC = () => {
           ))}
         </div>
 
-        <section className="mt-40 bg-brand-black p-12 md:p-24 rounded-sm text-center space-y-8 relative overflow-hidden">
-          <div className="absolute inset-0 opacity-10 stone-texture" />
+        <section className="mt-40 editorial-surface-dark p-12 md:p-24 rounded-sm text-center space-y-8 relative overflow-hidden border border-white/8">
+      <div className="absolute inset-0 opacity-70 surface-vignette-dark" />
           <div className="relative z-10 space-y-6">
             <h2 className="text-4xl md:text-6xl font-serif text-brand-parchment italic">Have a unique pairing?</h2>
             <p className="text-brand-parchment/60 text-lg max-w-xl mx-auto font-light">

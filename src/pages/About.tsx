@@ -26,7 +26,7 @@ export const About: React.FC = () => {
       </section>
 
       {/* Brand Origin */}
-      <section className="py-32 bg-brand-parchment parchment-texture">
+      <section className="py-32 editorial-surface-light">
         <div className="max-w-7xl mx-auto px-6 md:px-12">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
             <div className="space-y-10">
@@ -60,8 +60,8 @@ export const About: React.FC = () => {
       </section>
 
       {/* Small-Batch Craftsmanship */}
-      <section className="py-32 bg-brand-black relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10 stone-texture" />
+      <section className="py-32 editorial-surface-dark relative overflow-hidden">
+        <div className="absolute inset-0 opacity-70 surface-vignette-dark" />
         <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
             <div className="order-2 lg:order-1 relative aspect-[4/5] rounded-sm overflow-hidden shadow-2xl">
@@ -105,7 +105,7 @@ export const About: React.FC = () => {
       </section>
 
       {/* Flavor Philosophy */}
-      <section className="py-32 bg-brand-parchment parchment-texture">
+      <section className="py-32 editorial-surface-light">
         <div className="max-w-7xl mx-auto px-6 md:px-12">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
             <div className="space-y-10">
@@ -136,8 +136,8 @@ export const About: React.FC = () => {
       </section>
 
       {/* Why Special */}
-      <section className="py-32 bg-brand-black relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10 stone-texture" />
+      <section className="py-32 editorial-surface-dark relative overflow-hidden">
+        <div className="absolute inset-0 opacity-70 surface-vignette-dark" />
         <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
           <div className="text-center space-y-4 mb-24">
             <span className="text-brand-gold text-[12px] uppercase tracking-[0.3em] font-black">The Difference</span>

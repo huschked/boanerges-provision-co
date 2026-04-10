@@ -13,8 +13,8 @@ export const CheckoutSuccess: React.FC = () => {
   }, [clearCart]);
 
   return (
-    <div className="pt-40 pb-32 animate-fade-in bg-brand-black relative overflow-hidden">
-      <div className="absolute inset-0 opacity-10 stone-texture" />
+    <div className="pt-40 pb-32 animate-fade-in editorial-surface-dark relative overflow-hidden">
+      <div className="absolute inset-0 opacity-70 surface-vignette-dark" />
       <div className="max-w-5xl mx-auto px-6 md:px-12 relative z-10">
         <div className="glass-dark border-brand-gold/10 rounded-sm overflow-hidden shadow-2xl">
           <div className="p-10 md:p-16 border-b border-white/5 text-center space-y-8">

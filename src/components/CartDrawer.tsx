@@ -27,7 +27,7 @@ export const CartDrawer: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-brand-black stone-texture z-[70] shadow-2xl flex flex-col"
+            className="fixed top-0 right-0 bottom-0 w-full max-w-md editorial-surface-dark z-[70] shadow-2xl flex flex-col"
           >
             <div className="p-8 border-b border-white/10 flex items-center justify-between relative z-10">
               <div className="flex items-center gap-3">

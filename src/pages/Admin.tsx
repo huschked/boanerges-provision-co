@@ -212,7 +212,7 @@ export const Admin: React.FC = () => {
 
   if (!isAdmin) {
     return (
-      <div className="h-screen flex items-center justify-center bg-brand-black parchment-texture relative overflow-hidden">
+      <div className="h-screen flex items-center justify-center editorial-surface-dark relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-brand-gold/5 via-transparent to-brand-gold/5" />
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="max-w-md w-full p-12 glass-dark border-brand-gold/20 text-center space-y-10 relative z-10 shadow-2xl">
           <div className="space-y-6">
@@ -236,8 +236,8 @@ export const Admin: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-brand-black flex">
-      <aside className="w-72 border-r border-white/5 flex flex-col bg-brand-black relative overflow-hidden z-40">
-        <div className="absolute inset-0 parchment-texture opacity-[0.03] pointer-events-none" />
+      <aside className="w-72 border-r border-white/5 flex flex-col editorial-surface-dark relative overflow-hidden z-40">
+        <div className="absolute inset-0 surface-vignette-dark opacity-70 pointer-events-none" />
         <div className="p-10 border-b border-white/5 flex flex-col items-center text-center">
           <Link to="/" className="group relative">
             <div className="absolute -inset-4 bg-brand-gold/5 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
@@ -292,7 +292,7 @@ export const Admin: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-grow overflow-y-auto parchment-texture">
+      <main className="flex-grow overflow-y-auto editorial-surface-dark">
         <header className="h-28 border-b border-white/5 flex items-center justify-between px-16 bg-brand-black/90 backdrop-blur-2xl sticky top-0 z-30">
           <div className="flex items-center gap-6">
             <div className="w-1.5 h-10 bg-brand-gold rounded-full shadow-[0_0_15px_rgba(197,160,89,0.5)]" />

@@ -134,7 +134,7 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: '-100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed inset-0 z-50 bg-brand-black parchment-texture flex flex-col p-12"
+            className="fixed inset-0 z-50 editorial-surface-dark flex flex-col p-12"
           >
             <button 
               className="absolute top-8 right-8 text-brand-gold"

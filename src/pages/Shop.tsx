@@ -51,8 +51,8 @@ export const Shop: React.FC = () => {
   }, [products, activeCategory, searchQuery, activeSort]);
 
   return (
-    <div className="pt-40 pb-32 animate-fade-in bg-brand-black relative overflow-hidden">
-      <div className="absolute inset-0 opacity-10 stone-texture" />
+    <div className="pt-40 pb-32 animate-fade-in editorial-surface-dark relative overflow-hidden">
+      <div className="absolute inset-0 opacity-70 surface-vignette-dark" />
       <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
         {/* Header */}
         <div className="text-center space-y-6 mb-20">

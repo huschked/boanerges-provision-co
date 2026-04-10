@@ -12,8 +12,8 @@ export const Bundles: React.FC = () => {
   const addItem = useCart((state) => state.addItem);
 
   return (
-    <div className="pt-40 pb-32 animate-fade-in bg-brand-black relative overflow-hidden">
-      <div className="absolute inset-0 opacity-10 stone-texture" />
+    <div className="pt-40 pb-32 animate-fade-in editorial-surface-dark relative overflow-hidden">
+      <div className="absolute inset-0 opacity-70 surface-vignette-dark" />
       <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
         <div className="text-center space-y-6 mb-24">
           <span className="text-brand-gold text-[12px] uppercase tracking-[0.4em] font-black block">Curated Collections</span>

@@ -142,7 +142,7 @@ export const Home: React.FC = () => {
       </section>
 
       {/* Featured Products */}
-      <section className="py-32 bg-brand-parchment parchment-texture">
+      <section className="py-32 editorial-surface-light">
         <div className="max-w-7xl mx-auto px-6 md:px-12">
           <div className="flex flex-col md:flex-row justify-between items-end mb-20 gap-8">
             <div className="space-y-4">
@@ -173,7 +173,7 @@ export const Home: React.FC = () => {
       </section>
 
       {/* Trust Bar */}
-      <section className="py-20 bg-brand-charcoal parchment-texture border-y border-brand-gold/10">
+      <section className="py-20 editorial-surface-dark border-y border-brand-gold/10">
         <div className="max-w-7xl mx-auto px-6 md:px-12">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-12">
             {[
@@ -188,7 +188,7 @@ export const Home: React.FC = () => {
                 </div>
                 <div className="space-y-1">
                   <h3 className="text-brand-parchment text-[12px] uppercase tracking-[0.2em] font-black">{item.title}</h3>
-                  <p className="text-brand-parchment/40 text-[10px] uppercase tracking-[0.15em]">{item.desc}</p>
+                  <p className="text-brand-parchment/60 text-[10px] uppercase tracking-[0.15em]">{item.desc}</p>
                 </div>
               </div>
             ))}
@@ -198,7 +198,7 @@ export const Home: React.FC = () => {
 
       {/* Brand Story Teaser */}
       <section className="relative py-32 overflow-hidden bg-brand-black">
-        <div className="absolute inset-0 opacity-20 stone-texture" />
+        <div className="absolute inset-0 opacity-70 surface-vignette-dark" />
         <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
             <div className="relative aspect-[4/5] rounded-sm overflow-hidden shadow-2xl">
@@ -244,7 +244,7 @@ export const Home: React.FC = () => {
       </section>
 
       {/* Flavor Explorer / Categories */}
-      <section className="py-32 bg-brand-parchment parchment-texture">
+      <section className="py-32 editorial-surface-light">
         <div className="max-w-7xl mx-auto px-6 md:px-12">
           <div className="text-center space-y-4 mb-20">
             <span className="text-brand-gold text-[12px] uppercase tracking-[0.3em] font-bold">Find Your Match</span>
@@ -283,7 +283,7 @@ export const Home: React.FC = () => {
       </section>
 
       {/* Testimonials */}
-      <section className="py-32 bg-brand-earth text-brand-parchment parchment-texture">
+      <section className="py-32 editorial-surface-warm text-brand-parchment">
         <div className="max-w-4xl mx-auto px-6 text-center space-y-12">
           <div className="flex justify-center gap-1 text-brand-gold">
             {[...Array(5)].map((_, i) => <Award key={i} size={20} fill="currentColor" />)}
@@ -299,8 +299,8 @@ export const Home: React.FC = () => {
       </section>
 
       {/* Newsletter / Email Capture */}
-      <section className="py-32 bg-brand-black relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10 stone-texture" />
+      <section className="py-32 editorial-surface-dark relative overflow-hidden">
+        <div className="absolute inset-0 opacity-70 surface-vignette-dark" />
         <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
           <div className="glass-dark p-12 md:p-24 rounded-sm border-brand-gold/10 flex flex-col lg:flex-row items-center justify-between gap-16">
             <div className="space-y-6 max-w-xl">

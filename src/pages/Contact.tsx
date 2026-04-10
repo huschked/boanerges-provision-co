@@ -48,8 +48,8 @@ export const Contact: React.FC = () => {
   };
 
   return (
-    <div className="pt-40 pb-32 animate-fade-in bg-brand-black relative overflow-hidden">
-      <div className="absolute inset-0 opacity-10 stone-texture" />
+    <div className="pt-40 pb-32 animate-fade-in editorial-surface-dark relative overflow-hidden">
+      <div className="absolute inset-0 opacity-70 surface-vignette-dark" />
       <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-24">
           {/* Info */}
@@ -105,7 +105,7 @@ export const Contact: React.FC = () => {
           </div>
 
           {/* Form */}
-          <div className="bg-brand-black p-12 md:p-16 rounded-sm shadow-2xl border border-white/10 relative overflow-hidden">
+          <div className="editorial-surface-dark p-12 md:p-16 rounded-sm shadow-2xl border border-white/10 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-brand-gold/5 rounded-bl-full -mr-16 -mt-16" />
             
             {submitted ? (
