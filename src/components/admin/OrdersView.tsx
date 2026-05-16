@@ -255,6 +255,24 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                     <p className="text-brand-parchment/70 text-sm break-all">{selectedOrder.stripePaymentIntentId || 'Not available'}</p>
                   </div>
                 </div>
+                {(selectedOrder.refundedAmount || selectedOrder.stripeDisputeId || selectedOrder.shippingMethod) && (
+                  <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                      <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black mb-2">Shipping Method</p>
+                      <p className="text-brand-parchment/70 text-sm">{selectedOrder.shippingMethod || 'Standard Shipping'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black mb-2">Refunded</p>
+                      <p className="text-brand-parchment/70 text-sm">${(selectedOrder.refundedAmount ?? 0).toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black mb-2">Dispute</p>
+                      <p className="text-brand-parchment/70 text-sm">
+                        {selectedOrder.stripeDisputeId ? `${selectedOrder.disputeStatus || 'open'} ${selectedOrder.disputeReason ? `- ${selectedOrder.disputeReason}` : ''}` : 'None'}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="p-10 border-b border-white/5 space-y-6">
@@ -326,7 +344,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                   )}
                 </div>
 
-                <div className="pt-6 border-t border-white/5 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="pt-6 border-t border-white/5 grid grid-cols-1 md:grid-cols-4 gap-6">
                   <div>
                     <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black mb-2">Subtotal</p>
                     <p className="text-brand-parchment font-black">${(selectedOrder.subtotalAmount ?? 0).toFixed(2)}</p>
@@ -334,6 +352,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                   <div>
                     <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black mb-2">Shipping</p>
                     <p className="text-brand-parchment font-black">${(selectedOrder.shippingAmount ?? 0).toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black mb-2">Tax</p>
+                    <p className="text-brand-parchment font-black">${(selectedOrder.taxAmount ?? 0).toFixed(2)}</p>
                   </div>
                   <div>
                     <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black mb-2">Total</p>

@@ -11,6 +11,14 @@ export interface Order {
   totalAmount?: number;
   subtotalAmount?: number;
   shippingAmount?: number;
+  taxAmount?: number;
+  refundedAmount?: number;
+  shippingMethod?: string;
+  shippingRateId?: string;
+  stripeChargeId?: string;
+  stripeDisputeId?: string;
+  disputeStatus?: string;
+  disputeReason?: string;
   paymentStatus?: string;
   stripeSessionId?: string;
   stripePaymentIntentId?: string;

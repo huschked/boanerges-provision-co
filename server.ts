@@ -13,6 +13,8 @@ import firebaseConfig from "./firebase-applet-config.json" with { type: "json" }
 
 dotenv.config();
 
+const typedFirebaseConfig = firebaseConfig as typeof firebaseConfig & { firestoreDatabaseId?: string };
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -32,25 +34,25 @@ if (!admin.apps.length) {
   }
 
   admin.initializeApp({
-    projectId: firebaseConfig.projectId,
+    projectId: typedFirebaseConfig.projectId,
     credential
   });
 }
-const db = 'firestoreDatabaseId' in firebaseConfig && firebaseConfig.firestoreDatabaseId
-  ? getFirestore(firebaseConfig.firestoreDatabaseId)
+const db = typedFirebaseConfig.firestoreDatabaseId
+  ? getFirestore(typedFirebaseConfig.firestoreDatabaseId)
   : getFirestore();
 
 // Test Firestore connection
 async function testConnection() {
-  console.log(`Testing Firestore connection to project: ${firebaseConfig.projectId}`);
+  console.log(`Testing Firestore connection to project: ${typedFirebaseConfig.projectId}`);
 
-  if ('firestoreDatabaseId' in firebaseConfig && firebaseConfig.firestoreDatabaseId) {
+  if (typedFirebaseConfig.firestoreDatabaseId) {
     try {
-      const namedDb = getFirestore(firebaseConfig.firestoreDatabaseId);
+      const namedDb = getFirestore(typedFirebaseConfig.firestoreDatabaseId);
       const snapshot = await namedDb.collection("products").limit(1).get();
-      console.log(`Firestore connection to named database (${firebaseConfig.firestoreDatabaseId}) successful. Found products:`, snapshot.size);
+      console.log(`Firestore connection to named database (${typedFirebaseConfig.firestoreDatabaseId}) successful. Found products:`, snapshot.size);
     } catch (error: any) {
-      console.error(`Firestore connection to named database (${firebaseConfig.firestoreDatabaseId}) failed:`, error.message);
+      console.error(`Firestore connection to named database (${typedFirebaseConfig.firestoreDatabaseId}) failed:`, error.message);
     }
   }
 
@@ -67,7 +69,9 @@ async function testConnection() {
 testConnection().catch(e => console.warn("Initial DB test skipped due to auth mapping mismatch."));
 
 // Initialize Stripe & Resend
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+  apiVersion: "2026-03-25.dahlia",
+});
 const resend = new Resend(process.env.RESEND_API_KEY || "");
 
 type PendingOrderItem = {
@@ -78,6 +82,11 @@ type PendingOrderItem = {
   heatLevel: number;
   imageUrl?: string;
   sizeOz?: number;
+};
+
+type NormalizedCartItem = {
+  id: string;
+  quantity: number;
 };
 
 type AnalyticsEventType =
@@ -94,6 +103,12 @@ type ResendAudienceSyncResult = {
 };
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CURRENCY = "usd";
+const MAX_CART_ITEMS = Number(process.env.MAX_CART_ITEMS || 30);
+const MAX_ITEM_QUANTITY = Number(process.env.MAX_ITEM_QUANTITY || 20);
+const FREE_SHIPPING_THRESHOLD = Number(process.env.FREE_SHIPPING_THRESHOLD || 50);
+const STANDARD_SHIPPING_AMOUNT = Number(process.env.STANDARD_SHIPPING_AMOUNT || 5.99);
+const DEFAULT_PRODUCT_TAX_CODE = process.env.STRIPE_PRODUCT_TAX_CODE || "txcd_99999999";
 const RESEND_AUDIENCE_ID = process.env.RESEND_AUDIENCE_ID || "";
 const ORDERS_EMAIL_FROM =
   process.env.EMAIL_FROM_ORDERS || "Boanerges Provision Co <onboarding@resend.dev>";
@@ -226,6 +241,137 @@ function getDateKey(date = new Date()) {
   return date.toISOString().slice(0, 10);
 }
 
+function toMoneyFromCents(value?: number | null) {
+  return (value || 0) / 100;
+}
+
+function toStripeAmount(value: number) {
+  return Math.round(value * 100);
+}
+
+function normalizeCustomerEmail(value: unknown) {
+  if (typeof value !== "string") return "";
+  const email = value.trim().toLowerCase();
+  return EMAIL_REGEX.test(email) ? email : "";
+}
+
+function normalizeCartItems(items: unknown): { items?: NormalizedCartItem[]; error?: string } {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { error: "Your cart is empty." };
+  }
+
+  if (items.length > MAX_CART_ITEMS) {
+    return { error: `Cart cannot contain more than ${MAX_CART_ITEMS} line items.` };
+  }
+
+  const byProductId = new Map<string, number>();
+
+  for (const item of items) {
+    if (!item || typeof item !== "object") {
+      return { error: "Cart contains an invalid item." };
+    }
+
+    const rawId = "id" in item ? (item as { id?: unknown }).id : "";
+    const rawQuantity = "quantity" in item ? (item as { quantity?: unknown }).quantity : undefined;
+    const id = typeof rawId === "string" ? rawId.trim() : "";
+    const quantity = Number(rawQuantity);
+
+    if (!id) {
+      return { error: "Cart contains an item without a product id." };
+    }
+
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      return { error: `Invalid quantity for product ${id}.` };
+    }
+
+    const nextQuantity = (byProductId.get(id) || 0) + quantity;
+    if (nextQuantity > MAX_ITEM_QUANTITY) {
+      return { error: `Quantity for product ${id} cannot exceed ${MAX_ITEM_QUANTITY}.` };
+    }
+
+    byProductId.set(id, nextQuantity);
+  }
+
+  return {
+    items: Array.from(byProductId.entries()).map(([id, quantity]) => ({ id, quantity })),
+  };
+}
+
+function getSelectedShipping(session: Stripe.Checkout.Session) {
+  const shippingCost = session.shipping_cost;
+  const expandedShippingRate =
+    shippingCost?.shipping_rate && typeof shippingCost.shipping_rate !== "string"
+      ? shippingCost.shipping_rate
+      : null;
+  const shippingRate =
+    typeof shippingCost?.shipping_rate === "string"
+      ? shippingCost.shipping_rate
+      : shippingCost?.shipping_rate?.id || "";
+
+  return {
+    amountSubtotal: toMoneyFromCents(shippingCost?.amount_subtotal),
+    amountTax: toMoneyFromCents(shippingCost?.amount_tax),
+    amountTotal: toMoneyFromCents(shippingCost?.amount_total),
+    shippingRate,
+    displayName: expandedShippingRate?.display_name || "",
+  };
+}
+
+async function claimStripeEvent(event: Stripe.Event) {
+  const eventRef = db.collection("stripe_events").doc(event.id);
+  let shouldProcess = false;
+
+  await db.runTransaction(async (transaction) => {
+    const eventSnap = await transaction.get(eventRef);
+    const status = eventSnap.exists ? eventSnap.data()?.status : "";
+
+    if (status === "processed" || status === "processing") {
+      shouldProcess = false;
+      return;
+    }
+
+    shouldProcess = true;
+    transaction.set(
+      eventRef,
+      {
+        id: event.id,
+        type: event.type,
+        stripeCreatedAt: admin.firestore.Timestamp.fromMillis(event.created * 1000),
+        status: "processing",
+        attempts: admin.firestore.FieldValue.increment(1),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: eventSnap.exists ? eventSnap.data()?.createdAt || admin.firestore.FieldValue.serverTimestamp() : admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
+
+  return shouldProcess;
+}
+
+async function markStripeEventProcessed(event: Stripe.Event) {
+  await db.collection("stripe_events").doc(event.id).set(
+    {
+      status: "processed",
+      processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+async function markStripeEventFailed(event: Stripe.Event, error: unknown) {
+  await db.collection("stripe_events").doc(event.id).set(
+    {
+      status: "failed",
+      error: error instanceof Error ? error.message : String(error),
+      failedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
 async function incrementAnalyticsDaily(dateKey: string, updates: Record<string, number>) {
   const dailyRef = db.collection("analytics_daily").doc(dateKey);
   const payload = Object.entries(updates).reduce<Record<string, unknown>>((acc, [key, value]) => {
@@ -244,7 +390,8 @@ async function incrementAnalyticsDaily(dateKey: string, updates: Record<string, 
 }
 
 function getShippingAddress(session: Stripe.Checkout.Session) {
-  const shippingAddress = session.shipping_details?.address;
+  const shippingDetails = session.collected_information?.shipping_details;
+  const shippingAddress = shippingDetails?.address;
   const billingAddress = session.customer_details?.address;
   const address = shippingAddress || billingAddress;
 
@@ -253,7 +400,7 @@ function getShippingAddress(session: Stripe.Checkout.Session) {
   }
 
   return {
-    name: session.shipping_details?.name || session.customer_details?.name || "",
+    name: shippingDetails?.name || session.customer_details?.name || "",
     line1: address.line1 || "",
     line2: address.line2 || "",
     city: address.city || "",
@@ -358,6 +505,7 @@ function buildOrderEmailHtml({
   items,
   subtotalAmount,
   shippingAmount,
+  taxAmount,
   totalAmount,
 }: {
   shippingAddress: ReturnType<typeof getShippingAddress>;
@@ -366,6 +514,7 @@ function buildOrderEmailHtml({
   items: PendingOrderItem[];
   subtotalAmount: number;
   shippingAmount: number;
+  taxAmount: number;
   totalAmount: number;
 }) {
   const itemMarkup = items
@@ -415,6 +564,7 @@ function buildOrderEmailHtml({
         <div style="padding:20px;border:1px solid rgba(255,255,255,0.08);">
           <div style="display:flex;justify-content:space-between;gap:16px;padding:6px 0;color:#b7ae9c;font-size:14px;"><span>Subtotal</span><strong style="color:#f4ecd8;">$${subtotalAmount.toFixed(2)}</strong></div>
           <div style="display:flex;justify-content:space-between;gap:16px;padding:6px 0;color:#b7ae9c;font-size:14px;"><span>Shipping</span><strong style="color:#f4ecd8;">$${shippingAmount.toFixed(2)}</strong></div>
+          <div style="display:flex;justify-content:space-between;gap:16px;padding:6px 0;color:#b7ae9c;font-size:14px;"><span>Tax</span><strong style="color:#f4ecd8;">$${taxAmount.toFixed(2)}</strong></div>
           <div style="display:flex;justify-content:space-between;gap:16px;padding:10px 0 0;margin-top:10px;border-top:1px solid rgba(255,255,255,0.08);color:#c5a059;font-size:18px;font-weight:700;"><span>Total</span><span>$${totalAmount.toFixed(2)}</span></div>
         </div>
       </div>
@@ -430,7 +580,7 @@ async function startServer() {
   // Stripe Webhook (needs raw body)
   app.post("/api/webhooks/stripe", bodyParser.raw({ type: "application/json" }), async (req, res) => {
     const sig = req.headers["stripe-signature"];
-    let event;
+    let event: Stripe.Event;
 
     try {
       event = stripe.webhooks.constructEvent(
@@ -443,29 +593,43 @@ async function startServer() {
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object as Stripe.Checkout.Session;
-      await handleSuccessfulCheckout(session);
+    const shouldProcess = await claimStripeEvent(event);
+    if (!shouldProcess) {
+      return res.json({ received: true, duplicate: true });
     }
 
-    if (event.type === "checkout.session.expired") {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const pendingOrderId = session.metadata?.pendingOrderId;
-
-      if (pendingOrderId) {
-        await db.collection("pending_orders").doc(pendingOrderId).set(
-          {
-            status: "expired",
-            paymentStatus: "expired",
-            expiredAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
+    try {
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await handleSuccessfulCheckout(session);
       }
-    }
 
-    res.json({ received: true });
+      if (event.type === "checkout.session.expired") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await handleExpiredCheckout(session);
+      }
+
+      if (event.type === "charge.refunded") {
+        const charge = event.data.object as Stripe.Charge;
+        await recordRefundedCharge(charge);
+      }
+
+      if (
+        event.type === "charge.dispute.created" ||
+        event.type === "charge.dispute.updated" ||
+        event.type === "charge.dispute.closed"
+      ) {
+        const dispute = event.data.object as Stripe.Dispute;
+        await recordDispute(dispute, event.type);
+      }
+
+      await markStripeEventProcessed(event);
+      res.json({ received: true });
+    } catch (error) {
+      console.error("Stripe Webhook Processing Error:", error);
+      await markStripeEventFailed(event, error);
+      res.status(500).json({ error: "Webhook processing failed." });
+    }
   });
 
   app.get("/email-brand-logo.png", (req, res) => {
@@ -485,6 +649,14 @@ async function startServer() {
   app.use("/api/subscribers", apiLimiter);
   app.use("/api/contact", apiLimiter);
   app.use("/api/analytics/events", apiLimiter);
+
+  const checkoutLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { error: "Too many checkout attempts from this IP, please try again later." },
+  });
+
+  app.use("/api/checkout/create-session", checkoutLimiter);
 
   // API Routes
   app.get("/api/products", async (req, res) => {
@@ -534,10 +706,16 @@ async function startServer() {
           ? req.body.origin
           : req.get("origin") || `${req.protocol}://${req.get("host")}`;
       const appUrl = (process.env.APP_URL || requestOrigin || process.env.SHARED_APP_URL || `http://localhost:${PORT}`).replace(/\/$/, "");
-      const { items, customerEmail } = req.body;
+      const { items } = req.body;
+      const normalizedEmail = normalizeCustomerEmail(req.body?.customerEmail);
+      const normalizedCart = normalizeCartItems(items);
 
-      if (!Array.isArray(items) || items.length === 0) {
-        return res.status(400).json({ error: "Your cart is empty." });
+      if (normalizedCart.error || !normalizedCart.items) {
+        return res.status(400).json({ error: normalizedCart.error || "Invalid cart." });
+      }
+
+      if (req.body?.customerEmail && !normalizedEmail) {
+        return res.status(400).json({ error: "Enter a valid email address." });
       }
 
       // 1. Validate prices from Firestore
@@ -545,7 +723,7 @@ async function startServer() {
       const orderItems: PendingOrderItem[] = [];
       let calculatedTotal = 0;
 
-      for (const item of items) {
+      for (const item of normalizedCart.items) {
         const productRef = db.collection("products").doc(item.id);
         const productSnap = await productRef.get();
 
@@ -554,18 +732,35 @@ async function startServer() {
         }
 
         const productData = productSnap.data()!;
-        if (productData.currentInventory < item.quantity) {
+        const price = Number(productData.price);
+        const inventory = Number(productData.currentInventory);
+
+        if (productData.active === false) {
+          return res.status(400).json({ error: `${productData.name || "This product"} is not currently available.` });
+        }
+
+        if (!Number.isFinite(price) || price <= 0) {
+          return res.status(400).json({ error: `${productData.name || item.id} has an invalid price.` });
+        }
+
+        if (!Number.isInteger(inventory) || inventory < item.quantity) {
           return res.status(400).json({ error: `Insufficient inventory for ${productData.name}` });
         }
 
+        const images =
+          typeof productData.imageUrl === "string" && /^https?:\/\//i.test(productData.imageUrl)
+            ? [productData.imageUrl]
+            : undefined;
+
         lineItems.push({
           price_data: {
-            currency: "usd",
+            currency: CURRENCY,
             product_data: {
               name: productData.name,
-              images: [productData.imageUrl],
+              images,
+              tax_code: productData.stripeTaxCode || DEFAULT_PRODUCT_TAX_CODE,
             },
-            unit_amount: Math.round(productData.price * 100),
+            unit_amount: toStripeAmount(price),
           },
           quantity: item.quantity,
         });
@@ -573,38 +768,47 @@ async function startServer() {
         orderItems.push({
           productId: item.id,
           name: productData.name,
-          price: productData.price,
+          price,
           quantity: item.quantity,
           heatLevel: productData.heatLevel || 0,
           imageUrl: productData.imageUrl || "",
           sizeOz: productData.sizeOz || 0,
         });
 
-        calculatedTotal += productData.price * item.quantity;
+        calculatedTotal += price * item.quantity;
       }
 
       // Calculate shipping (FREE if total >= 50)
-      const shippingCost = calculatedTotal >= 50 ? 0 : 5.99;
-      if (shippingCost > 0) {
-        lineItems.push({
-          price_data: {
-            currency: "usd",
-            product_data: { name: "Shipping" },
-            unit_amount: Math.round(shippingCost * 100),
+      const shippingCost = calculatedTotal >= FREE_SHIPPING_THRESHOLD ? 0 : STANDARD_SHIPPING_AMOUNT;
+      const shippingOptions: Stripe.Checkout.SessionCreateParams.ShippingOption[] = [
+        {
+          shipping_rate_data: {
+            type: "fixed_amount",
+            fixed_amount: {
+              amount: toStripeAmount(shippingCost),
+              currency: CURRENCY,
+            },
+            display_name: shippingCost > 0 ? "Standard Shipping" : "Free Shipping",
+            delivery_estimate: {
+              minimum: { unit: "business_day", value: 3 },
+              maximum: { unit: "business_day", value: 7 },
+            },
+            tax_behavior: "exclusive",
           },
-          quantity: 1,
-        });
-      }
+        },
+      ];
 
       // 2. Create pending order document
       const pendingOrderRef = await db.collection("pending_orders").add({
-        customerEmail: customerEmail || "",
+        customerEmail: normalizedEmail,
         items: orderItems,
         appUrl,
-        currency: "usd",
+        currency: CURRENCY,
         subtotalAmount: calculatedTotal,
         shippingAmount: shippingCost,
         totalAmount: calculatedTotal + shippingCost,
+        freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
+        pricingSource: "firestore",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         paymentStatus: "pending",
@@ -612,15 +816,17 @@ async function startServer() {
       });
 
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
         line_items: lineItems,
         mode: "payment",
-        customer_email: customerEmail,
-        billing_address_collection: "auto",
+        customer_email: normalizedEmail || undefined,
+        customer_creation: "always",
+        billing_address_collection: "required",
         phone_number_collection: { enabled: true },
         shipping_address_collection: {
           allowed_countries: ["US"],
         },
+        shipping_options: shippingOptions,
+        automatic_tax: { enabled: true },
         success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${appUrl}/checkout`,
         metadata: {
@@ -632,6 +838,41 @@ async function startServer() {
     } catch (error: any) {
       console.error("Stripe Session Error:", error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/checkout/session-status", async (req, res) => {
+    try {
+      const sessionId = typeof req.query.session_id === "string" ? req.query.session_id.trim() : "";
+
+      if (!sessionId || !sessionId.startsWith("cs_")) {
+        return res.status(400).json({ error: "A valid Checkout Session id is required." });
+      }
+
+      const session = await stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ["payment_intent", "shipping_cost.shipping_rate"],
+      });
+      const orderSnap = await db.collection("orders").doc(session.id).get();
+      const selectedShipping = getSelectedShipping(session);
+
+      res.json({
+        id: session.id,
+        status: session.status,
+        paymentStatus: session.payment_status,
+        customerEmail: session.customer_details?.email || session.customer_email || "",
+        orderId: orderSnap.exists ? orderSnap.id : "",
+        orderStatus: orderSnap.exists ? orderSnap.data()?.status || "" : "",
+        amounts: {
+          subtotal: toMoneyFromCents(session.amount_subtotal),
+          shipping: selectedShipping.amountTotal,
+          tax: toMoneyFromCents(session.total_details?.amount_tax),
+          total: toMoneyFromCents(session.amount_total),
+          currency: session.currency || CURRENCY,
+        },
+      });
+    } catch (error: any) {
+      console.error("Stripe Session Status Error:", error);
+      res.status(500).json({ error: "Unable to verify checkout status." });
     }
   });
 
@@ -893,6 +1134,112 @@ async function startServer() {
   });
 }
 
+async function handleExpiredCheckout(session: Stripe.Checkout.Session) {
+  const pendingOrderId = session.metadata?.pendingOrderId;
+
+  if (!pendingOrderId) return;
+
+  await db.collection("pending_orders").doc(pendingOrderId).set(
+    {
+      status: "expired",
+      paymentStatus: "expired",
+      stripeSessionId: session.id,
+      expiredAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+async function findOrdersByPaymentIntent(paymentIntentId: string) {
+  if (!paymentIntentId) return [];
+  const snapshot = await db.collection("orders").where("stripePaymentIntentId", "==", paymentIntentId).limit(10).get();
+  return snapshot.docs;
+}
+
+async function recordRefundedCharge(charge: Stripe.Charge) {
+  const paymentIntentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id || "";
+  const refundedAmount = toMoneyFromCents(charge.amount_refunded);
+  const totalChargeAmount = toMoneyFromCents(charge.amount);
+  const paymentStatus = charge.refunded ? "refunded" : "partially_refunded";
+  const orderDocs = await findOrdersByPaymentIntent(paymentIntentId);
+
+  await db.collection("stripe_payment_events").doc(charge.id).set(
+    {
+      type: "charge.refunded",
+      stripeChargeId: charge.id,
+      stripePaymentIntentId: paymentIntentId,
+      amount: totalChargeAmount,
+      refundedAmount,
+      currency: charge.currency || CURRENCY,
+      paymentStatus,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  await Promise.all(
+    orderDocs.map((orderDoc) =>
+      orderDoc.ref.set(
+        {
+          paymentStatus,
+          refundedAmount,
+          stripeChargeId: charge.id,
+          refundedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+    )
+  );
+}
+
+async function recordDispute(dispute: Stripe.Dispute, eventType: string) {
+  const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id || "";
+  let paymentIntentId = "";
+
+  if (chargeId) {
+    const charge = await stripe.charges.retrieve(chargeId);
+    paymentIntentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id || "";
+  }
+
+  const orderDocs = await findOrdersByPaymentIntent(paymentIntentId);
+
+  await db.collection("stripe_payment_events").doc(dispute.id).set(
+    {
+      type: eventType,
+      stripeDisputeId: dispute.id,
+      stripeChargeId: chargeId,
+      stripePaymentIntentId: paymentIntentId,
+      amount: toMoneyFromCents(dispute.amount),
+      currency: dispute.currency || CURRENCY,
+      reason: dispute.reason || "",
+      status: dispute.status || "",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  await Promise.all(
+    orderDocs.map((orderDoc) =>
+      orderDoc.ref.set(
+        {
+          paymentStatus: "disputed",
+          fulfillmentStatus: "needs_manual_intervention",
+          status: "needs_manual_intervention",
+          stripeDisputeId: dispute.id,
+          disputeStatus: dispute.status || "",
+          disputeReason: dispute.reason || "",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+    )
+  );
+}
+
 async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
   const orderId = session.id;
   const orderRef = db.collection("orders").doc(orderId);
@@ -920,13 +1267,16 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
   const customerName = session.customer_details?.name || "";
   const customerPhone = session.customer_details?.phone || "";
   const shippingAddress = getShippingAddress(session);
-  const subtotalAmount = pendingOrderData.subtotalAmount ?? (session.amount_subtotal || 0) / 100;
-  const shippingAmount = pendingOrderData.shippingAmount ?? ((session.amount_total || 0) - (session.amount_subtotal || 0)) / 100;
-  const total = (session.amount_total || 0) / 100;
+  const selectedShipping = getSelectedShipping(session);
+  const subtotalAmount = toMoneyFromCents(session.amount_subtotal);
+  const shippingAmount = selectedShipping.amountTotal || pendingOrderData.shippingAmount || 0;
+  const taxAmount = toMoneyFromCents(session.total_details?.amount_tax);
+  const total = toMoneyFromCents(session.amount_total);
   const orderBase = {
     stripeSessionId: session.id,
     stripePaymentIntentId:
       typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || "",
+    stripeCustomerId: typeof session.customer === "string" ? session.customer : session.customer?.id || "",
     pendingOrderId,
     paymentStatus: "paid",
     fulfillmentStatus: "pending",
@@ -938,7 +1288,14 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
     currency: session.currency || "usd",
     subtotalAmount,
     shippingAmount,
+    taxAmount,
     totalAmount: total,
+    amountDiscount: toMoneyFromCents(session.total_details?.amount_discount),
+    shippingTaxAmount: selectedShipping.amountTax,
+    shippingRateId: selectedShipping.shippingRate,
+    shippingMethod: selectedShipping.displayName,
+    automaticTaxStatus: session.automatic_tax?.status || "",
+    pricingSource: "firestore",
     items: orderItems,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     paidAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1002,6 +1359,15 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
         customerName,
         customerPhone,
         shippingAddress,
+        stripeSessionId: session.id,
+        stripePaymentIntentId:
+          typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || "",
+        subtotalAmount,
+        shippingAmount,
+        taxAmount,
+        totalAmount: total,
+        shippingRateId: selectedShipping.shippingRate,
+        shippingMethod: selectedShipping.displayName,
         completedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -1031,6 +1397,13 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
         customerName,
         customerPhone,
         shippingAddress,
+        stripeSessionId: session.id,
+        stripePaymentIntentId:
+          typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || "",
+        subtotalAmount,
+        shippingAmount,
+        taxAmount,
+        totalAmount: total,
         error: error.message,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
@@ -1062,6 +1435,7 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
         items: orderItems,
         subtotalAmount,
         shippingAmount,
+        taxAmount,
         totalAmount: total,
       }),
     });

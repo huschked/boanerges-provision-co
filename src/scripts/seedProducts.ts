@@ -44,7 +44,7 @@ const products = [
     featured: true,
     currentInventory: 100,
     reorderThreshold: 20,
-    imageUrl: "https://picsum.photos/seed/habanero/600/600",
+    imageUrl: "/products/habanero-lime-garlic.png",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },

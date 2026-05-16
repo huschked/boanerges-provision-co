@@ -5,18 +5,20 @@ import firebaseConfig from './firebase-applet-config.json' with { type: 'json' }
 import fs from 'fs';
 import path from 'path';
 
+const typedFirebaseConfig = firebaseConfig as typeof firebaseConfig & { firestoreDatabaseId?: string };
+
 if (!admin.apps.length) {
   const serviceAccountPath = path.join(process.cwd(), 'serviceAccountKey.json');
   admin.initializeApp({
-    projectId: firebaseConfig.projectId,
+    projectId: typedFirebaseConfig.projectId,
     credential: fs.existsSync(serviceAccountPath)
       ? admin.credential.cert(JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8')))
       : admin.credential.applicationDefault(),
   });
 }
 
-const db = 'firestoreDatabaseId' in firebaseConfig && firebaseConfig.firestoreDatabaseId
-  ? getFirestore(firebaseConfig.firestoreDatabaseId)
+const db = typedFirebaseConfig.firestoreDatabaseId
+  ? getFirestore(typedFirebaseConfig.firestoreDatabaseId)
   : getFirestore();
 
 const products = [
@@ -50,7 +52,7 @@ const products = [
     featured: true,
     currentInventory: 85,
     reorderThreshold: 15,
-    imageUrl: "https://picsum.photos/seed/habanero/800/800",
+    imageUrl: "/products/habanero-lime-garlic.png",
   },
   {
     name: "Hot Lemon Pepper",

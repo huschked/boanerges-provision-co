@@ -280,8 +280,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
                     </select>
                   </div>
                   <div className="space-y-3">
-                    <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-brand-parchment/30">Stripe Price ID</label>
+                    <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-brand-parchment/30">Stripe Price ID (Unused)</label>
                     <input value={formData.stripePriceId} onChange={(e) => handleFieldChange('stripePriceId', e.target.value)} className="input-premium block w-full" />
+                    <p className="text-[10px] leading-relaxed text-brand-parchment/35">
+                      Checkout uses Firestore pricing. Keep this blank unless a future Stripe catalog sync is added.
+                    </p>
                   </div>
                 </div>
 

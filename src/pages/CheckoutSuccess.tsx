@@ -1,16 +1,79 @@
 import React, { useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { CheckCircle2, PackageCheck, Mail, ArrowRight, Sparkles } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2, PackageCheck, Mail, ArrowRight, Sparkles } from 'lucide-react';
 import { useCart } from '@/src/store';
+
+type CheckoutSessionStatus = {
+  id: string;
+  status: string;
+  paymentStatus: string;
+  customerEmail?: string;
+  orderId?: string;
+  orderStatus?: string;
+  amounts?: {
+    subtotal: number;
+    shipping: number;
+    tax: number;
+    total: number;
+    currency: string;
+  };
+};
 
 export const CheckoutSuccess: React.FC = () => {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session_id');
   const clearCart = useCart((state) => state.clearCart);
+  const [sessionStatus, setSessionStatus] = React.useState<CheckoutSessionStatus | null>(null);
+  const [isVerifying, setIsVerifying] = React.useState(Boolean(sessionId));
+  const [verificationError, setVerificationError] = React.useState('');
 
   useEffect(() => {
-    clearCart();
-  }, [clearCart]);
+    if (!sessionId) {
+      setIsVerifying(false);
+      setVerificationError('Checkout session reference is missing.');
+      return;
+    }
+
+    let isMounted = true;
+
+    const verifySession = async () => {
+      try {
+        const response = await fetch(`/api/checkout/session-status?session_id=${encodeURIComponent(sessionId)}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Unable to verify checkout status.');
+        }
+
+        if (!isMounted) return;
+        setSessionStatus(data);
+
+        if (data.status === 'complete' && data.paymentStatus === 'paid') {
+          clearCart();
+        } else {
+          setVerificationError('Payment has not been confirmed yet.');
+        }
+      } catch (error) {
+        if (!isMounted) return;
+        setVerificationError(error instanceof Error ? error.message : 'Unable to verify checkout status.');
+      } finally {
+        if (isMounted) {
+          setIsVerifying(false);
+        }
+      }
+    };
+
+    verifySession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [clearCart, sessionId]);
+
+  const isPaid = sessionStatus?.status === 'complete' && sessionStatus.paymentStatus === 'paid';
+  const formattedTotal = sessionStatus?.amounts
+    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: sessionStatus.amounts.currency || 'usd' }).format(sessionStatus.amounts.total)
+    : '';
 
   return (
     <div className="pt-40 pb-32 animate-fade-in editorial-surface-dark relative overflow-hidden">
@@ -19,17 +82,25 @@ export const CheckoutSuccess: React.FC = () => {
         <div className="glass-dark border-brand-gold/10 rounded-sm overflow-hidden shadow-2xl">
           <div className="p-10 md:p-16 border-b border-white/5 text-center space-y-8">
             <div className="w-20 h-20 mx-auto rounded-full bg-brand-gold/10 border border-brand-gold/20 flex items-center justify-center">
-              <CheckCircle2 className="text-brand-gold" size={40} />
+              {isVerifying ? (
+                <Loader2 className="text-brand-gold animate-spin" size={40} />
+              ) : isPaid ? (
+                <CheckCircle2 className="text-brand-gold" size={40} />
+              ) : (
+                <AlertTriangle className="text-brand-gold" size={40} />
+              )}
             </div>
             <div className="space-y-4">
               <span className="text-brand-gold text-[11px] uppercase tracking-[0.35em] font-black block">
-                Order Confirmed
+                {isVerifying ? 'Verifying Payment' : isPaid ? 'Order Confirmed' : 'Payment Review'}
               </span>
               <h1 className="text-4xl md:text-6xl font-serif text-brand-parchment leading-tight">
-                Your provisions are on the way.
+                {isVerifying ? 'One moment while we confirm.' : isPaid ? 'Your provisions are on the way.' : 'We are checking your payment.'}
               </h1>
               <p className="max-w-2xl mx-auto text-brand-parchment/65 text-lg font-light leading-relaxed">
-                Thank you for your order. We have received your payment and your artisan salts will be prepared for shipment shortly.
+                {isPaid
+                  ? 'Thank you for your order. We have received your payment and your artisan salts will be prepared for shipment shortly.'
+                  : verificationError || 'Your checkout session is still being verified. If payment completed, your confirmation will follow shortly.'}
               </p>
             </div>
           </div>
@@ -71,10 +142,16 @@ export const CheckoutSuccess: React.FC = () => {
               </p>
               <div className="space-y-2">
                 <p className="text-brand-parchment text-lg font-serif">
-                  {sessionId ? `Stripe Session ${sessionId.slice(-10).toUpperCase()}` : 'Payment received successfully'}
+                  {sessionStatus?.orderId
+                    ? `Order #${sessionStatus.orderId.slice(-8).toUpperCase()}`
+                    : sessionId
+                      ? `Stripe Session ${sessionId.slice(-10).toUpperCase()}`
+                      : 'Checkout reference unavailable'}
                 </p>
                 <p className="text-sm text-brand-parchment/50 leading-relaxed max-w-xl">
-                  Keep this page handy until your confirmation email arrives. You can also continue exploring pairings and future provisions while we prepare your order.
+                  {formattedTotal
+                    ? `Confirmed total: ${formattedTotal}. Keep this page handy until your confirmation email arrives.`
+                    : 'Keep this page handy until your confirmation email arrives. You can also continue exploring pairings and future provisions while we prepare your order.'}
                 </p>
               </div>
             </div>

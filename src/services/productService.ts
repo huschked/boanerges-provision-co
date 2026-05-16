@@ -17,6 +17,7 @@ export interface Product {
   currentInventory: number;
   reorderThreshold: number;
   stripePriceId?: string;
+  stripeTaxCode?: string;
   imageUrl: string;
   category?: string;
   createdAt?: unknown;

@@ -174,7 +174,7 @@ export const Checkout: React.FC = () => {
               </div>
               <div className="flex justify-between text-sm uppercase tracking-widest">
                 <span className="text-brand-parchment/40 font-black">Taxes</span>
-                <span className="font-bold text-brand-parchment">$0.00</span>
+                <span className="font-bold text-brand-parchment">Calculated in Stripe</span>
               </div>
               <div className="pt-6 flex justify-between items-center border-t border-white/10">
                 <span className="font-serif text-3xl text-brand-parchment">Total</span>
