@@ -4,6 +4,7 @@ import { cn } from '@/src/lib/utils';
 import { AdminOrderApiError, runOrderCommand, type FulfillmentOperation } from '@/src/lib/adminOrders';
 import { Order } from './DashboardView';
 import toast from 'react-hot-toast';
+import { ShippingWorkflow } from './ShippingWorkflow';
 
 interface OrdersViewProps {
   orders: Order[];
@@ -212,7 +213,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                 <div className="space-y-3 max-w-sm">
                   <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Fulfillment Actions</p>
                   <div className="flex flex-wrap gap-2">
-                    {(['pack', 'ship', 'cancel'] as const).map((operation) => (
+                    {(['pack', 'cancel'] as const).map((operation) => (
                       <button
                         key={operation}
                         onClick={() => executeCommand(operation)}
@@ -250,6 +251,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                   </p>
                 </div>
               </div>
+
+              <ShippingWorkflow order={selectedOrder} onComplete={onRefresh} />
 
               <div className="p-10 border-b border-white/5">
                 <div className="flex flex-col md:flex-row gap-8 md:gap-16">

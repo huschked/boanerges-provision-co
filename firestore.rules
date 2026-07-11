@@ -75,6 +75,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /admin_shipping_quotes/{quoteId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /pending_orders/{pendingOrderId} {
       allow read, write: if isAdmin();
     }

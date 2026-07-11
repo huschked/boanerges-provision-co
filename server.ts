@@ -111,6 +111,28 @@ type FulfillmentOperation =
   | "notes"
   | "notification-retry";
 
+type ShippoAddress = {
+  name: string;
+  street1: string;
+  street2?: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+  phone?: string;
+  email?: string;
+};
+
+type ShippoRate = {
+  object_id: string;
+  amount: string;
+  currency: string;
+  provider: string;
+  servicelevel?: { name?: string; token?: string };
+  estimated_days?: number;
+  duration_terms?: string;
+};
+
 type AdminActor = { uid: string; email: string | null };
 
 class AdminCommandError extends Error {
@@ -141,6 +163,70 @@ const RESEND_TEST_RECIPIENT =
   process.env.RESEND_TEST_RECIPIENT && EMAIL_REGEX.test(process.env.RESEND_TEST_RECIPIENT)
     ? process.env.RESEND_TEST_RECIPIENT
     : ADMIN_NOTIFICATION_EMAIL;
+const SHIPPO_API_URL = "https://api.goshippo.com";
+const SHIPPO_API_VERSION = "2018-02-08";
+
+async function shippoRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const token = process.env.SHIPPO_API_TOKEN || "";
+  if (!token) throw new AdminCommandError(503, "Shippo is not configured. Add SHIPPO_API_TOKEN.", "shippo_not_configured");
+  const response = await fetch(`${SHIPPO_API_URL}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `ShippoToken ${token}`,
+      "Content-Type": "application/json",
+      "SHIPPO-API-VERSION": SHIPPO_API_VERSION,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({})) as T & { detail?: string; messages?: Array<{ text?: string }> };
+  if (!response.ok) {
+    const message = data.detail || data.messages?.map(item => item.text).filter(Boolean).join(" ") || "Shippo rejected the request.";
+    throw new AdminCommandError(502, message, "shippo_error");
+  }
+  return data;
+}
+
+function getShippoSenderAddress(): ShippoAddress {
+  const address: ShippoAddress = {
+    name: process.env.SHIPPO_FROM_NAME || "Boanerges Provision Co",
+    street1: process.env.SHIPPO_FROM_STREET1 || "",
+    street2: process.env.SHIPPO_FROM_STREET2 || "",
+    city: process.env.SHIPPO_FROM_CITY || "",
+    state: process.env.SHIPPO_FROM_STATE || "",
+    zip: process.env.SHIPPO_FROM_ZIP || "",
+    country: process.env.SHIPPO_FROM_COUNTRY || "US",
+    phone: process.env.SHIPPO_FROM_PHONE || "",
+    email: process.env.SHIPPO_FROM_EMAIL || "",
+  };
+  if (!address.street1 || !address.city || !address.state || !address.zip || !address.phone || !address.email) {
+    throw new AdminCommandError(503, "Shippo sender address configuration is incomplete.", "shippo_sender_incomplete");
+  }
+  return address;
+}
+
+function orderShippoAddress(order: FirebaseFirestore.DocumentData): ShippoAddress {
+  const source = order.shippingAddress || {};
+  const address: ShippoAddress = {
+    name: source.name || order.customerName || "",
+    street1: source.line1 || "",
+    street2: source.line2 || "",
+    city: source.city || "",
+    state: source.state || "",
+    zip: source.postalCode || "",
+    country: source.country || "US",
+    phone: order.customerPhone || "",
+    email: order.customerEmail || "",
+  };
+  if (!address.name || !address.street1 || !address.city || !address.state || !address.zip || !address.country) {
+    throw new AdminCommandError(409, "The shipping address is incomplete.", "shipping_address_incomplete");
+  }
+  return address;
+}
+
+function addressFingerprint(address: ShippoAddress) {
+  return [address.street1, address.street2, address.city, address.state, address.zip, address.country]
+    .map(value => String(value || "").trim().toLowerCase()).join("|");
+}
 
 function sanitizeResendError(error: unknown) {
   if (!error) return "Unknown Resend error";
@@ -650,6 +736,184 @@ async function sendOrderConfirmation(orderId: string, order: FirebaseFirestore.D
   return result.data?.id || "";
 }
 
+async function sendShipmentNotification(orderId: string, order: FirebaseFirestore.DocumentData, idempotencyKey: string) {
+  const trackingUrl = String(order.trackingUrl || "");
+  const result = await resend.emails.send({
+    from: ORDERS_EMAIL_FROM,
+    to: order.customerEmail,
+    subject: `Your order #${orderId.slice(-6).toUpperCase()} has shipped`,
+    html: buildEmailLayout({
+      eyebrow: "Order Shipped",
+      title: "Your provisions are on the way.",
+      intro: `${order.carrier || "The carrier"} has your package${order.estimatedDelivery ? `, with estimated delivery ${order.estimatedDelivery}` : ""}.`,
+      ctaLabel: trackingUrl ? "Track Package" : undefined,
+      ctaHref: trackingUrl || undefined,
+      body: `<div style="padding:20px;border:1px solid rgba(197,160,89,0.16);"><p style="margin:0;color:#c5a059;font-size:11px;text-transform:uppercase;letter-spacing:.2em;">Tracking Number</p><p style="margin:10px 0 0;color:#f4ecd8;font-size:18px;font-weight:700;">${order.trackingNumber || "Pending"}</p></div>`,
+      footerNote: "Need help with your shipment? Reply to this email and our team will take care of you.",
+    }),
+  }, { idempotencyKey });
+  if (result.error) throw new Error(result.error.message || "Email provider rejected the request.");
+  return result.data?.id || "";
+}
+
+async function createShippoQuote(orderId: string, payload: Record<string, unknown>, actor: AdminActor) {
+  const orderSnap = await db.collection("orders").doc(orderId).get();
+  if (!orderSnap.exists) throw new AdminCommandError(404, "Order not found.", "not_found");
+  const order = orderSnap.data()!;
+  const status = order.fulfillmentStatus || order.status || "pending";
+  if (order.paymentStatus !== "paid" && order.paymentStatus !== "partially_refunded") {
+    throw new AdminCommandError(409, "Only paid orders can be shipped.", "order_not_paid");
+  }
+  if (!["pending", "processing", "packed"].includes(status)) {
+    throw new AdminCommandError(409, `An order in ${status} state cannot purchase a label.`, "order_not_fulfillable");
+  }
+  if (order.shippoTransactionId || order.labelUrl) {
+    throw new AdminCommandError(409, "This order already has a shipping label.", "label_already_exists");
+  }
+
+  const parcel = {
+    length: normalizedCommandValue(payload.length, "Parcel length", 20, true),
+    width: normalizedCommandValue(payload.width, "Parcel width", 20, true),
+    height: normalizedCommandValue(payload.height, "Parcel height", 20, true),
+    weight: normalizedCommandValue(payload.weight, "Parcel weight", 20, true),
+    distance_unit: payload.distanceUnit === "cm" ? "cm" : "in",
+    mass_unit: payload.massUnit === "kg" ? "kg" : payload.massUnit === "oz" ? "oz" : "lb",
+  };
+  for (const [field, value] of Object.entries({ length: parcel.length, width: parcel.width, height: parcel.height, weight: parcel.weight })) {
+    if (!Number.isFinite(Number(value)) || Number(value) <= 0) throw new AdminCommandError(400, `Parcel ${field} must be greater than zero.`, "invalid_parcel");
+  }
+
+  const originalAddress = orderShippoAddress(order);
+  const validatedAddress = await shippoRequest<ShippoAddress & {
+    object_id: string;
+    is_complete: boolean;
+    validation_results?: { is_valid: boolean; messages?: Array<{ code?: string; text?: string; type?: string }> };
+  }>("/addresses/", { ...originalAddress, validate: true });
+  if (!validatedAddress.is_complete || validatedAddress.validation_results?.is_valid === false) {
+    const details = validatedAddress.validation_results?.messages?.map(message => message.text).filter(Boolean).join(" ");
+    throw new AdminCommandError(409, details || "Shippo could not validate this destination address.", "invalid_address");
+  }
+
+  const shipment = await shippoRequest<{
+    object_id: string;
+    object_state: string;
+    rates: ShippoRate[];
+    messages?: Array<{ text?: string }>;
+  }>("/shipments/", {
+    address_from: getShippoSenderAddress(),
+    address_to: validatedAddress.object_id,
+    parcels: [parcel],
+    async: false,
+    metadata: `Order ${orderId}`,
+  });
+  if (shipment.object_state !== "VALID" || !shipment.rates?.length) {
+    throw new AdminCommandError(502, shipment.messages?.map(message => message.text).filter(Boolean).join(" ") || "No shipping services are available.", "no_shipping_rates");
+  }
+
+  const quoteRef = db.collection("admin_shipping_quotes").doc();
+  const correctedAddress: ShippoAddress = {
+    name: validatedAddress.name, street1: validatedAddress.street1, street2: validatedAddress.street2 || "",
+    city: validatedAddress.city, state: validatedAddress.state, zip: validatedAddress.zip, country: validatedAddress.country,
+    phone: validatedAddress.phone || originalAddress.phone, email: validatedAddress.email || originalAddress.email,
+  };
+  const addressChanged = addressFingerprint(originalAddress) !== addressFingerprint(correctedAddress);
+  const rates = shipment.rates.map(rate => ({
+    id: rate.object_id,
+    amount: Number(rate.amount),
+    currency: rate.currency,
+    carrier: rate.provider,
+    service: rate.servicelevel?.name || rate.servicelevel?.token || "Service",
+    serviceToken: rate.servicelevel?.token || "",
+    estimatedDays: rate.estimated_days ?? null,
+    durationTerms: rate.duration_terms || "",
+  })).sort((a, b) => a.amount - b.amount);
+  await quoteRef.set({
+    orderId, actor, status: "quoted", shippoShipmentId: shipment.object_id, parcel,
+    originalAddress, correctedAddress, addressChanged, rates,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 6 * 24 * 60 * 60 * 1000),
+  });
+  return { quoteId: quoteRef.id, originalAddress, correctedAddress, addressChanged, rates };
+}
+
+async function purchaseShippoLabel(orderId: string, payload: Record<string, unknown>, actor: AdminActor) {
+  const quoteId = normalizedCommandValue(payload.quoteId, "Quote id", 200, true);
+  const rateId = normalizedCommandValue(payload.rateId, "Rate id", 200, true);
+  const quoteRef = db.collection("admin_shipping_quotes").doc(quoteId);
+  const commandRef = db.collection("admin_order_commands").doc(`shippo-label-${quoteId}`);
+  const orderRef = db.collection("orders").doc(orderId);
+  const claimed = await db.runTransaction(async transaction => {
+    const [quoteSnap, commandSnap, orderSnap] = await Promise.all([
+      transaction.get(quoteRef), transaction.get(commandRef), transaction.get(orderRef),
+    ]);
+    if (commandSnap.exists) return { duplicate: true, command: commandSnap.data() };
+    if (!quoteSnap.exists || quoteSnap.data()?.orderId !== orderId) throw new AdminCommandError(404, "Shipping quote not found.", "quote_not_found");
+    if (!orderSnap.exists) throw new AdminCommandError(404, "Order not found.", "not_found");
+    const quote = quoteSnap.data()!;
+    if (quote.expiresAt?.toMillis?.() < Date.now()) throw new AdminCommandError(409, "This quote expired. Request fresh rates.", "quote_expired");
+    if (quote.addressChanged && payload.acceptCorrectedAddress !== true) {
+      throw new AdminCommandError(409, "Accept Shippo's corrected address before purchasing the label.", "address_confirmation_required");
+    }
+    const rate = quote.rates?.find((item: { id: string }) => item.id === rateId);
+    if (!rate) throw new AdminCommandError(400, "Select a rate from this quote.", "invalid_rate");
+    if (orderSnap.data()?.shippoTransactionId || orderSnap.data()?.labelUrl) throw new AdminCommandError(409, "This order already has a label.", "label_already_exists");
+    transaction.create(commandRef, { orderId, operation: "create-label", actor, quoteId, rateId, status: "processing", createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    transaction.update(quoteRef, { status: "purchasing", selectedRate: rate, purchaseStartedAt: admin.firestore.FieldValue.serverTimestamp() });
+    return { duplicate: false, quote, rate, order: orderSnap.data()! };
+  });
+
+  if (claimed.duplicate) {
+    if (claimed.command?.status === "completed") return { duplicate: true, ...claimed.command.result };
+    throw new AdminCommandError(409, "Label purchase is already processing. Review the shipment exception before retrying.", "label_purchase_in_progress");
+  }
+
+  let shippoTransaction: any;
+  try {
+    shippoTransaction = await shippoRequest<any>("/transactions/", { rate: rateId, async: false, label_file_type: "PDF_4x6", metadata: `Order ${orderId}` });
+    if (shippoTransaction.status !== "SUCCESS") {
+      throw new AdminCommandError(502, shippoTransaction.messages?.map((message: { text?: string }) => message.text).filter(Boolean).join(" ") || "Shippo did not create the label.", "label_purchase_failed");
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Shippo label purchase outcome is unknown.";
+    await Promise.all([
+      quoteRef.set({ status: "purchase_exception", purchaseError: message, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+      commandRef.set({ status: "requires_review", error: { message }, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+      orderRef.set({ shipmentException: { status: "requires_review", type: "label_purchase", quoteId, message, occurredAt: admin.firestore.FieldValue.serverTimestamp() }, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+    ]);
+    throw new AdminCommandError(502, `${message} No second label was attempted; review Shippo before resolving.`, "label_purchase_exception");
+  }
+
+  const rate = claimed.rate!;
+  const corrected = claimed.quote!.correctedAddress;
+  const shipmentUpdates = {
+    status: "shipped", fulfillmentStatus: "shipped", shipmentStatus: "pre_transit",
+    carrier: rate.carrier, shippingService: rate.service, trackingNumber: shippoTransaction.tracking_number || "",
+    trackingUrl: shippoTransaction.tracking_url_provider || "", labelUrl: shippoTransaction.label_url || "",
+    shipmentCost: Number(rate.amount), shipmentCurrency: rate.currency, estimatedDelivery: shippoTransaction.eta || null,
+    shippoShipmentId: claimed.quote!.shippoShipmentId, shippoTransactionId: shippoTransaction.object_id,
+    shipmentException: admin.firestore.FieldValue.delete(),
+    shippingAddress: { name: corrected.name, line1: corrected.street1, line2: corrected.street2 || "", city: corrected.city, state: corrected.state, postalCode: corrected.zip, country: corrected.country },
+    shippedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  const result = { carrier: rate.carrier, service: rate.service, trackingNumber: shippoTransaction.tracking_number || "", trackingUrl: shippoTransaction.tracking_url_provider || "", labelUrl: shippoTransaction.label_url || "", shipmentCost: Number(rate.amount), estimatedDelivery: shippoTransaction.eta || null };
+  await db.runTransaction(async transaction => {
+    transaction.set(orderRef, shipmentUpdates, { merge: true });
+    transaction.set(commandRef, { status: "completed", result, completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    transaction.set(quoteRef, { status: "purchased", shippoTransactionId: shippoTransaction.object_id, purchasedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    transaction.create(db.collection("order_audit_events").doc(`shippo-label-${quoteId}`), { orderId, operation: "create-label", actor, outcome: "completed", result, occurredAt: admin.firestore.FieldValue.serverTimestamp() });
+  });
+
+  try {
+    const emailId = await sendShipmentNotification(orderId, { ...claimed.order!, ...shipmentUpdates }, `shipment-${shippoTransaction.object_id}`);
+    await orderRef.set({ shipmentEmailStatus: "sent", shipmentEmailId: emailId }, { merge: true });
+    return { ...result, notificationStatus: "sent" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Shipment email failed.";
+    await orderRef.set({ shipmentEmailStatus: "failed", shipmentEmailError: message }, { merge: true });
+    return { ...result, notificationStatus: "failed", partialFailure: `Label created, but the shipment email failed: ${message}` };
+  }
+}
+
 async function executeFulfillmentCommand(
   orderId: string,
   operation: FulfillmentOperation,
@@ -835,6 +1099,30 @@ async function startServer() {
   });
 
   app.use("/api/checkout/create-session", checkoutLimiter);
+
+  app.post("/api/admin/orders/:orderId/shipping/quote", async (req, res) => {
+    try {
+      const actor = await authenticateAdmin(req);
+      const result = await createShippoQuote(req.params.orderId, req.body || {}, actor);
+      res.json({ success: true, ...result });
+    } catch (error) {
+      const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "Shipping rates could not be loaded.", "shipping_quote_failed");
+      console.error("Shippo quote error:", error);
+      res.status(commandError.status).json({ error: commandError.message, code: commandError.code });
+    }
+  });
+
+  app.post("/api/admin/orders/:orderId/shipping/purchase", async (req, res) => {
+    try {
+      const actor = await authenticateAdmin(req);
+      const result = await purchaseShippoLabel(req.params.orderId, req.body || {}, actor);
+      res.json({ success: true, ...result });
+    } catch (error) {
+      const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "The shipping label could not be created.", "label_purchase_failed");
+      console.error("Shippo label error:", error);
+      res.status(commandError.status).json({ error: commandError.message, code: commandError.code });
+    }
+  });
 
   app.post("/api/admin/orders/:orderId/:operation", async (req, res) => {
     const operations: FulfillmentOperation[] = ["pack", "ship", "cancel", "refund", "tracking", "notes", "notification-retry"];

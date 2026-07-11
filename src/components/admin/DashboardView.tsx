@@ -24,6 +24,14 @@ export interface Order {
   stripePaymentIntentId?: string;
   trackingNumber?: string;
   trackingUrl?: string;
+  labelUrl?: string;
+  carrier?: string;
+  shippingService?: string;
+  shipmentCost?: number;
+  estimatedDelivery?: string;
+  shippoTransactionId?: string;
+  shipmentEmailStatus?: string;
+  shipmentException?: { status: string; type: string; quoteId: string; message: string };
   adminNotes?: string;
   paidAt?: any;
   shippingAddress?: {
