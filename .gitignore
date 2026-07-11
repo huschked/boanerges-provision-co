@@ -6,4 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
-*.json
+serviceAccountKey.json
+*service-account*.json
+*firebase-adminsdk*.json

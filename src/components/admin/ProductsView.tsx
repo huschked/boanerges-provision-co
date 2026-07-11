@@ -51,6 +51,9 @@ const defaultFormState: ProductFormState = {
   active: true,
 };
 
+const MAX_PRODUCT_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_PRODUCT_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+
 const splitList = (value: string) => value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
 
 const slugify = (value: string) =>
@@ -117,6 +120,18 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!ALLOWED_PRODUCT_IMAGE_TYPES.includes(file.type)) {
+      toast.error('Upload a PNG, JPEG, or WebP image.');
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > MAX_PRODUCT_IMAGE_SIZE_BYTES) {
+      toast.error('Product images must be 5 MB or smaller.');
+      e.target.value = '';
+      return;
+    }
 
     setIsUploading(true);
     try {
@@ -336,7 +351,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
                   <div className="flex justify-between items-end">
                     <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-brand-parchment/30">Product Image</label>
                     <label className="cursor-pointer group/upload">
-                      <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={isUploading} />
+                      <input type="file" className="hidden" accept={ALLOWED_PRODUCT_IMAGE_TYPES.join(',')} onChange={handleImageUpload} disabled={isUploading} />
                       <div className="flex items-center gap-2 text-[9px] uppercase tracking-widest font-black text-brand-gold/60 group-hover/upload:text-brand-gold transition-colors">
                         {isUploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
                         {isUploading ? 'Uploading...' : 'Upload Image'}

@@ -39,6 +39,14 @@ service cloud.firestore {
       return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
     }
 
+    function isShortText(value, maxLength) {
+      return value is string && value.size() > 0 && value.size() <= maxLength;
+    }
+
+    function isOptionalShortText(value, maxLength) {
+      return value == null || (value is string && value.size() <= maxLength);
+    }
+
     // Collection Rules
 
     match /products/{productId} {
@@ -56,15 +64,33 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /pending_orders/{pendingOrderId} {
+      allow read, write: if isAdmin();
+    }
+
     match /subscribers/{subscriberId} {
       allow read: if isAdmin();
-      allow create: if true; // Allow anyone to subscribe
+      allow create: if
+        request.resource.data.keys().hasOnly(["email", "source", "consent", "status", "createdAt", "updatedAt"]) &&
+        request.resource.data.keys().hasAll(["email", "source", "consent", "status"]) &&
+        request.resource.data.email == subscriberId &&
+        isValidEmail(request.resource.data.email) &&
+        request.resource.data.consent == true &&
+        request.resource.data.status in ["active", "pending"] &&
+        isOptionalShortText(request.resource.data.source, 80);
       allow update, delete: if isAdmin();
     }
 
     match /contact_messages/{messageId} {
       allow read: if isAdmin();
-      allow create: if true; // Allow anyone to send a message
+      allow create: if
+        request.resource.data.keys().hasOnly(["name", "email", "subject", "message", "status", "createdAt"]) &&
+        request.resource.data.keys().hasAll(["name", "email", "subject", "message", "status"]) &&
+        isShortText(request.resource.data.name, 120) &&
+        isValidEmail(request.resource.data.email) &&
+        isOptionalShortText(request.resource.data.subject, 160) &&
+        isShortText(request.resource.data.message, 5000) &&
+        request.resource.data.status in ["new", "unread"];
       allow update, delete: if isAdmin();
     }
 
@@ -73,9 +99,29 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /analytics_events/{eventId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /analytics_daily/{dateKey} {
+      allow read, write: if isAdmin();
+    }
+
+    match /stripe_events/{eventId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /stripe_payment_events/{eventId} {
+      allow read, write: if isAdmin();
+    }
+
     match /users/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       allow write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
