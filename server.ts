@@ -102,6 +102,23 @@ type ResendAudienceSyncResult = {
   error?: string;
 };
 
+type FulfillmentOperation =
+  | "pack"
+  | "ship"
+  | "cancel"
+  | "refund"
+  | "tracking"
+  | "notes"
+  | "notification-retry";
+
+type AdminActor = { uid: string; email: string | null };
+
+class AdminCommandError extends Error {
+  constructor(public status: number, message: string, public code: string) {
+    super(message);
+  }
+}
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CURRENCY = "usd";
 const MAX_CART_ITEMS = Number(process.env.MAX_CART_ITEMS || 30);
@@ -573,6 +590,167 @@ function buildOrderEmailHtml({
   });
 }
 
+const fulfillmentTransitions: Record<string, string[]> = {
+  pending: ["packed", "cancelled"],
+  processing: ["packed", "cancelled"],
+  packed: ["shipped", "cancelled"],
+  shipped: [],
+  delivered: [],
+  cancelled: [],
+  needs_manual_intervention: ["packed", "cancelled"],
+};
+
+function normalizedCommandValue(value: unknown, field: string, maxLength: number, required = false) {
+  if (value == null && !required) return "";
+  if (typeof value !== "string") throw new AdminCommandError(400, `${field} must be text.`, "validation_error");
+  const normalized = value.trim();
+  if (required && !normalized) throw new AdminCommandError(400, `${field} is required.`, "validation_error");
+  if (normalized.length > maxLength) throw new AdminCommandError(400, `${field} is too long.`, "validation_error");
+  return normalized;
+}
+
+async function authenticateAdmin(req: express.Request): Promise<AdminActor> {
+  const authorization = req.header("authorization") || "";
+  if (!authorization.startsWith("Bearer ")) {
+    throw new AdminCommandError(401, "Sign in is required.", "unauthenticated");
+  }
+
+  let decoded: admin.auth.DecodedIdToken;
+  try {
+    decoded = await admin.auth().verifyIdToken(authorization.slice(7));
+  } catch {
+    throw new AdminCommandError(401, "Your session is invalid or expired. Sign in again.", "invalid_token");
+  }
+
+  const user = await db.collection("users").doc(decoded.uid).get();
+  if (!user.exists || user.data()?.role !== "admin") {
+    throw new AdminCommandError(403, "Administrator access is required.", "forbidden");
+  }
+
+  return { uid: decoded.uid, email: decoded.email || null };
+}
+
+async function sendOrderConfirmation(orderId: string, order: FirebaseFirestore.DocumentData, idempotencyKey: string) {
+  const result = await resend.emails.send({
+    from: ORDERS_EMAIL_FROM,
+    to: order.customerEmail,
+    subject: `Order Confirmation #${orderId.slice(-6).toUpperCase()}`,
+    html: buildOrderEmailHtml({
+      shippingAddress: order.shippingAddress || null,
+      customerName: order.customerName || "",
+      orderId,
+      items: order.items || [],
+      subtotalAmount: Number(order.subtotalAmount || 0),
+      shippingAmount: Number(order.shippingAmount || 0),
+      taxAmount: Number(order.taxAmount || 0),
+      totalAmount: Number(order.totalAmount || 0),
+    }),
+  }, { idempotencyKey });
+  if (result.error) throw new Error(result.error.message || "Email provider rejected the request.");
+  return result.data?.id || "";
+}
+
+async function executeFulfillmentCommand(
+  orderId: string,
+  operation: FulfillmentOperation,
+  payload: Record<string, unknown>,
+  idempotencyKey: string,
+  actor: AdminActor,
+) {
+  const orderRef = db.collection("orders").doc(orderId);
+  const commandRef = db.collection("admin_order_commands").doc(idempotencyKey);
+  const auditRef = db.collection("order_audit_events").doc(idempotencyKey);
+
+  const claimed = await db.runTransaction(async transaction => {
+    const [commandSnap, orderSnap] = await Promise.all([transaction.get(commandRef), transaction.get(orderRef)]);
+    if (commandSnap.exists) return { duplicate: true, command: commandSnap.data() };
+    if (!orderSnap.exists) throw new AdminCommandError(404, "Order not found.", "not_found");
+    transaction.create(commandRef, {
+      orderId, operation, actor, status: "processing", createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return { duplicate: false, order: orderSnap.data()! };
+  });
+
+  if (claimed.duplicate) {
+    const command = claimed.command || {};
+    if (command.status === "completed") return { duplicate: true, ...(command.result || {}) };
+    if (command.status === "failed") throw new AdminCommandError(409, command.error?.message || "This request previously failed.", "previous_request_failed");
+    throw new AdminCommandError(409, "This request is already being processed.", "request_in_progress");
+  }
+
+  const order = claimed.order!;
+  const currentStatus = order.fulfillmentStatus || order.status || "pending";
+  const updates: Record<string, unknown> = {};
+  const result: Record<string, unknown> = { operation };
+
+  try {
+    if (operation === "pack" || operation === "ship" || operation === "cancel") {
+      const nextStatus = operation === "pack" ? "packed" : operation === "ship" ? "shipped" : "cancelled";
+      if (!fulfillmentTransitions[currentStatus]?.includes(nextStatus)) {
+        throw new AdminCommandError(409, `Order cannot move from ${currentStatus} to ${nextStatus}.`, "invalid_transition");
+      }
+      if (operation === "ship" && !String(order.trackingNumber || "").trim()) {
+        throw new AdminCommandError(409, "Add a tracking number before marking this order shipped.", "tracking_required");
+      }
+      updates.status = nextStatus;
+      updates.fulfillmentStatus = nextStatus;
+      updates[`${nextStatus === "cancelled" ? "cancelled" : nextStatus}At`] = admin.firestore.FieldValue.serverTimestamp();
+      result.status = nextStatus;
+    } else if (operation === "tracking") {
+      updates.trackingNumber = normalizedCommandValue(payload.trackingNumber, "Tracking number", 160);
+      updates.trackingUrl = normalizedCommandValue(payload.trackingUrl, "Tracking URL", 1000);
+    } else if (operation === "notes") {
+      updates.adminNotes = normalizedCommandValue(payload.adminNotes, "Admin notes", 5000);
+    } else if (operation === "refund") {
+      const reason = normalizedCommandValue(payload.reason, "Refund reason", 500, true);
+      const amount = Number(payload.amount);
+      const remaining = Number(order.totalAmount || 0) - Number(order.refundedAmount || 0);
+      if (!Number.isFinite(amount) || amount <= 0 || amount > remaining) {
+        throw new AdminCommandError(400, `Refund amount must be between $0.01 and $${remaining.toFixed(2)}.`, "invalid_refund_amount");
+      }
+      if (!order.stripePaymentIntentId) throw new AdminCommandError(409, "This order has no refundable payment intent.", "payment_intent_missing");
+      const refund = await stripe.refunds.create({
+        payment_intent: order.stripePaymentIntentId,
+        amount: Math.round(amount * 100),
+        metadata: { orderId, adminUid: actor.uid, reason },
+      }, { idempotencyKey: `admin-refund-${idempotencyKey}` });
+      updates.refundedAmount = Number((Number(order.refundedAmount || 0) + amount).toFixed(2));
+      updates.paymentStatus = amount === remaining ? "refunded" : "partially_refunded";
+      updates.refundedAt = admin.firestore.FieldValue.serverTimestamp();
+      updates.lastRefundReason = reason;
+      result.refundId = refund.id;
+      result.refundedAmount = amount;
+    } else if (operation === "notification-retry") {
+      const emailId = await sendOrderConfirmation(orderId, order, `order-confirmation-${idempotencyKey}`);
+      updates.resendEmailStatus = "sent";
+      updates.resendEmailId = emailId;
+      updates.resendEmailRetriedAt = admin.firestore.FieldValue.serverTimestamp();
+      result.emailId = emailId;
+    }
+
+    updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    await db.runTransaction(async transaction => {
+      transaction.set(orderRef, updates, { merge: true });
+      transaction.set(commandRef, { status: "completed", result, completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      transaction.create(auditRef, {
+        orderId, operation, actor, outcome: "completed", result,
+        occurredAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Fulfillment command failed.";
+    await db.runTransaction(async transaction => {
+      transaction.set(commandRef, { status: "failed", error: { message }, completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      transaction.set(auditRef, {
+        orderId, operation, actor, outcome: "failed", error: { message },
+        occurredAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+    throw error;
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -657,6 +835,25 @@ async function startServer() {
   });
 
   app.use("/api/checkout/create-session", checkoutLimiter);
+
+  app.post("/api/admin/orders/:orderId/:operation", async (req, res) => {
+    const operations: FulfillmentOperation[] = ["pack", "ship", "cancel", "refund", "tracking", "notes", "notification-retry"];
+    try {
+      const actor = await authenticateAdmin(req);
+      const operation = req.params.operation as FulfillmentOperation;
+      if (!operations.includes(operation)) throw new AdminCommandError(404, "Unknown fulfillment operation.", "unknown_operation");
+      const idempotencyKey = normalizedCommandValue(req.header("idempotency-key"), "Idempotency-Key", 200, true);
+      if (!/^[A-Za-z0-9_-]{12,200}$/.test(idempotencyKey)) {
+        throw new AdminCommandError(400, "Idempotency-Key has an invalid format.", "invalid_idempotency_key");
+      }
+      const result = await executeFulfillmentCommand(req.params.orderId, operation, req.body || {}, idempotencyKey, actor);
+      res.json({ success: true, ...result });
+    } catch (error) {
+      const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "The operation could not be completed.", "operation_failed");
+      console.error("Admin fulfillment command error:", error);
+      res.status(commandError.status).json({ error: commandError.message, code: commandError.code });
+    }
+  });
 
   // API Routes
   app.get("/api/products", async (req, res) => {

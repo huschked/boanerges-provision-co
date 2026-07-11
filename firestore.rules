@@ -61,7 +61,18 @@ service cloud.firestore {
 
     match /orders/{orderId} {
       allow read: if isAdmin() || (isAuthenticated() && request.auth.token.email == resource.data.customerEmail);
-      allow write: if isAdmin();
+      // Fulfillment writes must pass through authenticated server commands.
+      allow write: if false;
+    }
+
+    match /admin_order_commands/{commandId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /order_audit_events/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     match /pending_orders/{pendingOrderId} {

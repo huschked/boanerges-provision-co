@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Search, PackageSearch, Mail, Phone, MapPin } from 'lucide-react';
-import { db, doc, updateDoc } from '@/src/lib/firebase';
 import { cn } from '@/src/lib/utils';
+import { AdminOrderApiError, runOrderCommand, type FulfillmentOperation } from '@/src/lib/adminOrders';
 import { Order } from './DashboardView';
 import toast from 'react-hot-toast';
 
@@ -26,6 +26,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
   const [trackingNumberDraft, setTrackingNumberDraft] = useState('');
   const [trackingUrlDraft, setTrackingUrlDraft] = useState('');
   const [isSavingOps, setIsSavingOps] = useState(false);
+  const [activeCommand, setActiveCommand] = useState<FulfillmentOperation | null>(null);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('');
 
   const selectedOrder = useMemo(
     () => orders.find((order) => order.id === selectedOrderId) || orders[0] || null,
@@ -51,17 +54,25 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
     setTrackingUrlDraft(selectedOrder?.trackingUrl || '');
   }, [selectedOrder?.id, selectedOrder?.adminNotes, selectedOrder?.trackingNumber, selectedOrder?.trackingUrl]);
 
-  const updateStatus = async (id: string, status: string) => {
+  const describeError = (error: unknown) => {
+    if (error instanceof AdminOrderApiError) return error.message;
+    return 'The operation could not be completed. Please retry.';
+  };
+
+  const executeCommand = async (operation: FulfillmentOperation, payload: Record<string, unknown> = {}) => {
+    if (!selectedOrder) return false;
+    setActiveCommand(operation);
     try {
-      await updateDoc(doc(db, 'orders', id), {
-        status,
-        fulfillmentStatus: status,
-      });
-      toast.success('Order status updated.');
-      onRefresh();
+      await runOrderCommand(selectedOrder.id, operation, payload);
+      toast.success(operation === 'notification-retry' ? 'Notification sent.' : 'Order updated.');
+      await onRefresh();
+      return true;
     } catch (error) {
-      console.error("Error updating order:", error);
-      toast.error('Unable to update order status.');
+      console.error(`Order ${operation} failed:`, error);
+      toast.error(describeError(error));
+      return false;
+    } finally {
+      setActiveCommand(null);
     }
   };
 
@@ -70,16 +81,16 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
 
     setIsSavingOps(true);
     try {
-      await updateDoc(doc(db, 'orders', selectedOrder.id), {
-        adminNotes: notesDraft.trim(),
+      await runOrderCommand(selectedOrder.id, 'tracking', {
         trackingNumber: trackingNumberDraft.trim(),
         trackingUrl: trackingUrlDraft.trim(),
       });
+      await runOrderCommand(selectedOrder.id, 'notes', { adminNotes: notesDraft.trim() });
       toast.success('Order notes and tracking saved.');
       await onRefresh();
     } catch (error) {
       console.error('Error saving operations details:', error);
-      toast.error('Unable to save notes and tracking.');
+      toast.error(`${describeError(error)} Some details may have saved; refresh before retrying.`);
     } finally {
       setIsSavingOps(false);
     }
@@ -198,21 +209,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                     {selectedOrder.createdAt?.toDate ? selectedOrder.createdAt.toDate().toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Date unavailable'}
                   </p>
                 </div>
-                <div className="space-y-3">
-                  <label className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Fulfillment Status</label>
-                  <select
-                    value={selectedOrder.fulfillmentStatus || selectedOrder.status || 'pending'}
-                    onChange={(e) => updateStatus(selectedOrder.id, e.target.value)}
-                    className="input-premium py-2 px-6 text-[10px] uppercase tracking-[0.2em] font-black cursor-pointer min-w-[220px]"
-                  >
-                    <option value="pending">Pending</option>
-                    <option value="processing">Processing</option>
-                    <option value="packed">Packed</option>
-                    <option value="shipped">Shipped</option>
-                    <option value="delivered">Delivered</option>
-                    <option value="cancelled">Cancelled</option>
-                    <option value="needs_manual_intervention">Needs Manual Review</option>
-                  </select>
+                <div className="space-y-3 max-w-sm">
+                  <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Fulfillment Actions</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(['pack', 'ship', 'cancel'] as const).map((operation) => (
+                      <button
+                        key={operation}
+                        onClick={() => executeCommand(operation)}
+                        disabled={activeCommand !== null}
+                        className="px-4 py-2 border border-brand-gold/20 text-[9px] uppercase tracking-[0.18em] font-black text-brand-gold hover:bg-brand-gold/10 disabled:opacity-40"
+                      >
+                        {activeCommand === operation ? 'Working...' : operation}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-brand-parchment/40">Invalid transitions are rejected by the server.</p>
                 </div>
               </div>
 
@@ -320,6 +331,38 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                     placeholder="Packing instructions, issue follow-up, gift note verification, or fulfillment reminders..."
                     className="input-premium py-4 min-h-[140px] resize-y"
                   />
+                </div>
+              </div>
+
+              <div className="p-10 border-b border-white/5 space-y-6">
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase tracking-[0.25em] text-brand-gold/40 font-black">Payment & Notifications</p>
+                  <p className="text-sm text-brand-parchment/40">Refunds require a reason and cannot exceed the remaining paid amount.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <input value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} type="number" min="0.01" step="0.01" placeholder="Refund amount" className="input-premium py-3" />
+                  <input value={refundReason} onChange={(event) => setRefundReason(event.target.value)} placeholder="Required refund reason" className="input-premium py-3" />
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={async () => {
+                      if (await executeCommand('refund', { amount: Number(refundAmount), reason: refundReason })) {
+                        setRefundAmount('');
+                        setRefundReason('');
+                      }
+                    }}
+                    disabled={activeCommand !== null || !refundAmount || !refundReason.trim()}
+                    className="px-5 py-3 rounded-sm border border-red-400/30 text-red-300 text-[10px] uppercase tracking-[0.2em] font-black hover:bg-red-400/10 disabled:opacity-40"
+                  >
+                    {activeCommand === 'refund' ? 'Refunding...' : 'Issue Refund'}
+                  </button>
+                  <button
+                    onClick={() => executeCommand('notification-retry')}
+                    disabled={activeCommand !== null}
+                    className="px-5 py-3 rounded-sm border border-brand-gold/30 text-brand-gold text-[10px] uppercase tracking-[0.2em] font-black hover:bg-brand-gold/10 disabled:opacity-40"
+                  >
+                    {activeCommand === 'notification-retry' ? 'Sending...' : 'Retry Confirmation Email'}
+                  </button>
                 </div>
               </div>
 
