@@ -157,6 +157,12 @@ class CheckoutAvailabilityError extends Error {
   }
 }
 
+class CheckoutProviderError extends Error {
+  constructor(message: string, public code = "stripe_checkout_error") {
+    super(message);
+  }
+}
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CURRENCY = "usd";
 const MAX_CART_ITEMS = Number(process.env.MAX_CART_ITEMS || 30);
@@ -1421,6 +1427,12 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
         }, { idempotencyKey: `checkout-${pendingOrderRef.id}` });
       } catch (error) {
         await releaseInventoryReservation(reservationRef.id, "session_creation_failed");
+        if (error instanceof Stripe.errors.StripeError) {
+          const code = error instanceof Stripe.errors.StripeAuthenticationError
+            ? "stripe_authentication_error"
+            : "stripe_checkout_error";
+          throw new CheckoutProviderError(error.message, code);
+        }
         throw error;
       }
 
@@ -1434,6 +1446,9 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       console.error("Stripe Session Error:", error);
       if (error instanceof CheckoutAvailabilityError) {
         return res.status(409).json({ error: error.message, code: "inventory_unavailable", unavailableItems: error.unavailableItems });
+      }
+      if (error instanceof CheckoutProviderError) {
+        return res.status(502).json({ error: `Stripe could not start checkout: ${error.message}`, code: error.code });
       }
       res.status(500).json({ error: "Unable to reserve inventory and start checkout." });
     }
