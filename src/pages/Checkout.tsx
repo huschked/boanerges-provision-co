@@ -41,7 +41,13 @@ export const Checkout: React.FC = () => {
         }),
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: any = {};
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        throw new Error(response.ok ? 'Checkout returned an invalid response.' : 'Checkout service is unavailable. Please try again shortly.');
+      }
       if (!response.ok) {
         if (data.code === 'inventory_unavailable' && Array.isArray(data.unavailableItems)) {
           setUnavailableItems(data.unavailableItems);

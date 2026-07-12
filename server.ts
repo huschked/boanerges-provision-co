@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import Stripe from "stripe";
@@ -24,9 +23,18 @@ import fs from "fs";
 if (!admin.apps.length) {
   let credential;
   const saPath = path.resolve(__dirname, "serviceAccountKey.json");
+  const serviceAccountEnv = process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim();
 
-  // To test locally without gcloud, we look for a service account key
-  if (fs.existsSync(saPath)) {
+  if (serviceAccountEnv) {
+    const serviceAccountJson = serviceAccountEnv.startsWith("{")
+      ? serviceAccountEnv
+      : Buffer.from(serviceAccountEnv, "base64").toString("utf8");
+    const serviceAccount = JSON.parse(serviceAccountJson);
+    if (typeof serviceAccount.private_key === "string") {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+    }
+    credential = admin.credential.cert(serviceAccount);
+  } else if (fs.existsSync(saPath)) {
     credential = admin.credential.cert(JSON.parse(fs.readFileSync(saPath, 'utf8')));
   } else {
     // If no local file, we fallback to default (which assumes gcloud setup or cloud environment)
@@ -66,7 +74,9 @@ async function testConnection() {
   }
 }
 // We gracefully catch the connection test locally so the server doesn't halt
-testConnection().catch(e => console.warn("Initial DB test skipped due to auth mapping mismatch."));
+if (!process.env.VERCEL) {
+  testConnection().catch(() => console.warn("Initial DB test skipped due to auth mapping mismatch."));
+}
 
 // Initialize Stripe & Resend
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -1151,7 +1161,7 @@ async function commitInventoryReservation(reservationId: string, orderId: string
   });
 }
 
-async function startServer() {
+export async function createApp({ serveFrontend = false }: { serveFrontend?: boolean } = {}) {
   const app = express();
   const PORT = 3000;
 
@@ -1702,21 +1712,24 @@ async function startServer() {
     }
   });
 
-  // Vite middleware
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+  if (serveFrontend) {
+    if (process.env.NODE_ENV !== "production") {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
+      app.use(vite.middlewares);
+    } else {
+      const distPath = path.join(process.cwd(), "dist");
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
+    }
   }
 
+  return app;
+}
+
+async function startServer() {
+  const app = await createApp({ serveFrontend: true });
+  const PORT = Number(process.env.PORT || 3000);
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
@@ -1984,4 +1997,6 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
   }
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
