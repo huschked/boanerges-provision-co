@@ -6,14 +6,16 @@ import toast from 'react-hot-toast';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
 
 export const Checkout: React.FC = () => {
-  const { items, total } = useCart();
+  const { items, total, updateQuantity, removeItem } = useCart();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [newsletterOptIn, setNewsletterOptIn] = useState(false);
+  const [unavailableItems, setUnavailableItems] = useState<Array<{ productId: string; name: string; requested: number; available: number }>>([]);
 
   const handleCheckout = async () => {
     setLoading(true);
     try {
+      setUnavailableItems([]);
       trackAnalyticsEvent({
         type: 'checkout_start',
         quantity: items.reduce((sum, item) => sum + item.quantity, 0),
@@ -41,6 +43,11 @@ export const Checkout: React.FC = () => {
 
       const data = await response.json();
       if (!response.ok) {
+        if (data.code === 'inventory_unavailable' && Array.isArray(data.unavailableItems)) {
+          setUnavailableItems(data.unavailableItems);
+          toast.error(data.error || 'Some quantities are no longer available.');
+          return;
+        }
         throw new Error(data.error || 'Failed to create checkout session');
       }
 
@@ -52,7 +59,7 @@ export const Checkout: React.FC = () => {
       }
     } catch (error) {
       console.error('Checkout error:', error);
-      toast.error('There was an error initiating checkout. Please try again.', {
+      toast.error(error instanceof Error ? error.message : 'There was an error initiating checkout. Please try again.', {
         style: {
           background: '#1A1A1A',
           color: '#F4ECD8',
@@ -128,6 +135,22 @@ export const Checkout: React.FC = () => {
               >
                 {loading ? <Loader2 className="animate-spin" size={20} /> : 'Proceed to Secure Payment'}
               </button>
+
+              {unavailableItems.length > 0 && (
+                <div className="border border-red-400/30 bg-red-400/5 p-6 space-y-4">
+                  <p className="text-sm text-red-200 font-black">Update your cart to continue</p>
+                  {unavailableItems.map(item => (
+                    <div key={item.productId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm">
+                      <p className="text-brand-parchment/70"><strong className="text-brand-parchment">{item.name}</strong> — requested {item.requested}, {item.available} available</p>
+                      <div className="flex gap-2">
+                        {item.available > 0 && <button onClick={() => { updateQuantity(item.productId, item.available); setUnavailableItems(current => current.filter(entry => entry.productId !== item.productId)); }} className="px-3 py-2 border border-brand-gold/30 text-brand-gold text-[9px] uppercase tracking-wider font-black">Use {item.available}</button>}
+                        <button onClick={() => { removeItem(item.productId); setUnavailableItems(current => current.filter(entry => entry.productId !== item.productId)); }} className="px-3 py-2 border border-red-400/30 text-red-200 text-[9px] uppercase tracking-wider font-black">Remove</button>
+                      </div>
+                    </div>
+                  ))}
+                  <Link to="/shop" className="inline-block text-[10px] uppercase tracking-widest text-brand-gold font-black">Return to shop</Link>
+                </div>
+              )}
               
               <div className="flex flex-wrap items-center justify-center gap-6 text-[10px] uppercase tracking-widest text-brand-parchment/30 font-black">
                 <div className="flex items-center gap-2"><ShieldCheck size={14} /> Secure Checkout</div>

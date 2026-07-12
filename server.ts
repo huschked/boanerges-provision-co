@@ -141,6 +141,12 @@ class AdminCommandError extends Error {
   }
 }
 
+class CheckoutAvailabilityError extends Error {
+  constructor(public unavailableItems: Array<{ productId: string; name: string; requested: number; available: number }>) {
+    super("Some cart items are no longer available in the requested quantity.");
+  }
+}
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CURRENCY = "usd";
 const MAX_CART_ITEMS = Number(process.env.MAX_CART_ITEMS || 30);
@@ -165,6 +171,7 @@ const RESEND_TEST_RECIPIENT =
     : ADMIN_NOTIFICATION_EMAIL;
 const SHIPPO_API_URL = "https://api.goshippo.com";
 const SHIPPO_API_VERSION = "2018-02-08";
+const INVENTORY_RESERVATION_MINUTES = Math.min(1440, Math.max(31, Number(process.env.INVENTORY_RESERVATION_MINUTES || 31)));
 
 async function shippoRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const token = process.env.SHIPPO_API_TOKEN || "";
@@ -1015,6 +1022,135 @@ async function executeFulfillmentCommand(
   }
 }
 
+async function createInventoryReservation({
+  pendingOrderId,
+  cartItems,
+  customerEmail,
+  appUrl,
+}: {
+  pendingOrderId: string;
+  cartItems: NormalizedCartItem[];
+  customerEmail: string;
+  appUrl: string;
+}) {
+  const pendingOrderRef = db.collection("pending_orders").doc(pendingOrderId);
+  const reservationRef = db.collection("inventory_reservations").doc(pendingOrderId);
+  const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + INVENTORY_RESERVATION_MINUTES * 60 * 1000);
+
+  return db.runTransaction(async transaction => {
+    const productRefs = cartItems.map(item => db.collection("products").doc(item.id));
+    const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+    const unavailableItems: CheckoutAvailabilityError["unavailableItems"] = [];
+    const orderItems: PendingOrderItem[] = [];
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+    let calculatedTotal = 0;
+
+    for (const [index, item] of cartItems.entries()) {
+      const snap = productSnaps[index];
+      const data = snap.exists ? snap.data()! : null;
+      const name = data?.name || "Unavailable product";
+      const inventory = Number(data?.currentInventory || 0);
+      const reserved = Number(data?.reservedInventory || 0);
+      const available = Math.max(0, inventory - reserved);
+      const price = Number(data?.price);
+      if (!snap.exists || data?.active === false || !Number.isInteger(inventory) || available < item.quantity) {
+        unavailableItems.push({ productId: item.id, name, requested: item.quantity, available });
+        continue;
+      }
+      if (!Number.isFinite(price) || price <= 0) throw new Error(`${name} has an invalid price.`);
+      const images = typeof data?.imageUrl === "string" && /^https?:\/\//i.test(data.imageUrl) ? [data.imageUrl] : undefined;
+      lineItems.push({
+        price_data: { currency: CURRENCY, product_data: { name, images, tax_code: data?.stripeTaxCode || DEFAULT_PRODUCT_TAX_CODE }, unit_amount: toStripeAmount(price) },
+        quantity: item.quantity,
+      });
+      orderItems.push({ productId: item.id, name, price, quantity: item.quantity, heatLevel: data?.heatLevel || 0, imageUrl: data?.imageUrl || "", sizeOz: data?.sizeOz || 0 });
+      calculatedTotal += price * item.quantity;
+    }
+
+    if (unavailableItems.length) throw new CheckoutAvailabilityError(unavailableItems);
+    const shippingCost = calculatedTotal >= FREE_SHIPPING_THRESHOLD ? 0 : STANDARD_SHIPPING_AMOUNT;
+    for (const [index, item] of cartItems.entries()) {
+      const data = productSnaps[index].data()!;
+      transaction.update(productRefs[index], {
+        reservedInventory: Number(data.reservedInventory || 0) + item.quantity,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+    transaction.create(reservationRef, {
+      pendingOrderId, status: "reserved", items: orderItems.map(item => ({ productId: item.productId, name: item.name, quantity: item.quantity })),
+      customerEmail, expiresAt, createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    transaction.create(pendingOrderRef, {
+      customerEmail, items: orderItems, reservationId: reservationRef.id, reservationStatus: "reserved", reservationExpiresAt: expiresAt,
+      appUrl, currency: CURRENCY, subtotalAmount: calculatedTotal, shippingAmount: shippingCost, totalAmount: calculatedTotal + shippingCost,
+      freeShippingThreshold: FREE_SHIPPING_THRESHOLD, pricingSource: "firestore", createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(), paymentStatus: "pending", status: "pending",
+    });
+    return { pendingOrderRef, reservationRef, expiresAt, orderItems, lineItems, calculatedTotal, shippingCost };
+  });
+}
+
+async function releaseInventoryReservation(reservationId: string, reason: string, stripeSessionId = "") {
+  const reservationRef = db.collection("inventory_reservations").doc(reservationId);
+  const pendingOrderRef = db.collection("pending_orders").doc(reservationId);
+  return db.runTransaction(async transaction => {
+    const reservationSnap = await transaction.get(reservationRef);
+    if (!reservationSnap.exists) return { changed: false, status: "missing" };
+    const reservation = reservationSnap.data()!;
+    if (!["reserved", "requires_review"].includes(reservation.status)) return { changed: false, status: reservation.status };
+    const items = (reservation.items || []) as Array<{ productId: string; name: string; quantity: number }>;
+    const productRefs = items.map(item => db.collection("products").doc(item.productId));
+    const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+    items.forEach((item, index) => {
+      const product = productSnaps[index].data();
+      if (!product) return;
+      transaction.update(productRefs[index], {
+        reservedInventory: Math.max(0, Number(product.reservedInventory || 0) - item.quantity),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+    transaction.update(reservationRef, { status: "released", releaseReason: reason, stripeSessionId, releasedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    transaction.set(pendingOrderRef, { status: reason, reservationStatus: "released", paymentStatus: reason === "async_payment_failed" ? "failed" : "expired", stripeSessionId, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    transaction.set(db.collection("inventory_reservation_events").doc(`release_${reservationId}`), { reservationId, type: "released", reason, stripeSessionId, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    return { changed: true, status: "released" };
+  });
+}
+
+async function commitInventoryReservation(reservationId: string, orderId: string, orderBase: Record<string, unknown>) {
+  const reservationRef = db.collection("inventory_reservations").doc(reservationId);
+  const pendingOrderRef = db.collection("pending_orders").doc(reservationId);
+  const orderRef = db.collection("orders").doc(orderId);
+  return db.runTransaction(async transaction => {
+    const [reservationSnap, orderSnap] = await Promise.all([transaction.get(reservationRef), transaction.get(orderRef)]);
+    if (orderSnap.exists) return { changed: false, status: "committed" };
+    if (!reservationSnap.exists) throw new Error("Inventory reservation is missing.");
+    const reservation = reservationSnap.data()!;
+    if (reservation.status === "committed") return { changed: false, status: "committed" };
+    if (reservation.status !== "reserved") throw new Error(`Inventory reservation is ${reservation.status}; paid order requires review.`);
+    const items = (reservation.items || []) as Array<{ productId: string; name: string; quantity: number }>;
+    const productRefs = items.map(item => db.collection("products").doc(item.productId));
+    const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+    items.forEach((item, index) => {
+      const product = productSnaps[index].data();
+      if (!product || Number(product.currentInventory || 0) < item.quantity) throw new Error(`Reserved inventory conflict for ${item.name}.`);
+      transaction.update(productRefs[index], {
+        currentInventory: Number(product.currentInventory || 0) - item.quantity,
+        reservedInventory: Math.max(0, Number(product.reservedInventory || 0) - item.quantity),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      transaction.set(db.collection("inventory_movements").doc(`${reservationId}_${item.productId}`), {
+        productId: item.productId, delta: -item.quantity, reason: "reservation_committed", orderId, reservationId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy: "system",
+      });
+    });
+    transaction.create(orderRef, { ...orderBase, reservationId, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    transaction.update(reservationRef, { status: "committed", orderId, committedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    transaction.set(pendingOrderRef, { status: "completed", paymentStatus: "paid", reservationStatus: "committed", orderId, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    transaction.set(db.collection("inventory_reservation_events").doc(`commit_${reservationId}`), { reservationId, orderId, type: "committed", createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    return { changed: true, status: "committed" };
+  });
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -1044,6 +1180,16 @@ async function startServer() {
       if (event.type === "checkout.session.completed") {
         const session = event.data.object as Stripe.Checkout.Session;
         await handleSuccessfulCheckout(session);
+      }
+
+      if (event.type === "checkout.session.async_payment_succeeded") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await handleSuccessfulCheckout(session);
+      }
+
+      if (event.type === "checkout.session.async_payment_failed") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await handleFailedCheckout(session);
       }
 
       if (event.type === "checkout.session.expired") {
@@ -1120,6 +1266,33 @@ async function startServer() {
     } catch (error) {
       const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "The shipping label could not be created.", "label_purchase_failed");
       console.error("Shippo label error:", error);
+      res.status(commandError.status).json({ error: commandError.message, code: commandError.code });
+    }
+  });
+
+  app.get("/api/admin/inventory-reservations", async (req, res) => {
+    try {
+      await authenticateAdmin(req);
+      const snapshot = await db.collection("inventory_reservations").orderBy("createdAt", "desc").limit(100).get();
+      const now = Date.now();
+      const reservations = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return { id: doc.id, ...data, isExpired: data.status === "reserved" && data.expiresAt?.toMillis?.() < now };
+      });
+      res.json({ reservations });
+    } catch (error) {
+      const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "Reservations could not be loaded.", "reservation_list_failed");
+      res.status(commandError.status).json({ error: commandError.message, code: commandError.code });
+    }
+  });
+
+  app.post("/api/admin/inventory-reservations/:reservationId/release", async (req, res) => {
+    try {
+      const actor = await authenticateAdmin(req);
+      const result = await releaseInventoryReservation(req.params.reservationId, `admin_release:${actor.uid}`);
+      res.json({ success: true, ...result });
+    } catch (error) {
+      const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "Reservation could not be released.", "reservation_release_failed");
       res.status(commandError.status).json({ error: commandError.message, code: commandError.code });
     }
   });
@@ -1203,68 +1376,11 @@ async function startServer() {
         return res.status(400).json({ error: "Enter a valid email address." });
       }
 
-      // 1. Validate prices from Firestore
-      const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
-      const orderItems: PendingOrderItem[] = [];
-      let calculatedTotal = 0;
-
-      for (const item of normalizedCart.items) {
-        const productRef = db.collection("products").doc(item.id);
-        const productSnap = await productRef.get();
-
-        if (!productSnap.exists) {
-          return res.status(400).json({ error: `Product ${item.id} not found` });
-        }
-
-        const productData = productSnap.data()!;
-        const price = Number(productData.price);
-        const inventory = Number(productData.currentInventory);
-
-        if (productData.active === false) {
-          return res.status(400).json({ error: `${productData.name || "This product"} is not currently available.` });
-        }
-
-        if (!Number.isFinite(price) || price <= 0) {
-          return res.status(400).json({ error: `${productData.name || item.id} has an invalid price.` });
-        }
-
-        if (!Number.isInteger(inventory) || inventory < item.quantity) {
-          return res.status(400).json({ error: `Insufficient inventory for ${productData.name}` });
-        }
-
-        const images =
-          typeof productData.imageUrl === "string" && /^https?:\/\//i.test(productData.imageUrl)
-            ? [productData.imageUrl]
-            : undefined;
-
-        lineItems.push({
-          price_data: {
-            currency: CURRENCY,
-            product_data: {
-              name: productData.name,
-              images,
-              tax_code: productData.stripeTaxCode || DEFAULT_PRODUCT_TAX_CODE,
-            },
-            unit_amount: toStripeAmount(price),
-          },
-          quantity: item.quantity,
-        });
-
-        orderItems.push({
-          productId: item.id,
-          name: productData.name,
-          price,
-          quantity: item.quantity,
-          heatLevel: productData.heatLevel || 0,
-          imageUrl: productData.imageUrl || "",
-          sizeOz: productData.sizeOz || 0,
-        });
-
-        calculatedTotal += price * item.quantity;
-      }
-
-      // Calculate shipping (FREE if total >= 50)
-      const shippingCost = calculatedTotal >= FREE_SHIPPING_THRESHOLD ? 0 : STANDARD_SHIPPING_AMOUNT;
+      const pendingOrderId = db.collection("pending_orders").doc().id;
+      const reservation = await createInventoryReservation({
+        pendingOrderId, cartItems: normalizedCart.items, customerEmail: normalizedEmail, appUrl,
+      });
+      const { lineItems, shippingCost, expiresAt, pendingOrderRef, reservationRef } = reservation;
       const shippingOptions: Stripe.Checkout.SessionCreateParams.ShippingOption[] = [
         {
           shipping_rate_data: {
@@ -1283,46 +1399,33 @@ async function startServer() {
         },
       ];
 
-      // 2. Create pending order document
-      const pendingOrderRef = await db.collection("pending_orders").add({
-        customerEmail: normalizedEmail,
-        items: orderItems,
-        appUrl,
-        currency: CURRENCY,
-        subtotalAmount: calculatedTotal,
-        shippingAmount: shippingCost,
-        totalAmount: calculatedTotal + shippingCost,
-        freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
-        pricingSource: "firestore",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        paymentStatus: "pending",
-        status: "pending"
-      });
+      let session: Stripe.Checkout.Session;
+      try {
+        session = await stripe.checkout.sessions.create({
+          line_items: lineItems, mode: "payment", customer_email: normalizedEmail || undefined, customer_creation: "always",
+          billing_address_collection: "required", phone_number_collection: { enabled: true },
+          shipping_address_collection: { allowed_countries: ["US"] }, shipping_options: shippingOptions,
+          automatic_tax: { enabled: true }, expires_at: Math.floor(expiresAt.toMillis() / 1000),
+          success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${appUrl}/checkout`,
+          metadata: { pendingOrderId: pendingOrderRef.id, reservationId: reservationRef.id },
+        }, { idempotencyKey: `checkout-${pendingOrderRef.id}` });
+      } catch (error) {
+        await releaseInventoryReservation(reservationRef.id, "session_creation_failed");
+        throw error;
+      }
 
-      const session = await stripe.checkout.sessions.create({
-        line_items: lineItems,
-        mode: "payment",
-        customer_email: normalizedEmail || undefined,
-        customer_creation: "always",
-        billing_address_collection: "required",
-        phone_number_collection: { enabled: true },
-        shipping_address_collection: {
-          allowed_countries: ["US"],
-        },
-        shipping_options: shippingOptions,
-        automatic_tax: { enabled: true },
-        success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${appUrl}/checkout`,
-        metadata: {
-          pendingOrderId: pendingOrderRef.id
-        }
-      });
+      await Promise.all([
+        pendingOrderRef.set({ stripeSessionId: session.id, checkoutUrl: session.url || "", updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+        reservationRef.set({ stripeSessionId: session.id, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+      ]);
 
-      res.json({ id: session.id, url: session.url });
+      res.json({ id: session.id, url: session.url, reservationExpiresAt: expiresAt.toDate().toISOString() });
     } catch (error: any) {
       console.error("Stripe Session Error:", error);
-      res.status(500).json({ error: error.message });
+      if (error instanceof CheckoutAvailabilityError) {
+        return res.status(409).json({ error: error.message, code: "inventory_unavailable", unavailableItems: error.unavailableItems });
+      }
+      res.status(500).json({ error: "Unable to reserve inventory and start checkout." });
     }
   });
 
@@ -1620,20 +1723,15 @@ async function startServer() {
 }
 
 async function handleExpiredCheckout(session: Stripe.Checkout.Session) {
-  const pendingOrderId = session.metadata?.pendingOrderId;
+  const reservationId = session.metadata?.reservationId || session.metadata?.pendingOrderId;
+  if (!reservationId) return;
+  await releaseInventoryReservation(reservationId, "checkout_expired", session.id);
+}
 
-  if (!pendingOrderId) return;
-
-  await db.collection("pending_orders").doc(pendingOrderId).set(
-    {
-      status: "expired",
-      paymentStatus: "expired",
-      stripeSessionId: session.id,
-      expiredAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+async function handleFailedCheckout(session: Stripe.Checkout.Session) {
+  const reservationId = session.metadata?.reservationId || session.metadata?.pendingOrderId;
+  if (!reservationId) return;
+  await releaseInventoryReservation(reservationId, "async_payment_failed", session.id);
 }
 
 async function findOrdersByPaymentIntent(paymentIntentId: string) {
@@ -1739,6 +1837,14 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
     return;
   }
 
+  if (session.payment_status !== "paid") {
+    await db.collection("pending_orders").doc(pendingOrderId).set({
+      status: "awaiting_payment", paymentStatus: session.payment_status || "unpaid", stripeSessionId: session.id,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return;
+  }
+
   const pendingOrderRef = db.collection("pending_orders").doc(pendingOrderId);
   const pendingOrderSnap = await pendingOrderRef.get();
   if (!pendingOrderSnap.exists) {
@@ -1788,75 +1894,13 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
   };
 
   try {
-    // Start Transaction for Inventory
-    await db.runTransaction(async (transaction) => {
-      const movementsToSet = [];
-      const productSnapshots = await Promise.all(
-        orderItems.map((item) => transaction.get(db.collection("products").doc(item.productId)))
-      );
-
-      for (const [index, item] of orderItems.entries()) {
-        const productRef = db.collection("products").doc(item.productId);
-        const productDoc = productSnapshots[index];
-
-        if (!productDoc.exists) continue;
-
-        const productData = productDoc.data()!;
-        const newInventory = (productData.currentInventory || 0) - item.quantity;
-
-        if (newInventory < 0) {
-          throw new Error(`Insufficient inventory for ${productData.name}`);
-        }
-
-        transaction.update(productRef, {
-          currentInventory: newInventory,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        // Log Movement
-        const movementRef = db.collection("inventory_movements").doc();
-        movementsToSet.push({
-          ref: movementRef,
-          data: {
-            productId: item.productId,
-            delta: -item.quantity,
-            reason: "order_paid",
-            orderId: orderId,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            createdBy: "system",
-          }
-        });
-      }
-
-      for (const movement of movementsToSet) {
-        transaction.set(movement.ref, movement.data);
-      }
-
-      transaction.set(orderRef, {
-        ...orderBase,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      transaction.update(pendingOrderRef, {
-        status: "completed",
-        paymentStatus: "paid",
-        orderId: orderId,
-        customerName,
-        customerPhone,
-        shippingAddress,
-        stripeSessionId: session.id,
-        stripePaymentIntentId:
-          typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || "",
-        subtotalAmount,
-        shippingAmount,
-        taxAmount,
-        totalAmount: total,
-        shippingRateId: selectedShipping.shippingRate,
-        shippingMethod: selectedShipping.displayName,
-        completedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    });
+    await commitInventoryReservation(session.metadata?.reservationId || pendingOrderId, orderId, orderBase);
+    await pendingOrderRef.set({
+      customerName, customerPhone, shippingAddress, stripeSessionId: session.id,
+      stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || "",
+      subtotalAmount, shippingAmount, taxAmount, totalAmount: total, shippingRateId: selectedShipping.shippingRate,
+      shippingMethod: selectedShipping.displayName, completedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
     await incrementAnalyticsDaily(getDateKey(), {
       paidOrders: 1,
       revenue: total,
@@ -1865,11 +1909,17 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
   } catch (error: any) {
     console.error("Order Transaction Error:", error.message);
 
+    await db.collection("inventory_reservations").doc(session.metadata?.reservationId || pendingOrderId).set({
+      status: "requires_review", error: error.message, orderId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
     // Mark order as needs manual intervention because user paid!
     await orderRef.set({
       ...orderBase,
       fulfillmentStatus: "needs_manual_intervention",
       status: "needs_manual_intervention",
+      reservationId: session.metadata?.reservationId || pendingOrderId,
       error: error.message,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });

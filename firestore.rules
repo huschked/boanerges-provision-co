@@ -80,6 +80,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /inventory_reservations/{reservationId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /inventory_reservation_events/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /pending_orders/{pendingOrderId} {
       allow read, write: if isAdmin();
     }

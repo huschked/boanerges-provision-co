@@ -5,6 +5,7 @@ import { AdminOrderApiError, runOrderCommand, type FulfillmentOperation } from '
 import { Order } from './DashboardView';
 import toast from 'react-hot-toast';
 import { ShippingWorkflow } from './ShippingWorkflow';
+import { ReservationPanel } from './ReservationPanel';
 
 interface OrdersViewProps {
   orders: Order[];
@@ -99,6 +100,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
 
   return (
     <div className="space-y-10">
+      <ReservationPanel />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="space-y-1">
           <h3 className="text-2xl font-serif text-brand-parchment">Order Fulfillment</h3>
