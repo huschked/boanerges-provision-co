@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
+import { signOut } from 'firebase/auth';
 import { Toaster } from 'react-hot-toast';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -15,6 +16,7 @@ import { Bundles } from './pages/Bundles';
 import { Checkout } from './pages/Checkout';
 import { CheckoutSuccess } from './pages/CheckoutSuccess';
 import { Admin } from './pages/Admin';
+import { auth } from './lib/firebase';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -28,6 +30,14 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const location = useLocation();
   const isAdminPage = location.pathname.startsWith('/admin');
+  const wasAdminPage = useRef(isAdminPage);
+
+  useEffect(() => {
+    if (wasAdminPage.current && !isAdminPage) {
+      void signOut(auth).catch((error) => console.error('Unable to end the admin session:', error));
+    }
+    wasAdminPage.current = isAdminPage;
+  }, [isAdminPage]);
 
   return (
     <div className="min-h-screen flex flex-col">

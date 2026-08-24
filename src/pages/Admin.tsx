@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Lock, LayoutDashboard, Package, ShoppingCart, Users, Mail, LogOut, Search, Loader2, RefreshCw, ChartNoAxesCombined } from 'lucide-react';
 import logo from '@/src/assets/BoanergesLogoTransparent-v2.png';
 import { auth, db } from '@/src/lib/firebase';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { inMemoryPersistence, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, setPersistence, signOut, User } from 'firebase/auth';
 import { collection, query, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { Product, getProducts } from '@/src/services/productService';
 import toast from 'react-hot-toast';
@@ -73,7 +73,17 @@ export const Admin: React.FC = () => {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    let cancelled = false;
+    let unsubscribe = () => {};
+
+    const initializeAdminSession = async () => {
+      try {
+        // A fresh visit to /admin always requires a fresh authentication ceremony.
+        await signOut(auth);
+        await setPersistence(auth, inMemoryPersistence);
+        if (cancelled) return;
+
+        unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       setAuthError(null);
 
@@ -99,11 +109,25 @@ export const Admin: React.FC = () => {
         setAuthError('We could not verify admin access right now. Please retry.');
         toast.error('Unable to verify admin access right now.');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    });
+        });
+      } catch (error) {
+        console.error('Unable to initialize the admin session:', error);
+        if (!cancelled) {
+          setIsAdmin(false);
+          setAuthError('We could not initialize a secure admin session. Please retry.');
+          setLoading(false);
+        }
+      }
+    };
 
-    return () => unsubscribe();
+    void initializeAdminSession();
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -148,6 +172,7 @@ export const Admin: React.FC = () => {
     const provider = new GoogleAuthProvider();
     try {
       setAuthError(null);
+      await setPersistence(auth, inMemoryPersistence);
       await signInWithPopup(auth, provider);
     } catch (error: any) {
       console.error('Login error:', error);

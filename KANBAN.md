@@ -298,6 +298,22 @@ No cards currently in progress.
 
 ## Review / Verify
 
+### WEB-031 - End Admin Authentication When Leaving the Portal
+
+- **Priority:** High
+- **Area:** admin/security
+- **Goal:** Prevent an authenticated admin session from silently carrying across navigation away from the protected portal.
+- **Acceptance Criteria:**
+  - Navigating from `/admin` to a storefront route explicitly signs out Firebase Auth.
+  - Returning to or refreshing `/admin` requires a fresh Google sign-in.
+  - Admin authentication uses memory-only persistence and is not restored from long-lived browser storage.
+  - The existing 15-minute inactivity timeout and explicit Sign Out control continue to work.
+- **Verification:**
+  - TypeScript validation passed with `tsc --noEmit` using the bundled workspace Node runtime.
+  - Production build passed; the existing large-chunk warning remains.
+  - Post-deployment verification remains for login, storefront navigation, browser back, refresh, idle timeout, and explicit logout.
+- **Notes / Links:** Added route-exit sign-out in `src/App.tsx` and secure admin-session initialization in `src/pages/Admin.tsx`.
+
 ### WEB-030 - Prevent Admin Sidebar and Orders Layout Clipping
 
 - **Priority:** High
