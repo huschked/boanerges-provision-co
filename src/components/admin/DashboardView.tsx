@@ -30,7 +30,11 @@ export interface Order {
   shipmentCost?: number;
   estimatedDelivery?: string;
   shippoTransactionId?: string;
+  resendEmailStatus?: string;
+  resendEmailId?: string;
   shipmentEmailStatus?: string;
+  shipmentEmailId?: string;
+  shipmentEmailError?: string;
   shipmentException?: { status: string; type: string; quoteId: string; message: string };
   adminNotes?: string;
   paidAt?: any;

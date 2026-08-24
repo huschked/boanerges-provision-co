@@ -69,6 +69,16 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
     );
   }
 
+  const fulfillmentStatus = order.fulfillmentStatus || order.status || 'pending';
+  if (fulfillmentStatus !== 'packed') {
+    return (
+      <div className="p-10 border-b border-white/5 space-y-3">
+        <div className="flex items-center gap-3"><PackageCheck className="text-brand-gold/60" size={20} /><p className="text-[10px] uppercase tracking-[0.25em] text-brand-gold/50 font-black">Pack Before Shipping</p></div>
+        <p className="text-sm text-brand-parchment/50">Mark this order as packed before validating its address, requesting Shippo rates, or purchasing a label.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="p-10 border-b border-white/5 space-y-6">
       <div className="flex items-center gap-3"><Truck className="text-brand-gold" size={20} /><div><p className="text-[10px] uppercase tracking-[0.25em] text-brand-gold/50 font-black">Create Shippo Label</p><p className="text-sm text-brand-parchment/40">Validate the address, compare live services, then purchase once.</p></div></div>

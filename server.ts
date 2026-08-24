@@ -1,4 +1,5 @@
 import express from "express";
+import { randomUUID } from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
 import Stripe from "stripe";
@@ -188,6 +189,10 @@ const RESEND_TEST_RECIPIENT =
 const SHIPPO_API_URL = "https://api.goshippo.com";
 const SHIPPO_API_VERSION = "2018-02-08";
 const INVENTORY_RESERVATION_MINUTES = Math.min(1440, Math.max(31, Number(process.env.INVENTORY_RESERVATION_MINUTES || 31)));
+const configuredStripeEventTimeout = Number(process.env.STRIPE_EVENT_PROCESSING_TIMEOUT_SECONDS || 300);
+const STRIPE_EVENT_PROCESSING_TIMEOUT_SECONDS = Number.isFinite(configuredStripeEventTimeout)
+  ? Math.min(3600, Math.max(30, configuredStripeEventTimeout))
+  : 300;
 
 async function shippoRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const token = process.env.SHIPPO_API_TOKEN || "";
@@ -445,18 +450,41 @@ function getSelectedShipping(session: Stripe.Checkout.Session) {
 
 async function claimStripeEvent(event: Stripe.Event) {
   const eventRef = db.collection("stripe_events").doc(event.id);
-  let shouldProcess = false;
+  const processingToken = randomUUID();
+  const now = Date.now();
+  const leaseExpiresAt = admin.firestore.Timestamp.fromMillis(
+    now + STRIPE_EVENT_PROCESSING_TIMEOUT_SECONDS * 1000
+  );
+  let claim = { shouldProcess: false, processingToken: "", reason: "duplicate" };
 
   await db.runTransaction(async (transaction) => {
     const eventSnap = await transaction.get(eventRef);
-    const status = eventSnap.exists ? eventSnap.data()?.status : "";
+    const eventData = eventSnap.exists ? eventSnap.data() : undefined;
+    const status = eventData?.status || "";
 
-    if (status === "processed" || status === "processing") {
-      shouldProcess = false;
+    if (status === "processed") {
       return;
     }
 
-    shouldProcess = true;
+    if (status === "processing") {
+      const storedLease = eventData?.processingLeaseExpiresAt;
+      const storedUpdatedAt = eventData?.updatedAt;
+      const leaseExpirationMillis = typeof storedLease?.toMillis === "function"
+        ? storedLease.toMillis()
+        : typeof storedUpdatedAt?.toMillis === "function"
+          ? storedUpdatedAt.toMillis() + STRIPE_EVENT_PROCESSING_TIMEOUT_SECONDS * 1000
+          : 0;
+
+      if (leaseExpirationMillis > now) {
+        return;
+      }
+    }
+
+    claim = {
+      shouldProcess: true,
+      processingToken,
+      reason: status === "processing" ? "stale_recovery" : status === "failed" ? "retry" : "new",
+    };
     transaction.set(
       eventRef,
       {
@@ -464,38 +492,53 @@ async function claimStripeEvent(event: Stripe.Event) {
         type: event.type,
         stripeCreatedAt: admin.firestore.Timestamp.fromMillis(event.created * 1000),
         status: "processing",
+        processingToken,
+        processingStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+        processingLeaseExpiresAt: leaseExpiresAt,
         attempts: admin.firestore.FieldValue.increment(1),
+        lastClaimReason: claim.reason,
+        error: admin.firestore.FieldValue.delete(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdAt: eventSnap.exists ? eventSnap.data()?.createdAt || admin.firestore.FieldValue.serverTimestamp() : admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: eventSnap.exists ? eventData?.createdAt || admin.firestore.FieldValue.serverTimestamp() : admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
   });
 
-  return shouldProcess;
+  return claim;
 }
 
-async function markStripeEventProcessed(event: Stripe.Event) {
-  await db.collection("stripe_events").doc(event.id).set(
-    {
+async function markStripeEventProcessed(event: Stripe.Event, processingToken: string) {
+  const eventRef = db.collection("stripe_events").doc(event.id);
+  return db.runTransaction(async transaction => {
+    const eventSnap = await transaction.get(eventRef);
+    if (!eventSnap.exists || eventSnap.data()?.processingToken !== processingToken) return false;
+    transaction.set(eventRef, {
       status: "processed",
       processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      processingLeaseExpiresAt: admin.firestore.FieldValue.delete(),
+      processingToken: admin.firestore.FieldValue.delete(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+    }, { merge: true });
+    return true;
+  });
 }
 
-async function markStripeEventFailed(event: Stripe.Event, error: unknown) {
-  await db.collection("stripe_events").doc(event.id).set(
-    {
+async function markStripeEventFailed(event: Stripe.Event, processingToken: string, error: unknown) {
+  const eventRef = db.collection("stripe_events").doc(event.id);
+  return db.runTransaction(async transaction => {
+    const eventSnap = await transaction.get(eventRef);
+    if (!eventSnap.exists || eventSnap.data()?.processingToken !== processingToken) return false;
+    transaction.set(eventRef, {
       status: "failed",
       error: error instanceof Error ? error.message : String(error),
       failedAt: admin.firestore.FieldValue.serverTimestamp(),
+      processingLeaseExpiresAt: admin.firestore.FieldValue.delete(),
+      processingToken: admin.firestore.FieldValue.delete(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+    }, { merge: true });
+    return true;
+  });
 }
 
 async function incrementAnalyticsDaily(dateKey: string, updates: Record<string, number>) {
@@ -513,6 +556,31 @@ async function incrementAnalyticsDaily(dateKey: string, updates: Record<string, 
     },
     { merge: true }
   );
+}
+
+async function recordPaidOrderAnalyticsOnce(orderId: string) {
+  const orderRef = db.collection("orders").doc(orderId);
+  const dateKey = getDateKey();
+  const dailyRef = db.collection("analytics_daily").doc(dateKey);
+  return db.runTransaction(async transaction => {
+    const orderSnap = await transaction.get(orderRef);
+    if (!orderSnap.exists || orderSnap.data()?.analyticsRecordedAt) return false;
+    const order = orderSnap.data()!;
+    const items = (order.items || []) as PendingOrderItem[];
+    transaction.set(dailyRef, {
+      dateKey,
+      paidOrders: admin.firestore.FieldValue.increment(1),
+      revenue: admin.firestore.FieldValue.increment(Number(order.totalAmount || 0)),
+      unitsSold: admin.firestore.FieldValue.increment(items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    transaction.set(orderRef, {
+      analyticsRecordedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return true;
+  });
 }
 
 function getShippingAddress(session: Stripe.Checkout.Session) {
@@ -791,6 +859,13 @@ async function sendOrderConfirmation(orderId: string, order: FirebaseFirestore.D
 
 async function sendShipmentNotification(orderId: string, order: FirebaseFirestore.DocumentData, idempotencyKey: string) {
   const trackingUrl = String(order.trackingUrl || "");
+  const shippedItems = Array.isArray(order.items) ? order.items as PendingOrderItem[] : [];
+  const shippedItemsMarkup = shippedItems.length
+    ? `<div style="margin-top:20px;padding:20px;border:1px solid rgba(255,255,255,0.08);">
+        <p style="margin:0 0 12px;color:#c5a059;font-size:11px;text-transform:uppercase;letter-spacing:.2em;">Items Shipped</p>
+        ${shippedItems.map(item => `<p style="margin:8px 0;color:#f4ecd8;font-size:14px;">${escapeHtml(item.name)} <span style="color:#b7ae9c;">&times; ${Number(item.quantity || 0)}</span></p>`).join("")}
+      </div>`
+    : "";
   const result = await resend.emails.send({
     from: ORDERS_EMAIL_FROM,
     to: order.customerEmail,
@@ -801,7 +876,7 @@ async function sendShipmentNotification(orderId: string, order: FirebaseFirestor
       intro: `${order.carrier || "The carrier"} has your package${order.estimatedDelivery ? `, with estimated delivery ${order.estimatedDelivery}` : ""}.`,
       ctaLabel: trackingUrl ? "Track Package" : undefined,
       ctaHref: trackingUrl || undefined,
-      body: `<div style="padding:20px;border:1px solid rgba(197,160,89,0.16);"><p style="margin:0;color:#c5a059;font-size:11px;text-transform:uppercase;letter-spacing:.2em;">Tracking Number</p><p style="margin:10px 0 0;color:#f4ecd8;font-size:18px;font-weight:700;">${order.trackingNumber || "Pending"}</p></div>`,
+      body: `<div style="padding:20px;border:1px solid rgba(197,160,89,0.16);"><p style="margin:0;color:#c5a059;font-size:11px;text-transform:uppercase;letter-spacing:.2em;">Tracking Number</p><p style="margin:10px 0 0;color:#f4ecd8;font-size:18px;font-weight:700;">${escapeHtml(String(order.trackingNumber || "Pending"))}</p></div>${shippedItemsMarkup}`,
       footerNote: "Need help with your shipment? Reply to this email and our team will take care of you.",
     }),
   }, { idempotencyKey });
@@ -817,8 +892,8 @@ async function createShippoQuote(orderId: string, payload: Record<string, unknow
   if (order.paymentStatus !== "paid" && order.paymentStatus !== "partially_refunded") {
     throw new AdminCommandError(409, "Only paid orders can be shipped.", "order_not_paid");
   }
-  if (!["pending", "processing", "packed"].includes(status)) {
-    throw new AdminCommandError(409, `An order in ${status} state cannot purchase a label.`, "order_not_fulfillable");
+  if (status !== "packed") {
+    throw new AdminCommandError(409, "Pack this order before validating its address or requesting shipping rates.", "order_not_packed");
   }
   if (order.shippoTransactionId || order.labelUrl) {
     throw new AdminCommandError(409, "This order already has a shipping label.", "label_already_exists");
@@ -903,13 +978,21 @@ async function purchaseShippoLabel(orderId: string, payload: Record<string, unkn
     if (!quoteSnap.exists || quoteSnap.data()?.orderId !== orderId) throw new AdminCommandError(404, "Shipping quote not found.", "quote_not_found");
     if (!orderSnap.exists) throw new AdminCommandError(404, "Order not found.", "not_found");
     const quote = quoteSnap.data()!;
+    const order = orderSnap.data()!;
+    const orderStatus = order.fulfillmentStatus || order.status || "pending";
+    if (order.paymentStatus !== "paid" && order.paymentStatus !== "partially_refunded") {
+      throw new AdminCommandError(409, "Only paid orders can purchase a shipping label.", "order_not_paid");
+    }
+    if (orderStatus !== "packed") {
+      throw new AdminCommandError(409, "This order must still be packed when its shipping label is purchased.", "order_not_packed");
+    }
     if (quote.expiresAt?.toMillis?.() < Date.now()) throw new AdminCommandError(409, "This quote expired. Request fresh rates.", "quote_expired");
     if (quote.addressChanged && payload.acceptCorrectedAddress !== true) {
       throw new AdminCommandError(409, "Accept Shippo's corrected address before purchasing the label.", "address_confirmation_required");
     }
     const rate = quote.rates?.find((item: { id: string }) => item.id === rateId);
     if (!rate) throw new AdminCommandError(400, "Select a rate from this quote.", "invalid_rate");
-    if (orderSnap.data()?.shippoTransactionId || orderSnap.data()?.labelUrl) throw new AdminCommandError(409, "This order already has a label.", "label_already_exists");
+    if (order.shippoTransactionId || order.labelUrl) throw new AdminCommandError(409, "This order already has a label.", "label_already_exists");
     transaction.create(commandRef, { orderId, operation: "create-label", actor, quoteId, rateId, status: "processing", createdAt: admin.firestore.FieldValue.serverTimestamp() });
     transaction.update(quoteRef, { status: "purchasing", selectedRate: rate, purchaseStartedAt: admin.firestore.FieldValue.serverTimestamp() });
     return { duplicate: false, quote, rate, order: orderSnap.data()! };
@@ -1038,11 +1121,29 @@ async function executeFulfillmentCommand(
       result.refundId = refund.id;
       result.refundedAmount = amount;
     } else if (operation === "notification-retry") {
-      const emailId = await sendOrderConfirmation(orderId, order, `order-confirmation-${idempotencyKey}`);
-      updates.resendEmailStatus = "sent";
-      updates.resendEmailId = emailId;
-      updates.resendEmailRetriedAt = admin.firestore.FieldValue.serverTimestamp();
-      result.emailId = emailId;
+      if (payload.notificationType != null && payload.notificationType !== "shipment" && payload.notificationType !== "confirmation") {
+        throw new AdminCommandError(400, "Notification type must be confirmation or shipment.", "invalid_notification_type");
+      }
+      const notificationType = payload.notificationType === "shipment" ? "shipment" : "confirmation";
+      if (notificationType === "shipment") {
+        if (!String(order.trackingNumber || "").trim() || !["shipped", "delivered"].includes(currentStatus)) {
+          throw new AdminCommandError(409, "A shipped order with tracking is required before retrying the shipment email.", "shipment_notification_unavailable");
+        }
+        const emailId = await sendShipmentNotification(orderId, order, `shipment-retry-${idempotencyKey}`);
+        updates.shipmentEmailStatus = "sent";
+        updates.shipmentEmailId = emailId;
+        updates.shipmentEmailError = admin.firestore.FieldValue.delete();
+        updates.shipmentEmailRetriedAt = admin.firestore.FieldValue.serverTimestamp();
+        result.emailId = emailId;
+      } else {
+        const emailId = await sendOrderConfirmation(orderId, order, `order-confirmation-${idempotencyKey}`);
+        updates.resendEmailStatus = "sent";
+        updates.resendEmailId = emailId;
+        updates.resendEmailError = admin.firestore.FieldValue.delete();
+        updates.resendEmailRetriedAt = admin.firestore.FieldValue.serverTimestamp();
+        result.emailId = emailId;
+      }
+      result.notificationType = notificationType;
     }
 
     updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
@@ -1217,25 +1318,25 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    const shouldProcess = await claimStripeEvent(event);
-    if (!shouldProcess) {
+    const claim = await claimStripeEvent(event);
+    if (!claim.shouldProcess) {
       return res.json({ received: true, duplicate: true });
     }
 
     try {
       if (event.type === "checkout.session.completed") {
         const session = event.data.object as Stripe.Checkout.Session;
-        await handleSuccessfulCheckout(session);
+        await handleSuccessfulCheckout(session, event);
       }
 
       if (event.type === "checkout.session.async_payment_succeeded") {
         const session = event.data.object as Stripe.Checkout.Session;
-        await handleSuccessfulCheckout(session);
+        await handleSuccessfulCheckout(session, event);
       }
 
       if (event.type === "checkout.session.async_payment_failed") {
         const session = event.data.object as Stripe.Checkout.Session;
-        await handleFailedCheckout(session);
+        await handleFailedCheckout(session, event);
       }
 
       if (event.type === "checkout.session.expired") {
@@ -1257,11 +1358,11 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
         await recordDispute(dispute, event.type);
       }
 
-      await markStripeEventProcessed(event);
-      res.json({ received: true });
+      const finalized = await markStripeEventProcessed(event, claim.processingToken);
+      res.json({ received: true, superseded: !finalized });
     } catch (error) {
       console.error("Stripe Webhook Processing Error:", error);
-      await markStripeEventFailed(event, error);
+      await markStripeEventFailed(event, claim.processingToken, error);
       res.status(500).json({ error: "Webhook processing failed." });
     }
   });
@@ -1786,7 +1887,46 @@ async function handleExpiredCheckout(session: Stripe.Checkout.Session) {
   await releaseInventoryReservation(reservationId, "checkout_expired", session.id);
 }
 
-async function handleFailedCheckout(session: Stripe.Checkout.Session) {
+async function recordCheckoutPaymentEvent(
+  event: Stripe.Event,
+  session: Stripe.Checkout.Session,
+  outcome: "awaiting_payment" | "paid" | "failed"
+) {
+  await db.collection("stripe_payment_events").doc(event.id).set({
+    type: event.type,
+    outcome,
+    stripeEventId: event.id,
+    stripeSessionId: session.id,
+    stripePaymentIntentId:
+      typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || "",
+    pendingOrderId: session.metadata?.pendingOrderId || "",
+    reservationId: session.metadata?.reservationId || session.metadata?.pendingOrderId || "",
+    paymentStatus: session.payment_status || "unpaid",
+    stripeCreatedAt: admin.firestore.Timestamp.fromMillis(event.created * 1000),
+    recordedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+}
+
+async function markPendingOrderAwaitingPayment(session: Stripe.Checkout.Session) {
+  const pendingOrderId = session.metadata?.pendingOrderId;
+  if (!pendingOrderId) return;
+  const pendingOrderRef = db.collection("pending_orders").doc(pendingOrderId);
+  await db.runTransaction(async transaction => {
+    const pendingOrderSnap = await transaction.get(pendingOrderRef);
+    const paymentStatus = pendingOrderSnap.data()?.paymentStatus;
+    if (["paid", "failed", "refunded", "partially_refunded"].includes(paymentStatus)) return;
+    transaction.set(pendingOrderRef, {
+      status: "awaiting_payment",
+      paymentStatus: session.payment_status || "unpaid",
+      stripeSessionId: session.id,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
+}
+
+async function handleFailedCheckout(session: Stripe.Checkout.Session, event: Stripe.Event) {
+  await recordCheckoutPaymentEvent(event, session, "failed");
   const reservationId = session.metadata?.reservationId || session.metadata?.pendingOrderId;
   if (!reservationId) return;
   await releaseInventoryReservation(reservationId, "async_payment_failed", session.id);
@@ -1881,13 +2021,46 @@ async function recordDispute(dispute: Stripe.Dispute, eventType: string) {
   );
 }
 
-async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
+async function completePaidOrderEffects(orderId: string) {
+  const orderRef = db.collection("orders").doc(orderId);
+  let orderSnap = await orderRef.get();
+  if (!orderSnap.exists || orderSnap.data()?.fulfillmentStatus === "needs_manual_intervention") return;
+  await recordPaidOrderAnalyticsOnce(orderId);
+  orderSnap = await orderRef.get();
+  if (!orderSnap.exists || orderSnap.data()?.resendEmailStatus === "sent") return;
+
+  try {
+    const emailId = await sendOrderConfirmation(
+      orderId,
+      orderSnap.data()!,
+      `checkout-confirmation-${orderId}`
+    );
+    await orderRef.update({
+      resendEmailStatus: "sent",
+      resendEmailId: emailId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (emailError) {
+    console.error("Email Error:", emailError);
+    await orderRef.update({
+      resendEmailStatus: "failed",
+      resendEmailError: emailError instanceof Error ? emailError.message : String(emailError),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+}
+
+async function handleSuccessfulCheckout(session: Stripe.Checkout.Session, event: Stripe.Event) {
   const orderId = session.id;
   const orderRef = db.collection("orders").doc(orderId);
 
   // Check for idempotency
   const orderDoc = await orderRef.get();
-  if (orderDoc.exists) return;
+  if (orderDoc.exists) {
+    await recordCheckoutPaymentEvent(event, session, "paid");
+    await completePaidOrderEffects(orderId);
+    return;
+  }
 
   const pendingOrderId = session.metadata?.pendingOrderId;
   if (!pendingOrderId) {
@@ -1896,12 +2069,12 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
   }
 
   if (session.payment_status !== "paid") {
-    await db.collection("pending_orders").doc(pendingOrderId).set({
-      status: "awaiting_payment", paymentStatus: session.payment_status || "unpaid", stripeSessionId: session.id,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
+    await recordCheckoutPaymentEvent(event, session, "awaiting_payment");
+    await markPendingOrderAwaitingPayment(session);
     return;
   }
+
+  await recordCheckoutPaymentEvent(event, session, "paid");
 
   const pendingOrderRef = db.collection("pending_orders").doc(pendingOrderId);
   const pendingOrderSnap = await pendingOrderRef.get();
@@ -1953,17 +2126,6 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
 
   try {
     await commitInventoryReservation(session.metadata?.reservationId || pendingOrderId, orderId, orderBase);
-    await pendingOrderRef.set({
-      customerName, customerPhone, shippingAddress, stripeSessionId: session.id,
-      stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || "",
-      subtotalAmount, shippingAmount, taxAmount, totalAmount: total, shippingRateId: selectedShipping.shippingRate,
-      shippingMethod: selectedShipping.displayName, completedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
-    await incrementAnalyticsDaily(getDateKey(), {
-      paidOrders: 1,
-      revenue: total,
-      unitsSold: orderItems.reduce((sum, item) => sum + item.quantity, 0),
-    });
   } catch (error: any) {
     console.error("Order Transaction Error:", error.message);
 
@@ -2015,31 +2177,13 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session) {
     return; // Stop execution, don't send confirmation to user yet
   }
 
-  // Send Confirmation Email
-  try {
-    const orderEmailResult = await resend.emails.send({
-      from: ORDERS_EMAIL_FROM,
-      to: customerEmail,
-      subject: `Order Confirmation #${orderId.slice(-6).toUpperCase()}`,
-      html: buildOrderEmailHtml({
-        shippingAddress,
-        customerName,
-        orderId,
-        items: orderItems,
-        subtotalAmount,
-        shippingAmount,
-        taxAmount,
-        totalAmount: total,
-      }),
-    });
-    await orderRef.update({ resendEmailStatus: "sent", resendEmailId: orderEmailResult.data?.id || "" });
-  } catch (emailError) {
-    console.error("Email Error:", emailError);
-    await orderRef.update({
-      resendEmailStatus: "failed",
-      resendEmailError: emailError instanceof Error ? emailError.message : String(emailError),
-    });
-  }
+  await pendingOrderRef.set({
+    customerName, customerPhone, shippingAddress, stripeSessionId: session.id,
+    stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || "",
+    subtotalAmount, shippingAmount, taxAmount, totalAmount: total, shippingRateId: selectedShipping.shippingRate,
+    shippingMethod: selectedShipping.displayName, completedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await completePaidOrderEffects(orderId);
 }
 
 if (!process.env.VERCEL) {

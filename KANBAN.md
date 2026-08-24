@@ -209,23 +209,7 @@ This board is the working queue for website development. Keep cards actionable e
 - **Verification:**
   - Test shipment, delivery, delay, exception, email-provider failure, and webhook replay scenarios.
   - Verify links and order details in rendered emails on desktop and mobile clients.
-- **Notes / Links:** Extend the order-confirmation email infrastructure in `server.ts`; coordinate with WEB-010 and WEB-020.
-
-### WEB-015 - Complete Stripe Payment Event Handling
-
-- **Priority:** High
-- **Area:** checkout
-- **Goal:** Fulfill only confirmed payments and correctly handle delayed payment success or failure.
-- **Acceptance Criteria:**
-  - Webhooks handle `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and `checkout.session.async_payment_failed`.
-  - A Checkout Session becomes fulfillable only when its payment status is paid.
-  - Delayed success creates/updates the order and inventory exactly once; delayed failure releases reservations and records the failure.
-  - Webhook claim processing can safely recover a genuinely stale `processing` event rather than suppressing it indefinitely.
-  - Stripe CLI fixtures cover duplicate, out-of-order, delayed-success, and delayed-failure events.
-- **Verification:**
-  - Run Stripe CLI webhook tests and reconcile resulting orders, pending orders, reservations, inventory movements, and emails.
-  - Run `npm run lint` and `npm run build`.
-- **Notes / Links:** Stripe recommends webhook-driven fulfillment for both immediate and delayed payment methods. Relevant code is in `server.ts`.
+- **Notes / Links:** Label creation now sends carrier, tracking, shipped items, and estimated delivery, and the admin retry control targets a failed shipment email before the original confirmation. Carrier delivery/delay/exception webhooks and their replay verification remain. Extend the order-confirmation email infrastructure in `server.ts`; coordinate with WEB-010 and WEB-020.
 
 ### WEB-024 - Fix Checkout Newsletter Consent and Actionable Errors
 
@@ -313,6 +297,39 @@ This board is the working queue for website development. Keep cards actionable e
 No cards currently in progress.
 
 ## Review / Verify
+
+### WEB-030 - Prevent Admin Sidebar and Orders Layout Clipping
+
+- **Priority:** High
+- **Area:** admin
+- **Goal:** Keep the admin navigation readable and the Orders workspace contained within the viewport at desktop and compact widths.
+- **Acceptance Criteria:**
+  - The desktop sidebar retains its intended width instead of shrinking when Orders content is wide.
+  - Compact screens use an icon-only sidebar with accessible labels rather than clipping navigation text.
+  - The admin header and Orders list/detail grid wrap within the remaining viewport without horizontal page overflow.
+  - Long customer names and email addresses truncate within order cards instead of widening the grid.
+- **Verification:**
+  - TypeScript validation passed with `tsc --noEmit` using the bundled workspace Node runtime.
+  - Production build passed; the existing large-chunk warning remains.
+  - Post-deployment browser checks remain at compact, standard desktop, and wide desktop widths.
+- **Notes / Links:** Added fixed flex sizing and responsive sidebar/header/content behavior in `src/pages/Admin.tsx`, plus min-width containment in `src/components/admin/OrdersView.tsx`. Discovered from the clipped Orders screenshot.
+
+### WEB-015 - Complete Stripe Payment Event Handling
+
+- **Priority:** High
+- **Area:** checkout
+- **Goal:** Fulfill only confirmed payments and correctly handle delayed payment success or failure.
+- **Acceptance Criteria:**
+  - Webhooks handle `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and `checkout.session.async_payment_failed`.
+  - A Checkout Session becomes fulfillable only when its payment status is paid.
+  - Delayed success creates/updates the order and inventory exactly once; delayed failure releases reservations and records the failure.
+  - Webhook claim processing can safely recover a genuinely stale `processing` event rather than suppressing it indefinitely.
+  - Stripe CLI fixtures cover duplicate, out-of-order, delayed-success, and delayed-failure events.
+- **Verification:**
+  - TypeScript validation passed with `tsc --noEmit` using the bundled workspace Node runtime.
+  - Production build passed; the existing large-chunk warning remains.
+  - Live Stripe CLI duplicate, out-of-order, delayed-success, delayed-failure, and stale-claim checks remain pending configured sandbox services.
+- **Notes / Links:** Added expiring event-processing leases with ownership tokens, terminal-state guards, an explicit checkout payment-event audit trail, a transactional analytics marker, and Resend idempotency for confirmation emails. See `server.ts` and `docs/stripe-payment-events.md`.
 
 ### WEB-029 - Create and Integrate the Lightning-B Brand System
 
@@ -429,7 +446,7 @@ No cards currently in progress.
   - `npm.cmd run lint` passed.
   - `npm.cmd run build` passed; the existing large-chunk warning remains.
   - Live Shippo test-mode checks for valid, corrected, invalid, and repeated purchases remain pending configured `SHIPPO_API_TOKEN` and sender values.
-- **Notes / Links:** Shippo is the selected provider. Added the guided quote/purchase UI, authenticated server routes, address correction confirmation, persisted quote claims, recoverable purchase exceptions, stored label/tracking/cost data, automatic shipment email, and `docs/shippo-fulfillment.md`.
+- **Notes / Links:** Shippo is the selected provider. Added the guided quote/purchase UI, a server-enforced Pack → Validate → Purchase sequence, authenticated server routes, address correction confirmation, persisted quote claims, recoverable purchase exceptions, stored label/tracking/cost data, automatic shipment email, and `docs/shippo-fulfillment.md`.
 
 ### WEB-009 - Route Fulfillment Changes Through Authenticated Server APIs
 

@@ -37,6 +37,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
     [orders, selectedOrderId]
   );
   const normalizedSearchTerm = searchTerm.trim();
+  const selectedOrderStatus = selectedOrder?.fulfillmentStatus || selectedOrder?.status || 'pending';
+  const canPackSelectedOrder = ['pending', 'processing', 'needs_manual_intervention'].includes(selectedOrderStatus);
+  const canCancelSelectedOrder = ['pending', 'processing', 'packed', 'needs_manual_intervention'].includes(selectedOrderStatus);
+  const retryNotificationType = selectedOrder?.shipmentEmailStatus === 'failed' ? 'shipment' : 'confirmation';
 
   useEffect(() => {
     if (!orders.length) {
@@ -99,7 +103,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
   };
 
   return (
-    <div className="space-y-10">
+    <div className="min-w-0 space-y-10">
       <ReservationPanel />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="space-y-1">
@@ -149,7 +153,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-10">
-        <div className="xl:col-span-2 card-premium overflow-hidden">
+        <div className="min-w-0 xl:col-span-2 card-premium overflow-hidden">
           <div className="max-h-[760px] overflow-y-auto divide-y divide-white/5">
             {orders.map((order) => {
               const orderStatus = order.fulfillmentStatus || order.status || 'pending';
@@ -167,10 +171,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                   )}
                 >
                   <div className="flex justify-between items-start gap-4">
-                    <div className="space-y-2">
+                    <div className="min-w-0 space-y-2">
                       <p className="text-xs font-mono text-brand-gold/60 tracking-wider">#{order.id.slice(0, 8).toUpperCase()}</p>
-                      <p className="text-sm text-brand-parchment font-black">{order.customerName || order.customerEmail}</p>
-                      <p className="text-[10px] text-brand-parchment/40 font-medium">{order.customerEmail}</p>
+                      <p className="truncate text-sm text-brand-parchment font-black">{order.customerName || order.customerEmail}</p>
+                      <p className="truncate text-[10px] text-brand-parchment/40 font-medium">{order.customerEmail}</p>
                       <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/25 font-black">
                         Payment: {paymentStatus.replaceAll('_', ' ')}
                       </p>
@@ -201,7 +205,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
           </div>
         </div>
 
-        <div className="xl:col-span-3">
+        <div className="min-w-0 xl:col-span-3">
           {selectedOrder ? (
             <div className="card-premium h-full overflow-hidden">
               <div className="p-10 border-b border-white/5 bg-white/[0.01] flex flex-col lg:flex-row justify-between gap-8">
@@ -215,16 +219,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                 <div className="space-y-3 max-w-sm">
                   <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Fulfillment Actions</p>
                   <div className="flex flex-wrap gap-2">
-                    {(['pack', 'cancel'] as const).map((operation) => (
+                    {canPackSelectedOrder && (
                       <button
-                        key={operation}
-                        onClick={() => executeCommand(operation)}
+                        onClick={() => executeCommand('pack')}
                         disabled={activeCommand !== null}
                         className="px-4 py-2 border border-brand-gold/20 text-[9px] uppercase tracking-[0.18em] font-black text-brand-gold hover:bg-brand-gold/10 disabled:opacity-40"
                       >
-                        {activeCommand === operation ? 'Working...' : operation}
+                        {activeCommand === 'pack' ? 'Working...' : 'Pack'}
                       </button>
-                    ))}
+                    )}
+                    {selectedOrderStatus === 'packed' && <span className="px-4 py-2 border border-green-400/20 text-[9px] uppercase tracking-[0.18em] font-black text-green-300">Ready for Label</span>}
+                    {canCancelSelectedOrder && (
+                      <button onClick={() => executeCommand('cancel')} disabled={activeCommand !== null} className="px-4 py-2 border border-red-400/20 text-[9px] uppercase tracking-[0.18em] font-black text-red-300 hover:bg-red-400/10 disabled:opacity-40">
+                        {activeCommand === 'cancel' ? 'Working...' : 'Cancel'}
+                      </button>
+                    )}
                   </div>
                   <p className="text-xs text-brand-parchment/40">Invalid transitions are rejected by the server.</p>
                 </div>
@@ -343,6 +352,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                 <div className="space-y-1">
                   <p className="text-[10px] uppercase tracking-[0.25em] text-brand-gold/40 font-black">Payment & Notifications</p>
                   <p className="text-sm text-brand-parchment/40">Refunds require a reason and cannot exceed the remaining paid amount.</p>
+                  <p className="text-xs text-brand-parchment/35">Order confirmation: {selectedOrder.resendEmailStatus || 'unknown'}{selectedOrder.labelUrl ? ` · Shipment email: ${selectedOrder.shipmentEmailStatus || 'unknown'}` : ''}</p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <input value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} type="number" min="0.01" step="0.01" placeholder="Refund amount" className="input-premium py-3" />
@@ -362,11 +372,11 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                     {activeCommand === 'refund' ? 'Refunding...' : 'Issue Refund'}
                   </button>
                   <button
-                    onClick={() => executeCommand('notification-retry')}
+                    onClick={() => executeCommand('notification-retry', { notificationType: retryNotificationType })}
                     disabled={activeCommand !== null}
                     className="px-5 py-3 rounded-sm border border-brand-gold/30 text-brand-gold text-[10px] uppercase tracking-[0.2em] font-black hover:bg-brand-gold/10 disabled:opacity-40"
                   >
-                    {activeCommand === 'notification-retry' ? 'Sending...' : 'Retry Confirmation Email'}
+                    {activeCommand === 'notification-retry' ? 'Sending...' : retryNotificationType === 'shipment' ? 'Retry Shipment Email' : 'Retry Confirmation Email'}
                   </button>
                 </div>
               </div>

@@ -235,21 +235,21 @@ export const Admin: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-brand-black flex">
-      <aside className="w-72 border-r border-white/5 flex flex-col editorial-surface-dark relative overflow-hidden z-40">
+    <div className="min-h-screen bg-brand-black flex overflow-x-hidden">
+      <aside className="w-20 lg:w-72 shrink-0 border-r border-white/5 flex flex-col editorial-surface-dark relative overflow-hidden z-40 transition-[width] duration-300">
         <div className="absolute inset-0 surface-vignette-dark opacity-70 pointer-events-none" />
-        <div className="p-10 border-b border-white/5 flex flex-col items-center text-center">
+        <div className="px-3 py-6 lg:p-10 border-b border-white/5 flex flex-col items-center text-center">
           <Link to="/" className="group relative">
             <div className="absolute -inset-4 bg-brand-gold/5 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-            <img src={logo} alt="Boanerges" className="h-20 w-auto object-contain group-hover:scale-105 transition-all duration-700 relative z-10 drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]" referrerPolicy="no-referrer" />
+            <img src={logo} alt="Boanerges" className="h-10 lg:h-20 max-w-full object-contain group-hover:scale-105 transition-all duration-700 relative z-10 drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]" referrerPolicy="no-referrer" />
           </Link>
-          <div className="mt-4 space-y-1">
+          <div className="hidden lg:block mt-4 space-y-1">
             <p className="text-[10px] uppercase tracking-[0.4em] text-brand-gold font-black">Admin Portal</p>
             <div className="h-0.5 w-8 bg-brand-gold/30 mx-auto rounded-full" />
           </div>
         </div>
 
-        <nav className="flex-grow p-6 space-y-1.5">
+        <nav className="flex-grow px-2 py-6 lg:p-6 space-y-1.5">
           {[
             { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
             { id: 'analytics', label: 'Analytics', icon: ChartNoAxesCombined },
@@ -261,39 +261,40 @@ export const Admin: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as AdminTab)}
-              className={`w-full flex items-center gap-4 px-5 py-4 rounded-sm text-[10px] uppercase tracking-[0.25em] font-black transition-all duration-500 relative group overflow-hidden ${
+              title={tab.label}
+              className={`w-full flex items-center justify-center lg:justify-start gap-4 px-3 lg:px-5 py-4 rounded-sm text-[10px] uppercase tracking-[0.25em] font-black transition-all duration-500 relative group overflow-hidden ${
                 activeTab === tab.id ? 'text-brand-black' : 'text-brand-parchment/30 hover:text-brand-parchment'
               }`}
             >
               {activeTab === tab.id && <motion.div layoutId="activeTab" className="absolute inset-0 bg-brand-gold shadow-lg shadow-brand-gold/20" transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }} />}
-              <div className="relative z-10 flex items-center gap-4">
+              <div className="relative z-10 flex min-w-0 items-center gap-4">
                 <tab.icon size={16} strokeWidth={activeTab === tab.id ? 2.5 : 1.5} className="transition-all duration-500 group-hover:scale-110" />
-                <span>{tab.label}</span>
+                <span className="hidden lg:inline whitespace-nowrap">{tab.label}</span>
               </div>
             </button>
           ))}
         </nav>
 
-        <div className="p-8 border-t border-white/5 space-y-6">
-          <div className="flex items-center gap-4 px-2 relative z-10 group cursor-default">
+        <div className="px-2 py-5 lg:p-8 border-t border-white/5 space-y-6">
+          <div className="flex items-center justify-center lg:justify-start gap-4 lg:px-2 relative z-10 group cursor-default">
             <div className="relative">
               <div className="absolute -inset-1 bg-brand-gold/20 rounded-full blur opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <img src={user?.photoURL || ''} className="w-11 h-11 rounded-full border border-white/10 shadow-xl relative z-10" alt="Admin" />
+              <img src={user?.photoURL || ''} className="w-9 h-9 lg:w-11 lg:h-11 rounded-full border border-white/10 shadow-xl relative z-10" alt="Admin" />
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="hidden lg:block flex-1 min-w-0">
               <p className="text-[11px] text-brand-parchment font-black tracking-wide leading-tight">{user?.displayName}</p>
               <p className="text-[9px] text-brand-gold/50 uppercase tracking-[0.2em] font-bold">Master Admin</p>
             </div>
           </div>
-          <button onClick={handleLogout} className="w-full flex items-center gap-4 px-4 py-4 text-[10px] uppercase tracking-[0.2em] font-black text-red-400/60 hover:text-red-400 hover:bg-red-400/5 rounded-sm transition-all duration-500 group">
+          <button onClick={handleLogout} title="Sign Out" className="w-full flex items-center justify-center lg:justify-start gap-4 px-3 lg:px-4 py-4 text-[10px] uppercase tracking-[0.2em] font-black text-red-400/60 hover:text-red-400 hover:bg-red-400/5 rounded-sm transition-all duration-500 group">
             <LogOut size={16} className="group-hover:-translate-x-1 transition-transform" />
-            Sign Out
+            <span className="hidden lg:inline whitespace-nowrap">Sign Out</span>
           </button>
         </div>
       </aside>
 
-      <main className="flex-grow overflow-y-auto editorial-surface-dark">
-        <header className="h-28 border-b border-white/5 flex items-center justify-between px-16 bg-brand-black/90 backdrop-blur-2xl sticky top-0 z-30">
+      <main className="min-w-0 flex-1 overflow-y-auto editorial-surface-dark">
+        <header className="h-28 border-b border-white/5 flex items-center justify-between gap-6 px-6 lg:px-10 xl:px-16 bg-brand-black/90 backdrop-blur-2xl sticky top-0 z-30">
           <div className="flex items-center gap-6">
             <div className="w-1.5 h-10 bg-brand-gold rounded-full shadow-[0_0_15px_rgba(197,160,89,0.5)]" />
             <div className="space-y-0.5">
@@ -302,9 +303,9 @@ export const Admin: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-8">
-            <div className="relative group">
+            <div className="relative group hidden lg:block">
               <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-brand-parchment/20 group-focus-within:text-brand-gold transition-colors" size={14} />
-              <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} type="text" placeholder="Search resources..." className="bg-white/5 border border-white/10 rounded-full py-3 pl-14 pr-8 text-[11px] uppercase tracking-widest text-brand-parchment outline-none focus:border-brand-gold/50 focus:bg-white/10 transition-all duration-500 w-80 placeholder:text-brand-parchment/10" />
+              <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} type="text" placeholder="Search resources..." className="bg-white/5 border border-white/10 rounded-full py-3 pl-14 pr-8 text-[11px] uppercase tracking-widest text-brand-parchment outline-none focus:border-brand-gold/50 focus:bg-white/10 transition-all duration-500 w-56 xl:w-80 placeholder:text-brand-parchment/10" />
             </div>
             <button onClick={fetchData} className="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center text-brand-parchment/40 hover:text-brand-gold hover:border-brand-gold/50 hover:bg-white/5 transition-all duration-500 group">
               {isRefreshing ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} className="group-hover:rotate-180 transition-transform duration-700" />}
@@ -312,7 +313,7 @@ export const Admin: React.FC = () => {
           </div>
         </header>
 
-        <div className="p-12">
+        <div className="min-w-0 p-6 lg:p-10 xl:p-12">
           {activeTab === 'dashboard' && (
             <DashboardView
               stats={stats}
