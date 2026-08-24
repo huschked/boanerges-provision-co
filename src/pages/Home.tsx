@@ -52,7 +52,7 @@ export const Home: React.FC = () => {
   return (
     <div className="animate-fade-in">
       {/* Hero Section */}
-      <section className="relative h-screen flex items-center justify-center overflow-hidden bg-brand-black">
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-brand-black pt-40 pb-24 md:pt-52 md:pb-32">
         <div className="absolute inset-0 z-0">
           <img 
             src={heroImage} 

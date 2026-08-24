@@ -314,6 +314,37 @@ No cards currently in progress.
 
 ## Review / Verify
 
+### WEB-027 - Prevent Home Hero and Header Overlap
+
+- **Priority:** High
+- **Area:** storefront
+- **Goal:** Keep the fixed header logo visually separate from the home hero copy at desktop and short-viewport sizes.
+- **Acceptance Criteria:**
+  - The hero reserves enough top space for the unscrolled announcement bar and header logo.
+  - The hero eyebrow and headline do not overlap the logo.
+  - Short viewports expand and scroll instead of clipping the oversized hero copy.
+  - Mobile and wide desktop hero alignment remains centered and balanced.
+- **Verification:**
+  - TypeScript `--noEmit` check passed.
+  - Production Vite build passed; the existing large-chunk warning remains.
+  - Browser-check the home page at mobile, standard desktop, and short desktop viewport heights after deployment.
+- **Notes / Links:** Discovered during Stripe checkout visual verification. The home hero used a fixed `h-screen` with no explicit header safe area.
+
+### WEB-026 - Fix Checkout Success Header Contrast
+
+- **Priority:** High
+- **Area:** checkout
+- **Goal:** Keep the Boanerges logo and navigation legible when Stripe redirects customers to the dark checkout-success page.
+- **Acceptance Criteria:**
+  - `/checkout/success` and legacy checkout-success routes use the dark-header presentation before scrolling.
+  - Header navigation, cart icon, and logo remain legible against the page background.
+  - Existing light-page and scrolled-header treatments remain unchanged.
+- **Verification:**
+  - TypeScript `--noEmit` check passed.
+  - Production Vite build passed; the existing large-chunk warning remains.
+  - Browser-check the paid, verifying, and payment-review states after deployment.
+- **Notes / Links:** Discovered during a successful Stripe Tax sandbox checkout. The route was omitted from `Header.tsx`'s dark-page classification.
+
 ### WEB-025 - Improve Confirmation Email Compatibility
 
 - **Priority:** High
