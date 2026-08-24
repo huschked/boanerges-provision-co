@@ -118,6 +118,15 @@
     @apply w-full bg-white/5 border border-white/10 rounded-sm px-4 py-3 text-brand-parchment placeholder:text-brand-parchment/20 focus:border-brand-gold/50 focus:bg-white/10 transition-all duration-500;
   }
 
+  select.input-premium {
+    color-scheme: dark;
+  }
+
+  select.input-premium option {
+    background-color: var(--color-brand-charcoal);
+    color: var(--color-brand-parchment);
+  }
+
   .input-light {
     @apply w-full bg-brand-black/5 border border-brand-black/10 rounded-sm px-4 py-3 text-brand-black placeholder:text-brand-black/30 focus:border-brand-gold/50 focus:bg-brand-black/10 transition-all duration-500;
   }

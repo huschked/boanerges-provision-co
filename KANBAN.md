@@ -298,6 +298,21 @@ No cards currently in progress.
 
 ## Review / Verify
 
+### WEB-032 - Improve Admin Dropdown Contrast
+
+- **Priority:** High
+- **Area:** admin/accessibility
+- **Goal:** Keep native dropdown choices readable against the dark admin form styling.
+- **Acceptance Criteria:**
+  - Edit Provision category choices use a dark background with high-contrast text.
+  - Other `.input-premium` selects in Analytics, Messages, and Shippo inherit the same readable treatment.
+  - Public light-form controls remain unchanged.
+- **Verification:**
+  - TypeScript validation passed with `tsc --noEmit` using the bundled workspace Node runtime.
+  - Production build passed; the existing large-chunk warning remains.
+  - Post-deployment browser verification remains for the Edit Provision category dropdown on Windows.
+- **Notes / Links:** Added a dark native control color scheme and explicit option colors for `select.input-premium` in `src/index.css`.
+
 ### WEB-031 - End Admin Authentication When Leaving the Portal
 
 - **Priority:** High
