@@ -540,14 +540,37 @@ function getPublicAppUrl(fallback?: string) {
   return (process.env.APP_URL || process.env.SHARED_APP_URL || fallback || "").replace(/\/$/, "");
 }
 
+function getPublicEmailAssetUrl(pathname: string) {
+  const baseUrl = (process.env.SHARED_APP_URL || process.env.APP_URL || "").replace(/\/$/, "");
+  return /^https:\/\//i.test(baseUrl) ? `${baseUrl}${pathname}` : "";
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function buildAddressMarkup(address: ReturnType<typeof getShippingAddress>) {
   if (!address) {
     return `<p style="margin:0;color:#b7ae9c;">Shipping details will appear once the carrier label is created.</p>`;
   }
 
+  const cityRegion = [
+    [address.city, address.state].filter(Boolean).join(", "),
+    address.postalCode,
+  ].filter(Boolean).join(" ");
+  const addressLines = [address.line1, address.line2, cityRegion, address.country]
+    .filter(Boolean)
+    .map(escapeHtml)
+    .join("<br />");
+
   return `
-    <p style="margin:0;color:#f4ecd8;font-weight:600;">${address.name || "Shipping Recipient"}</p>
-    <p style="margin:4px 0 0;color:#b7ae9c;">${[address.line1, address.line2, [address.city, address.state, address.postalCode].filter(Boolean).join(", "), address.country].filter(Boolean).join("<br />")}</p>
+    <p style="margin:0;color:#f4ecd8;font-weight:600;">${escapeHtml(address.name || "Shipping Recipient")}</p>
+    <p style="margin:4px 0 0;color:#b7ae9c;">${addressLines}</p>
   `;
 }
 
@@ -568,10 +591,11 @@ function buildEmailLayout({
   ctaLabel?: string;
   ctaHref?: string;
 }) {
-  const appUrl = getPublicAppUrl();
-  const logoMarkup = appUrl
-    ? `<img src="${appUrl}/email-brand-logo.png" alt="Boanerges Provision Co." width="260" style="display:block;width:260px;max-width:100%;height:auto;margin:0 auto 24px;" />`
-    : `<div style="text-align:center;color:#c5a059;font-family:Georgia,serif;font-size:34px;font-weight:700;letter-spacing:1px;margin-bottom:24px;">Boanerges Provision Co.</div>`;
+  const logoUrl = getPublicEmailAssetUrl("/email-brand-logo.png");
+  const logoMarkup = `
+    ${logoUrl ? `<img src="${logoUrl}" alt="" width="220" style="display:block;width:220px;max-width:100%;height:auto;margin:0 auto 12px;" />` : ""}
+    <div style="text-align:center;color:#c5a059;font-family:Georgia,serif;font-size:28px;font-weight:700;letter-spacing:1px;margin-bottom:24px;">Boanerges Provision Co.</div>
+  `;
 
   const ctaMarkup =
     ctaLabel && ctaHref
@@ -648,8 +672,9 @@ function buildOrderEmailHtml({
       (item) =>
         `
           <tr>
-            <td style="padding:12px 0;color:#f4ecd8;font-size:15px;font-weight:600;">${item.name}</td>
-            <td style="padding:12px 0;color:#b7ae9c;font-size:14px;text-align:center;">${item.quantity}</td>
+            <td style="padding:12px 8px 12px 0;color:#f4ecd8;font-size:15px;font-weight:600;">${escapeHtml(item.name)}</td>
+            <td style="padding:12px 8px;color:#b7ae9c;font-size:14px;text-align:right;white-space:nowrap;">$${item.price.toFixed(2)}</td>
+            <td style="padding:12px 8px;color:#b7ae9c;font-size:14px;text-align:center;">${item.quantity}</td>
             <td style="padding:12px 0;color:#c5a059;font-size:14px;text-align:right;font-weight:700;">$${(item.price * item.quantity).toFixed(2)}</td>
           </tr>
         `
@@ -658,7 +683,7 @@ function buildOrderEmailHtml({
 
   return buildEmailLayout({
     eyebrow: "Order Confirmed",
-    title: `Thank you${customerName ? `, ${customerName}` : ""}.`,
+    title: `Thank you${customerName ? `, ${escapeHtml(customerName)}` : ""}.`,
     intro: "Your provisions are now in our fulfillment queue. We have received payment successfully and we will follow up again as soon as your order ships.",
     ctaLabel: "Continue Shopping",
     ctaHref: `${getPublicAppUrl() || "https://boanerges-provision-co.vercel.app"}/shop`,
@@ -679,19 +704,24 @@ function buildOrderEmailHtml({
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
             <thead>
               <tr>
-                <th align="left" style="padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.08);color:#8e8576;font-size:11px;text-transform:uppercase;letter-spacing:0.18em;">Provision</th>
-                <th align="center" style="padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.08);color:#8e8576;font-size:11px;text-transform:uppercase;letter-spacing:0.18em;">Qty</th>
-                <th align="right" style="padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.08);color:#8e8576;font-size:11px;text-transform:uppercase;letter-spacing:0.18em;">Total</th>
+                 <th align="left" width="40%" style="padding:0 8px 12px 0;border-bottom:1px solid rgba(255,255,255,0.08);color:#8e8576;font-size:11px;text-transform:uppercase;letter-spacing:0.12em;">Provision</th>
+                 <th align="right" width="20%" style="padding:0 8px 12px;border-bottom:1px solid rgba(255,255,255,0.08);color:#8e8576;font-size:11px;text-transform:uppercase;letter-spacing:0.12em;">Unit</th>
+                 <th align="center" width="14%" style="padding:0 8px 12px;border-bottom:1px solid rgba(255,255,255,0.08);color:#8e8576;font-size:11px;text-transform:uppercase;letter-spacing:0.12em;">Qty</th>
+                 <th align="right" width="26%" style="padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.08);color:#8e8576;font-size:11px;text-transform:uppercase;letter-spacing:0.12em;">Total</th>
               </tr>
             </thead>
             <tbody>${itemMarkup}</tbody>
           </table>
         </div>
         <div style="padding:20px;border:1px solid rgba(255,255,255,0.08);">
-          <div style="display:flex;justify-content:space-between;gap:16px;padding:6px 0;color:#b7ae9c;font-size:14px;"><span>Subtotal</span><strong style="color:#f4ecd8;">$${subtotalAmount.toFixed(2)}</strong></div>
-          <div style="display:flex;justify-content:space-between;gap:16px;padding:6px 0;color:#b7ae9c;font-size:14px;"><span>Shipping</span><strong style="color:#f4ecd8;">$${shippingAmount.toFixed(2)}</strong></div>
-          <div style="display:flex;justify-content:space-between;gap:16px;padding:6px 0;color:#b7ae9c;font-size:14px;"><span>Tax</span><strong style="color:#f4ecd8;">$${taxAmount.toFixed(2)}</strong></div>
-          <div style="display:flex;justify-content:space-between;gap:16px;padding:10px 0 0;margin-top:10px;border-top:1px solid rgba(255,255,255,0.08);color:#c5a059;font-size:18px;font-weight:700;"><span>Total</span><span>$${totalAmount.toFixed(2)}</span></div>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+            <tbody>
+              <tr><td style="padding:6px 0;color:#b7ae9c;font-size:14px;">Subtotal</td><td align="right" style="padding:6px 0;color:#f4ecd8;font-size:14px;font-weight:700;">$${subtotalAmount.toFixed(2)}</td></tr>
+              <tr><td style="padding:6px 0;color:#b7ae9c;font-size:14px;">Shipping</td><td align="right" style="padding:6px 0;color:#f4ecd8;font-size:14px;font-weight:700;">$${shippingAmount.toFixed(2)}</td></tr>
+              <tr><td style="padding:6px 0;color:#b7ae9c;font-size:14px;">Tax</td><td align="right" style="padding:6px 0;color:#f4ecd8;font-size:14px;font-weight:700;">$${taxAmount.toFixed(2)}</td></tr>
+              <tr><td style="padding:12px 0 0;border-top:1px solid rgba(255,255,255,0.08);color:#c5a059;font-size:18px;font-weight:700;">Total</td><td align="right" style="padding:12px 0 0;border-top:1px solid rgba(255,255,255,0.08);color:#c5a059;font-size:18px;font-weight:700;">$${totalAmount.toFixed(2)}</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     `,

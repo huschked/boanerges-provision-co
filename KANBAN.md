@@ -314,6 +314,22 @@ No cards currently in progress.
 
 ## Review / Verify
 
+### WEB-025 - Improve Confirmation Email Compatibility
+
+- **Priority:** High
+- **Area:** checkout
+- **Goal:** Make the order-confirmation email render clearly when remote images or modern CSS layout features are unsupported.
+- **Acceptance Criteria:**
+  - A visible brand wordmark remains when the logo image is unavailable or blocked.
+  - Order totals retain clear label/value alignment in common email clients.
+  - Shipping addresses use conventional city, state, and postal-code formatting.
+  - Order lines show unit price, quantity, and line total.
+- **Verification:**
+  - TypeScript `--noEmit` check passed.
+  - Production Vite build passed; the existing large-chunk warning remains.
+  - A new sandbox order remains to be inspected with remote images enabled and disabled.
+- **Notes / Links:** Discovered during the successful Stripe Tax sandbox checkout used to verify order creation and inventory commitment.
+
 ### WEB-011 - Add Inventory Reservations for Checkout
 
 - **Priority:** High
@@ -328,6 +344,7 @@ No cards currently in progress.
 - **Verification:**
   - `npm.cmd run lint` passed.
   - `npm.cmd run build` passed; the existing large-chunk warning remains.
+  - A Stripe Tax sandbox checkout completed successfully; the confirmation email was delivered, the order appeared in the admin portal, and Firestore inventory decreased by the purchased quantity.
   - Live concurrent checkout and Stripe webhook replay checks remain pending configured Firebase/Stripe test services.
 - **Notes / Links:** Added transactional product reservation counters, bounded Stripe Session expiry, idempotent commit/release events and movements, asynchronous failure release, actionable cart recovery, an admin exception/release panel, server-only reservation rules, and `docs/inventory-reservations.md`.
 
