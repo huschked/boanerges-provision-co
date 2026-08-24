@@ -36,7 +36,7 @@ export const About: React.FC = () => {
               </div>
               <div className="space-y-6 text-lg text-brand-earth/70 leading-relaxed font-light">
                 <p>
-                  Boanerges Provision Co. didn't start in a boardroom. It started in a garden, with a single habanero plant and a passion for the transformative power of flavor.
+                  Boanerges Provisions Co. didn't start in a boardroom. It started in a garden, with a single habanero plant and a passion for the transformative power of flavor.
                 </p>
                 <p>
                   We noticed that most seasonings were either too salty, too artificial, or lacked the nuance that a truly great dish deserves. We wanted something more—a finishing touch that respected the ingredients while adding a bold, refined edge.

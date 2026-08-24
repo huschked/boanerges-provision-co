@@ -172,11 +172,11 @@ const STANDARD_SHIPPING_AMOUNT = Number(process.env.STANDARD_SHIPPING_AMOUNT || 
 const DEFAULT_PRODUCT_TAX_CODE = process.env.STRIPE_PRODUCT_TAX_CODE || "txcd_99999999";
 const RESEND_AUDIENCE_ID = process.env.RESEND_AUDIENCE_ID || "";
 const ORDERS_EMAIL_FROM =
-  process.env.EMAIL_FROM_ORDERS || "Boanerges Provision Co <onboarding@resend.dev>";
+  process.env.EMAIL_FROM_ORDERS || "Boanerges Provisions Co <onboarding@resend.dev>";
 const SUPPORT_EMAIL_FROM =
-  process.env.EMAIL_FROM_SUPPORT || "Boanerges Provision Co <onboarding@resend.dev>";
+  process.env.EMAIL_FROM_SUPPORT || "Boanerges Provisions Co <onboarding@resend.dev>";
 const ADMIN_EMAIL_FROM =
-  process.env.EMAIL_FROM_ADMIN || "Boanerges Provision Co <onboarding@resend.dev>";
+  process.env.EMAIL_FROM_ADMIN || "Boanerges Provisions Co <onboarding@resend.dev>";
 const ADMIN_NOTIFICATION_EMAIL =
   process.env.ADMIN_EMAIL && EMAIL_REGEX.test(process.env.ADMIN_EMAIL)
     ? process.env.ADMIN_EMAIL
@@ -211,7 +211,7 @@ async function shippoRequest<T>(path: string, body: Record<string, unknown>): Pr
 
 function getShippoSenderAddress(): ShippoAddress {
   const address: ShippoAddress = {
-    name: process.env.SHIPPO_FROM_NAME || "Boanerges Provision Co",
+    name: process.env.SHIPPO_FROM_NAME || "Boanerges Provisions Co",
     street1: process.env.SHIPPO_FROM_STREET1 || "",
     street2: process.env.SHIPPO_FROM_STREET2 || "",
     city: process.env.SHIPPO_FROM_CITY || "",
@@ -594,7 +594,7 @@ function buildEmailLayout({
   const logoUrl = getPublicEmailAssetUrl("/email-brand-logo.png");
   const logoMarkup = `
     ${logoUrl ? `<img src="${logoUrl}" alt="" width="220" style="display:block;width:220px;max-width:100%;height:auto;margin:0 auto 12px;" />` : ""}
-    <div style="text-align:center;color:#c5a059;font-family:Georgia,serif;font-size:28px;font-weight:700;letter-spacing:1px;margin-bottom:24px;">Boanerges Provision Co.</div>
+    <div style="text-align:center;color:#c5a059;font-family:Georgia,serif;font-size:28px;font-weight:700;letter-spacing:1px;margin-bottom:24px;">Boanerges Provisions Co.</div>
   `;
 
   const ctaMarkup =
@@ -629,7 +629,7 @@ function buildNewsletterEmailHtml({ email }: { email: string }) {
   return buildEmailLayout({
     eyebrow: "Welcome to the Table",
     title: "You are in the inner circle now.",
-    intro: "Thanks for subscribing to Boanerges Provision Co. You will be first to hear about limited flavor releases, restocks, pairings, and artisan kitchen notes.",
+    intro: "Thanks for subscribing to Boanerges Provisions Co. You will be first to hear about limited flavor releases, restocks, pairings, and artisan kitchen notes.",
     ctaLabel: "Explore the Collection",
     ctaHref: `${getPublicAppUrl() || "https://boanerges-provision-co.vercel.app"}/shop`,
     body: `
@@ -1267,7 +1267,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
   });
 
   app.get("/email-brand-logo.png", (req, res) => {
-    res.sendFile(path.resolve(__dirname, "src/assets/BoanergesLogoTransparent.png"));
+    res.sendFile(path.resolve(__dirname, "src/assets/BoanergesLogoTransparent-v2.png"));
   });
 
   // Standard JSON parsing for other routes
@@ -1601,7 +1601,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
           const welcomeEmailResult = await resend.emails.send({
             from: ORDERS_EMAIL_FROM,
             to: email,
-            subject: "Welcome to Boanerges Provision Co.",
+            subject: "Welcome to Boanerges Provisions Co.",
             html: buildNewsletterEmailHtml({ email }),
           });
 

@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link, useLocation } from 'react-router-dom';
 import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
-import logo from '@/src/assets/BoanergesLogoTransparent.png';
+import logo from '@/src/assets/BoanergesLogoTransparent-v2.png';
+import monogram from '@/src/assets/brand/boanerges-monogram.png';
 
 export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -82,12 +83,20 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
 
           {/* Logo */}
           <Link to="/" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group z-50">
+            <img
+              src={monogram}
+              alt="Boanerges Provisions Co."
+              className={cn(
+                "md:hidden w-auto object-contain group-hover:scale-105 transition-all duration-500 drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]",
+                isScrolled ? "h-12" : "h-16"
+              )}
+            />
             <img 
               src={logo} 
-              alt="Boanerges Provision Co." 
+              alt="Boanerges Provisions Co."
               className={cn(
-                "w-auto max-w-[220px] md:max-w-[380px] object-contain group-hover:scale-105 transition-all duration-500 drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]",
-                isScrolled ? "h-12 md:h-16" : "h-16 md:h-20"
+                "hidden md:block w-auto max-w-[380px] object-contain group-hover:scale-105 transition-all duration-500 drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]",
+                isScrolled ? "h-16" : "h-20"
               )}
               referrerPolicy="no-referrer"
             />
@@ -149,9 +158,9 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
             <div className="mt-20 flex flex-col gap-8">
               <Link to="/" className="mb-4 inline-flex justify-center">
                 <img
-                  src={logo}
-                  alt="Boanerges Provision Co."
-                  className="h-20 w-auto object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]"
+                  src={monogram}
+                  alt="Boanerges Provisions Co."
+                  className="h-24 w-auto object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]"
                   referrerPolicy="no-referrer"
                 />
               </Link>

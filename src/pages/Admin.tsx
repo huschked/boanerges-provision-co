@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { Lock, LayoutDashboard, Package, ShoppingCart, Users, Mail, LogOut, Search, Loader2, RefreshCw, ChartNoAxesCombined } from 'lucide-react';
-import logo from '@/src/assets/BoanergesLogoTransparent.png';
+import logo from '@/src/assets/BoanergesLogoTransparent-v2.png';
 import { auth, db } from '@/src/lib/firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { collection, query, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';

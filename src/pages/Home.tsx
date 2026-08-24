@@ -218,7 +218,7 @@ export const Home: React.FC = () => {
                 </h2>
               </div>
               <p className="text-brand-parchment/60 text-lg leading-relaxed font-light">
-                At Boanerges Provision Co., we believe that flavor is a sacred experience. 
+                At Boanerges Provisions Co., we believe that flavor is a sacred experience.
                 Our salts aren't just seasonings; they are the result of patience, 
                 hand-selected ingredients, and a deep respect for the artisan tradition.
               </p>

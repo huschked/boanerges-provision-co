@@ -1,4 +1,4 @@
-# Boanerges Provision Co Website Kanban
+# Boanerges Provisions Co Website Kanban
 
 This board is the working queue for website development. Keep cards actionable enough that Codex or a human contributor can pick one up without digging through chat history.
 
@@ -313,6 +313,40 @@ This board is the working queue for website development. Keep cards actionable e
 No cards currently in progress.
 
 ## Review / Verify
+
+### WEB-029 - Create and Integrate the Lightning-B Brand System
+
+- **Priority:** High
+- **Area:** storefront
+- **Goal:** Turn the lightning-B label motif into a consistent secondary mark without overloading the primary horizontal wordmark.
+- **Acceptance Criteria:**
+  - The brand system includes detailed crest, simplified monogram, stacked lockup, gold-only, black-only, transparent PNG, and editable SVG assets.
+  - The simplified monogram remains recognizable at favicon and mobile-header sizes.
+  - Desktop header and email retain the horizontal wordmark; mobile header uses the monogram; footer uses the stacked lockup.
+  - Visible company-name references consistently use `Boanerges Provisions Co.`
+- **Verification:**
+  - Inspected the full-color detailed crest, simplified monogram, stacked lockup, and gold-only transparent assets at full resolution; alpha edges and small-mark silhouette are clean.
+  - TypeScript `--noEmit` check passed.
+  - Production Vite build passed; the existing large-chunk warning remains.
+  - Browser-check favicon, mobile header/menu, desktop header, footer, and admin/email branding after deployment.
+- **Notes / Links:** Generated from the label crest as a style reference using the built-in image-generation workflow, then normalized into a deterministic project asset suite.
+
+### WEB-028 - Update the Boanerges Provisions Co. Logo
+
+- **Priority:** High
+- **Area:** storefront
+- **Goal:** Use the correct plural company name consistently across the website and transactional email branding.
+- **Acceptance Criteria:**
+  - The logo reads `BOANERGES PROVISIONS CO.` exactly.
+  - The gold wordmark, rules, and lower ornament remain visually consistent with the existing brand.
+  - The asset retains a transparent background and remains legible on dark surfaces.
+  - Header, footer, admin, and email-logo surfaces use the updated asset.
+- **Verification:**
+  - Inspected the 1,092 × 360 transparent asset at full resolution and against a dark background; spelling, ornament, and edge treatment are clean.
+  - TypeScript `--noEmit` check passed.
+  - Production Vite build passed; the existing large-chunk warning remains.
+  - Browser-check header, footer, and admin branding after deployment; inspect the next transactional email.
+- **Notes / Links:** Updated from the existing raster source with the built-in image-generation workflow; the original asset remains available as a rollback reference.
 
 ### WEB-027 - Prevent Home Hero and Header Overlap
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Instagram, Facebook, Twitter, MapPin, Mail, Phone } from 'lucide-react';
-import logo from '@/src/assets/BoanergesLogoTransparent.png';
+import logo from '@/src/assets/brand/boanerges-stacked-lockup.png';
 import toast from 'react-hot-toast';
 import { subscribeToNewsletter } from '@/src/lib/newsletter';
 
@@ -34,8 +34,8 @@ export const Footer: React.FC = () => {
             <Link to="/" className="inline-block group mb-2">
               <img 
                 src={logo} 
-                alt="Boanerges Provision Co." 
-                className="h-20 md:h-24 w-auto object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]"
+                alt="Boanerges Provisions Co."
+                className="h-32 md:h-40 w-auto object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]"
                 referrerPolicy="no-referrer"
               />
             </Link>
@@ -102,7 +102,7 @@ export const Footer: React.FC = () => {
             <div className="flex items-center gap-2"><Mail size={12} /> hello@boanergesprovision.com</div>
           </div>
           <p className="text-[10px] uppercase tracking-widest text-brand-parchment/40 font-black">
-            © 2026 Boanerges Provision Co. All Rights Reserved.
+            © 2026 Boanerges Provisions Co. All Rights Reserved.
           </p>
         </div>
       </div>
