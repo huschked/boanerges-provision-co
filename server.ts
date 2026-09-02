@@ -157,6 +157,15 @@ type ValidatedShippoAddress = ShippoAddress & {
   validation_results?: { is_valid: boolean; messages?: ShippoMessage[] };
 };
 
+type ShippoDebugEntry = {
+  method: "POST";
+  path: string;
+  request: Record<string, unknown>;
+  httpStatus: number | null;
+  ok: boolean;
+  response: unknown;
+};
+
 type AdminActor = { uid: string; email: string | null };
 
 class AdminCommandError extends Error {
@@ -207,19 +216,33 @@ const STRIPE_EVENT_PROCESSING_TIMEOUT_SECONDS = Number.isFinite(configuredStripe
   ? Math.min(3600, Math.max(30, configuredStripeEventTimeout))
   : 300;
 
-async function shippoRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
+async function shippoRequest<T>(path: string, body: Record<string, unknown>, debugTrace?: ShippoDebugEntry[]): Promise<T> {
   const token = process.env.SHIPPO_API_TOKEN || "";
   if (!token) throw new AdminCommandError(503, "Shippo is not configured. Add SHIPPO_API_TOKEN.", "shippo_not_configured");
-  const response = await fetch(`${SHIPPO_API_URL}${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `ShippoToken ${token}`,
-      "Content-Type": "application/json",
-      "SHIPPO-API-VERSION": SHIPPO_API_VERSION,
-    },
-    body: JSON.stringify(body),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${SHIPPO_API_URL}${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `ShippoToken ${token}`,
+        "Content-Type": "application/json",
+        "SHIPPO-API-VERSION": SHIPPO_API_VERSION,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    debugTrace?.push({
+      method: "POST",
+      path,
+      request: body,
+      httpStatus: null,
+      ok: false,
+      response: { networkError: error instanceof Error ? error.message : "Shippo request failed." },
+    });
+    throw error;
+  }
   const data = await response.json().catch(() => ({})) as T & { detail?: string; messages?: Array<{ text?: string }> };
+  debugTrace?.push({ method: "POST", path, request: body, httpStatus: response.status, ok: response.ok, response: data });
   if (!response.ok) {
     const message = data.detail || data.messages?.map(item => item.text).filter(Boolean).join(" ") || "Shippo rejected the request.";
     throw new AdminCommandError(502, message, "shippo_error");
@@ -923,8 +946,9 @@ async function sendShipmentNotification(orderId: string, order: FirebaseFirestor
 async function validateShippoAddress(
   address: ShippoAddress,
   kind: "destination" | "origin",
+  debugTrace: ShippoDebugEntry[],
 ): Promise<ValidatedShippoAddress> {
-  const validatedAddress = await shippoRequest<ValidatedShippoAddress>("/addresses/", { ...address, validate: true });
+  const validatedAddress = await shippoRequest<ValidatedShippoAddress>("/addresses/", { ...address, validate: true }, debugTrace);
   if (validatedAddress.is_complete && validatedAddress.validation_results?.is_valid !== false) {
     return validatedAddress;
   }
@@ -952,7 +976,7 @@ function carrierMessageSummary(messages: ShippoMessage[]) {
     .join(" ");
 }
 
-async function createShippoQuote(orderId: string, payload: Record<string, unknown>, actor: AdminActor) {
+async function createShippoQuote(orderId: string, payload: Record<string, unknown>, actor: AdminActor, debugTrace: ShippoDebugEntry[]) {
   const orderSnap = await db.collection("orders").doc(orderId).get();
   if (!orderSnap.exists) throw new AdminCommandError(404, "Order not found.", "not_found");
   const order = orderSnap.data()!;
@@ -981,8 +1005,8 @@ async function createShippoQuote(orderId: string, payload: Record<string, unknow
 
   const originalAddress = orderShippoAddress(order);
   const submittedAddress = shippingAddressOverride(payload.addressOverride, order) || originalAddress;
-  const validatedAddress = await validateShippoAddress(submittedAddress, "destination");
-  const validatedSenderAddress = await validateShippoAddress(getShippoSenderAddress(), "origin");
+  const validatedAddress = await validateShippoAddress(submittedAddress, "destination", debugTrace);
+  const validatedSenderAddress = await validateShippoAddress(getShippoSenderAddress(), "origin", debugTrace);
 
   const shipment = await shippoRequest<{
     object_id: string;
@@ -996,7 +1020,7 @@ async function createShippoQuote(orderId: string, payload: Record<string, unknow
     parcels: [parcel],
     async: false,
     metadata: `Order ${orderId}`,
-  });
+  }, debugTrace);
   if (shipment.object_state !== "VALID" || !shipment.rates?.length) {
     const carrierMessages = shipment.messages || [];
     const summary = carrierMessageSummary(carrierMessages);
@@ -1493,14 +1517,19 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
   app.use("/api/checkout/create-session", checkoutLimiter);
 
   app.post("/api/admin/orders/:orderId/shipping/quote", async (req, res) => {
+    const debugTrace: ShippoDebugEntry[] = [];
     try {
       const actor = await authenticateAdmin(req);
-      const result = await createShippoQuote(req.params.orderId, req.body || {}, actor);
-      res.json({ success: true, ...result });
+      const result = await createShippoQuote(req.params.orderId, req.body || {}, actor, debugTrace);
+      res.json({ success: true, ...result, debugTrace });
     } catch (error) {
       const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "Shipping rates could not be loaded.", "shipping_quote_failed");
       console.error("Shippo quote error:", error);
-      res.status(commandError.status).json({ error: commandError.message, code: commandError.code, details: commandError.details });
+      res.status(commandError.status).json({
+        error: commandError.message,
+        code: commandError.code,
+        details: { ...(commandError.details || {}), debugTrace },
+      });
     }
   });
 

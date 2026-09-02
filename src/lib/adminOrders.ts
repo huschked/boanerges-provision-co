@@ -48,7 +48,8 @@ export async function runOrderCommand(
 
 export type ShippingAddress = { name: string; street1: string; street2?: string; city: string; state: string; zip: string; country: string };
 export type ShippingRate = { id: string; amount: number; currency: string; carrier: string; service: string; estimatedDays: number | null; durationTerms: string };
-export type ShippingQuote = { quoteId: string; originalAddress: ShippingAddress; submittedAddress: ShippingAddress; correctedAddress: ShippingAddress; addressChanged: boolean; rates: ShippingRate[] };
+export type ShippoDebugEntry = { method: string; path: string; request: Record<string, unknown>; httpStatus: number | null; ok: boolean; response: unknown };
+export type ShippingQuote = { quoteId: string; originalAddress: ShippingAddress; submittedAddress: ShippingAddress; correctedAddress: ShippingAddress; addressChanged: boolean; rates: ShippingRate[]; debugTrace: ShippoDebugEntry[] };
 
 export function requestShippingQuote(orderId: string, parcel: Record<string, unknown>, addressOverride: ShippingAddress): Promise<ShippingQuote> {
   return adminPost(`/api/admin/orders/${encodeURIComponent(orderId)}/shipping/quote`, { ...parcel, addressOverride });

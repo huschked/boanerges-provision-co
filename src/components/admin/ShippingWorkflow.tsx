@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { AlertTriangle, ExternalLink, PackageCheck, Pencil, RotateCcw, Truck } from 'lucide-react';
-import { AdminOrderApiError, purchaseShippingLabel, requestShippingQuote, type ShippingAddress, type ShippingQuote } from '@/src/lib/adminOrders';
+import { AdminOrderApiError, purchaseShippingLabel, requestShippingQuote, type ShippoDebugEntry, type ShippingAddress, type ShippingQuote } from '@/src/lib/adminOrders';
 import type { Order } from './DashboardView';
 
 const displayAddress = (address: ShippingAddress) => [address.name, address.street1, address.street2, `${address.city}, ${address.state} ${address.zip}`, address.country].filter(Boolean).join('\n');
@@ -38,6 +38,7 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
   const [addressDraft, setAddressDraft] = useState<ShippingAddress>(() => addressFromOrder(order));
   const [editingAddress, setEditingAddress] = useState(false);
   const [validationError, setValidationError] = useState<ShippingWorkflowError | null>(null);
+  const [debugTrace, setDebugTrace] = useState<ShippoDebugEntry[]>([]);
 
   useEffect(() => {
     setQuote(null);
@@ -46,6 +47,7 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
     setAddressDraft(addressFromOrder(order));
     setEditingAddress(false);
     setValidationError(null);
+    setDebugTrace([]);
   }, [order.id]);
 
   const errorMessage = (error: unknown) => error instanceof AdminOrderApiError ? error.message : 'Shipping operation failed. Please retry.';
@@ -67,8 +69,10 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
 
   const loadRates = async () => {
     setLoading('quote');
+    setDebugTrace([]);
     try {
       const nextQuote = await requestShippingQuote(order.id, parcel, addressDraft);
+      setDebugTrace(nextQuote.debugTrace || []);
       setQuote(nextQuote);
       setSelectedRateId(nextQuote.rates[0]?.id || '');
       setAcceptedCorrection(!nextQuote.addressChanged);
@@ -76,6 +80,10 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
       setEditingAddress(false);
     } catch (error) {
       const message = errorMessage(error);
+      if (error instanceof AdminOrderApiError) {
+        const nextDebugTrace = error.details?.debugTrace;
+        setDebugTrace(Array.isArray(nextDebugTrace) ? nextDebugTrace as ShippoDebugEntry[] : []);
+      }
       if (error instanceof AdminOrderApiError && ['invalid_address', 'shipping_address_incomplete', 'validation_error', 'invalid_sender_address', 'no_shipping_rates'].includes(error.code || '')) {
         const detailKey = error.code === 'no_shipping_rates' ? 'carrierMessages' : 'validationMessages';
         const rawDiagnostics = error.details?.[detailKey];
@@ -223,6 +231,31 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
           <div className="space-y-3">{quote.rates.map(rate => <label key={rate.id} className={`block border p-4 cursor-pointer ${selectedRateId === rate.id ? 'border-brand-gold/50 bg-brand-gold/5' : 'border-white/10'}`}><input type="radio" className="mr-3" name="shipping-rate" checked={selectedRateId === rate.id} onChange={() => setSelectedRateId(rate.id)} /><span className="text-brand-parchment font-black">{rate.carrier} {rate.service}</span><span className="float-right text-brand-gold font-black">${rate.amount.toFixed(2)} {rate.currency}</span><span className="block ml-6 text-xs text-brand-parchment/40">{rate.estimatedDays ? `About ${rate.estimatedDays} days` : rate.durationTerms || 'Carrier estimate unavailable'}</span></label>)}</div>
           <div className="flex gap-3"><button onClick={() => setQuote(null)} disabled={loading !== null} className="px-5 py-3 border border-white/10 text-brand-parchment/60 text-[10px] uppercase tracking-[0.2em] font-black">Back</button><button onClick={purchase} disabled={loading !== null || !selectedRateId || !acceptedCorrection} className="px-5 py-3 bg-brand-gold text-brand-black text-[10px] uppercase tracking-[0.2em] font-black disabled:opacity-40">{loading === 'purchase' ? 'Purchasing Once...' : 'Purchase Label & Ship'}</button></div>
         </>
+      )}
+      {debugTrace.length > 0 && (
+        <div className="border border-blue-400/20 bg-blue-400/[0.03] p-5 space-y-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-blue-300 font-black">Shippo API Debug Trace</p>
+            <p className="mt-1 text-xs text-brand-parchment/40">Authorization headers and the API token are intentionally excluded. Address and shipment data may contain customer information.</p>
+          </div>
+          {debugTrace.map((entry, index) => (
+            <details key={`${entry.method}-${entry.path}-${index}`} open className="border border-white/10 bg-black/20">
+              <summary className="cursor-pointer px-4 py-3 text-xs font-mono text-brand-parchment/70">
+                {index + 1}. {entry.method} {entry.path} — {entry.httpStatus ?? 'NETWORK ERROR'} {entry.ok ? 'OK' : 'FAILED'}
+              </summary>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-px border-t border-white/10 bg-white/10">
+                <div className="min-w-0 bg-brand-black p-4">
+                  <p className="mb-2 text-[9px] uppercase tracking-[0.18em] text-brand-gold/50 font-black">Request JSON</p>
+                  <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all text-xs leading-5 text-brand-parchment/60">{JSON.stringify(entry.request, null, 2)}</pre>
+                </div>
+                <div className="min-w-0 bg-brand-black p-4">
+                  <p className="mb-2 text-[9px] uppercase tracking-[0.18em] text-brand-gold/50 font-black">Response JSON</p>
+                  <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all text-xs leading-5 text-brand-parchment/60">{JSON.stringify(entry.response, null, 2)}</pre>
+                </div>
+              </div>
+            </details>
+          ))}
+        </div>
       )}
     </div>
   );
