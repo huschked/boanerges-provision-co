@@ -26,6 +26,9 @@ const addressFields: Array<{ key: keyof ShippingAddress; label: string; required
   { key: 'country', label: 'Country code', required: true },
 ];
 
+type ShippingDiagnostic = { source?: string; code?: string; text?: string; type?: string };
+type ShippingWorkflowError = { message: string; code?: string; diagnostics: ShippingDiagnostic[] };
+
 export function ShippingWorkflow({ order, onComplete }: { order: Order; onComplete: () => void | Promise<void> }) {
   const [parcel, setParcel] = useState({ length: '8', width: '6', height: '4', weight: '1', distanceUnit: 'in', massUnit: 'lb' });
   const [quote, setQuote] = useState<ShippingQuote | null>(null);
@@ -34,7 +37,7 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
   const [loading, setLoading] = useState<'quote' | 'purchase' | null>(null);
   const [addressDraft, setAddressDraft] = useState<ShippingAddress>(() => addressFromOrder(order));
   const [editingAddress, setEditingAddress] = useState(false);
-  const [validationError, setValidationError] = useState<{ message: string; code?: string } | null>(null);
+  const [validationError, setValidationError] = useState<ShippingWorkflowError | null>(null);
 
   useEffect(() => {
     setQuote(null);
@@ -73,9 +76,17 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
       setEditingAddress(false);
     } catch (error) {
       const message = errorMessage(error);
-      if (error instanceof AdminOrderApiError && ['invalid_address', 'shipping_address_incomplete', 'validation_error'].includes(error.code || '')) {
-        setValidationError({ message, code: error.code });
-        setEditingAddress(true);
+      if (error instanceof AdminOrderApiError && ['invalid_address', 'shipping_address_incomplete', 'validation_error', 'invalid_sender_address', 'no_shipping_rates'].includes(error.code || '')) {
+        const detailKey = error.code === 'no_shipping_rates' ? 'carrierMessages' : 'validationMessages';
+        const rawDiagnostics = error.details?.[detailKey];
+        setValidationError({
+          message,
+          code: error.code,
+          diagnostics: Array.isArray(rawDiagnostics) ? rawDiagnostics as ShippingDiagnostic[] : [],
+        });
+        if (['invalid_address', 'shipping_address_incomplete', 'validation_error'].includes(error.code || '')) {
+          setEditingAddress(true);
+        }
       } else {
         toast.error(message);
       }
@@ -151,7 +162,33 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
             {validationError && (
               <div role="alert" className="flex items-start gap-3 border border-amber-400/30 bg-amber-400/[0.06] p-4 text-sm text-amber-100">
                 <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-300" />
-                <div><p className="font-black">Shippo could not confirm one deliverable address.</p><p className="mt-1 text-amber-100/75">{validationError.message}</p><p className="mt-2 text-xs text-amber-100/55">Check the street direction, apartment or suite, city, state, and postal code, then validate again.</p></div>
+                <div className="min-w-0">
+                  <p className="font-black">
+                    {validationError.code === 'invalid_sender_address'
+                      ? 'The configured shipment origin needs attention.'
+                      : validationError.code === 'no_shipping_rates'
+                        ? 'No carrier returned a usable rate.'
+                        : 'Shippo could not confirm one deliverable address.'}
+                  </p>
+                  <p className="mt-1 text-amber-100/75">{validationError.message}</p>
+                  {validationError.diagnostics.length > 0 && (
+                    <ul className="mt-3 space-y-2 text-xs text-amber-100/65">
+                      {validationError.diagnostics.map((diagnostic, index) => (
+                        <li key={`${diagnostic.source || 'shippo'}-${diagnostic.code || index}`} className="border-l border-amber-300/25 pl-3">
+                          <span className="font-black text-amber-200">{diagnostic.source || 'Shippo'}{diagnostic.code ? ` · ${diagnostic.code}` : ''}</span>
+                          {diagnostic.text && <span className="block mt-0.5">{diagnostic.text}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="mt-2 text-xs text-amber-100/55">
+                    {validationError.code === 'invalid_sender_address'
+                      ? 'Update the SHIPPO_FROM_* deployment settings to a deliverable business or return address, then redeploy.'
+                      : validationError.code === 'no_shipping_rates'
+                        ? 'Review the carrier details above, USPS service levels, and whether the carrier is active in the same test account as the API token.'
+                        : 'Check the street direction, apartment or suite, city, state, and postal code, then validate again.'}
+                  </p>
+                </div>
               </div>
             )}
             {editingAddress && (
@@ -178,7 +215,7 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
             <select value={parcel.distanceUnit} onChange={event => updateParcel('distanceUnit', event.target.value)} className="input-premium py-3"><option value="in">Inches</option><option value="cm">Centimeters</option></select>
             <select value={parcel.massUnit} onChange={event => updateParcel('massUnit', event.target.value)} className="input-premium py-3"><option value="lb">Pounds</option><option value="oz">Ounces</option><option value="kg">Kilograms</option></select>
           </div>
-          <button onClick={loadRates} disabled={loading !== null} className="px-5 py-3 bg-brand-gold text-brand-black text-[10px] uppercase tracking-[0.2em] font-black disabled:opacity-50">{loading === 'quote' ? 'Validating...' : validationError ? 'Validate Corrected Address' : 'Validate & Get Rates'}</button>
+          <button onClick={loadRates} disabled={loading !== null} className="px-5 py-3 bg-brand-gold text-brand-black text-[10px] uppercase tracking-[0.2em] font-black disabled:opacity-50">{loading === 'quote' ? 'Validating...' : validationError && ['invalid_address', 'shipping_address_incomplete', 'validation_error'].includes(validationError.code || '') ? 'Validate Corrected Address' : 'Validate & Get Rates'}</button>
         </>
       ) : (
         <>

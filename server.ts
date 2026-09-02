@@ -144,6 +144,19 @@ type ShippoRate = {
   duration_terms?: string;
 };
 
+type ShippoMessage = {
+  source?: string;
+  code?: string;
+  text?: string;
+  type?: string;
+};
+
+type ValidatedShippoAddress = ShippoAddress & {
+  object_id: string;
+  is_complete: boolean;
+  validation_results?: { is_valid: boolean; messages?: ShippoMessage[] };
+};
+
 type AdminActor = { uid: string; email: string | null };
 
 class AdminCommandError extends Error {
@@ -907,6 +920,38 @@ async function sendShipmentNotification(orderId: string, order: FirebaseFirestor
   return result.data?.id || "";
 }
 
+async function validateShippoAddress(
+  address: ShippoAddress,
+  kind: "destination" | "origin",
+): Promise<ValidatedShippoAddress> {
+  const validatedAddress = await shippoRequest<ValidatedShippoAddress>("/addresses/", { ...address, validate: true });
+  if (validatedAddress.is_complete && validatedAddress.validation_results?.is_valid !== false) {
+    return validatedAddress;
+  }
+
+  const validationMessages = validatedAddress.validation_results?.messages || [];
+  const providerMessage = validationMessages.map(item => item.text).filter(Boolean).join(" ");
+  const isOrigin = kind === "origin";
+  throw new AdminCommandError(
+    409,
+    providerMessage || (isOrigin
+      ? "Shippo could not validate the configured shipment origin address."
+      : "Shippo could not validate this destination address."),
+    isOrigin ? "invalid_sender_address" : "invalid_address",
+    { validationMessages }
+  );
+}
+
+function carrierMessageSummary(messages: ShippoMessage[]) {
+  const actionable = messages.filter(message => {
+    const value = `${message.code || ""} ${message.text || ""}`;
+    return !/RatedShipmentAlert|invoice may vary from the displayed reference rates/i.test(value);
+  });
+  return actionable
+    .map(message => `${message.source ? `${message.source}: ` : ""}${message.text || message.code || "Carrier did not return a rate."}`)
+    .join(" ");
+}
+
 async function createShippoQuote(orderId: string, payload: Record<string, unknown>, actor: AdminActor) {
   const orderSnap = await db.collection("orders").doc(orderId).get();
   if (!orderSnap.exists) throw new AdminCommandError(404, "Order not found.", "not_found");
@@ -936,36 +981,35 @@ async function createShippoQuote(orderId: string, payload: Record<string, unknow
 
   const originalAddress = orderShippoAddress(order);
   const submittedAddress = shippingAddressOverride(payload.addressOverride, order) || originalAddress;
-  const validatedAddress = await shippoRequest<ShippoAddress & {
-    object_id: string;
-    is_complete: boolean;
-    validation_results?: { is_valid: boolean; messages?: Array<{ code?: string; text?: string; type?: string }> };
-  }>("/addresses/", { ...submittedAddress, validate: true });
-  if (!validatedAddress.is_complete || validatedAddress.validation_results?.is_valid === false) {
-    const validationMessages = validatedAddress.validation_results?.messages || [];
-    const message = validationMessages.map(item => item.text).filter(Boolean).join(" ");
-    throw new AdminCommandError(
-      409,
-      message || "Shippo could not validate this destination address.",
-      "invalid_address",
-      { validationMessages }
-    );
-  }
+  const validatedAddress = await validateShippoAddress(submittedAddress, "destination");
+  const validatedSenderAddress = await validateShippoAddress(getShippoSenderAddress(), "origin");
 
   const shipment = await shippoRequest<{
     object_id: string;
     object_state: string;
+    status?: string;
     rates: ShippoRate[];
-    messages?: Array<{ text?: string }>;
+    messages?: ShippoMessage[];
   }>("/shipments/", {
-    address_from: getShippoSenderAddress(),
+    address_from: validatedSenderAddress.object_id,
     address_to: validatedAddress.object_id,
     parcels: [parcel],
     async: false,
     metadata: `Order ${orderId}`,
   });
   if (shipment.object_state !== "VALID" || !shipment.rates?.length) {
-    throw new AdminCommandError(502, shipment.messages?.map(message => message.text).filter(Boolean).join(" ") || "No shipping services are available.", "no_shipping_rates");
+    const carrierMessages = shipment.messages || [];
+    const summary = carrierMessageSummary(carrierMessages);
+    throw new AdminCommandError(
+      502,
+      summary || "Shippo returned no rates from the active carrier accounts.",
+      "no_shipping_rates",
+      {
+        carrierMessages,
+        shipmentId: shipment.object_id,
+        shipmentStatus: shipment.status || shipment.object_state,
+      }
+    );
   }
 
   const quoteRef = db.collection("admin_shipping_quotes").doc();
