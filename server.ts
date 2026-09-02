@@ -219,6 +219,7 @@ const RESEND_TEST_RECIPIENT =
     : ORDERS_NOTIFICATION_EMAIL;
 const SHIPPO_API_URL = "https://api.goshippo.com";
 const SHIPPO_API_VERSION = "2018-02-08";
+const SHIPPO_DEBUG = process.env.SHIPPO_DEBUG?.trim().toLowerCase() === "true";
 const INVENTORY_RESERVATION_MINUTES = Math.min(1440, Math.max(31, Number(process.env.INVENTORY_RESERVATION_MINUTES || 31)));
 const configuredStripeEventTimeout = Number(process.env.STRIPE_EVENT_PROCESSING_TIMEOUT_SECONDS || 300);
 const STRIPE_EVENT_PROCESSING_TIMEOUT_SECONDS = Number.isFinite(configuredStripeEventTimeout)
@@ -957,7 +958,7 @@ async function sendShipmentNotification(orderId: string, order: FirebaseFirestor
 async function validateShippoAddress(
   address: ShippoAddress,
   kind: "destination" | "origin",
-  debugTrace: ShippoDebugEntry[],
+  debugTrace?: ShippoDebugEntry[],
 ): Promise<ValidatedShippoAddress> {
   const validatedAddress = await shippoRequest<ValidatedShippoAddress>("/addresses/", { ...address, validate: true }, debugTrace);
   if (validatedAddress.is_complete && validatedAddress.validation_results?.is_valid !== false) {
@@ -987,7 +988,7 @@ function carrierMessageSummary(messages: ShippoMessage[]) {
     .join(" ");
 }
 
-async function createShippoQuote(orderId: string, payload: Record<string, unknown>, actor: AdminActor, debugTrace: ShippoDebugEntry[]) {
+async function createShippoQuote(orderId: string, payload: Record<string, unknown>, actor: AdminActor, debugTrace?: ShippoDebugEntry[]) {
   const orderSnap = await db.collection("orders").doc(orderId).get();
   if (!orderSnap.exists) throw new AdminCommandError(404, "Order not found.", "not_found");
   const order = orderSnap.data()!;
@@ -1529,18 +1530,18 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
   app.use("/api/checkout/create-session", checkoutLimiter);
 
   app.post("/api/admin/orders/:orderId/shipping/quote", async (req, res) => {
-    const debugTrace: ShippoDebugEntry[] = [];
+    const debugTrace: ShippoDebugEntry[] | undefined = SHIPPO_DEBUG ? [] : undefined;
     try {
       const actor = await authenticateAdmin(req);
       const result = await createShippoQuote(req.params.orderId, req.body || {}, actor, debugTrace);
-      res.json({ success: true, ...result, debugTrace });
+      res.json({ success: true, ...result, ...(debugTrace ? { debugTrace } : {}) });
     } catch (error) {
       const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "Shipping rates could not be loaded.", "shipping_quote_failed");
       console.error("Shippo quote error:", error);
       res.status(commandError.status).json({
         error: commandError.message,
         code: commandError.code,
-        details: { ...(commandError.details || {}), debugTrace },
+        details: { ...(commandError.details || {}), ...(debugTrace ? { debugTrace } : {}) },
       });
     }
   });

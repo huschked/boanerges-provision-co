@@ -14,6 +14,10 @@ Both quote creation and label purchase enforce the packed state on the server. A
 
 Label purchase is claimed with a deterministic command record for its quote. An uncertain Shippo response creates a shipment exception and does not automatically attempt a second purchase; reconcile the order in Shippo before retrying.
 
+## API debugging
+
+Set `SHIPPO_DEBUG=true` temporarily to show Shippo request and response JSON in the authenticated admin shipping panel. Authorization headers and the API token are never included, but address payloads contain customer information. Keep `SHIPPO_DEBUG=false` in production and redeploy after changing the value.
+
 ## Notification retry
 
 The order detail view shows the latest order-confirmation and shipment-email states. If the shipment email failed, the retry control targets that message. Otherwise it targets the original order confirmation.
