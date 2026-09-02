@@ -35,7 +35,13 @@ export interface Order {
   shipmentEmailStatus?: string;
   shipmentEmailId?: string;
   shipmentEmailError?: string;
-  shipmentException?: { status: string; type: string; quoteId: string; message: string };
+  deliveredEmailStatus?: string;
+  delayedEmailStatus?: string;
+  exceptionEmailStatus?: string;
+  latestTransactionalEmail?: { type: 'shipment' | 'delivered' | 'delayed' | 'exception'; status: string; providerId?: string; error?: string };
+  latestTrackingStatus?: { status: string; details?: string; statusDate?: string };
+  shipmentStatus?: string;
+  shipmentException?: { status: string; type: string; quoteId?: string; message: string };
   adminNotes?: string;
   paidAt?: any;
   shippingAddress?: {

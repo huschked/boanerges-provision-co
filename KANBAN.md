@@ -195,22 +195,6 @@ This board is the working queue for website development. Keep cards actionable e
   - Confirm normal pending orders are not incorrectly marked as exceptions before their handling deadline.
 - **Notes / Links:** Replace the narrow `Needs Attention` calculation in `src/components/admin/OrdersView.tsx`. Depends on WEB-012.
 
-### WEB-014 - Add Shipment and Delivery Notifications
-
-- **Priority:** High
-- **Area:** checkout
-- **Goal:** Automatically keep customers informed from label creation through delivery and reduce order-status support work.
-- **Acceptance Criteria:**
-  - Label creation sends one shipment email containing carrier, tracking link, shipped items, and estimated delivery.
-  - Carrier webhook updates can trigger delivered, delayed, and exception communications according to documented rules.
-  - Notification attempts and provider ids are stored, visible to admins, and safely retryable.
-  - Order details show the latest transactional email state and provide an idempotent retry action for failed messages.
-  - Duplicate carrier or admin events cannot send duplicate customer messages.
-- **Verification:**
-  - Test shipment, delivery, delay, exception, email-provider failure, and webhook replay scenarios.
-  - Verify links and order details in rendered emails on desktop and mobile clients.
-- **Notes / Links:** Label creation now sends carrier, tracking, shipped items, and estimated delivery, and the admin retry control targets a failed shipment email before the original confirmation. Carrier delivery/delay/exception webhooks and their replay verification remain. Extend the order-confirmation email infrastructure in `server.ts`; coordinate with WEB-010 and WEB-020.
-
 ### WEB-024 - Fix Checkout Newsletter Consent and Actionable Errors
 
 - **Priority:** High
@@ -297,6 +281,23 @@ This board is the working queue for website development. Keep cards actionable e
 No cards currently in progress.
 
 ## Review / Verify
+
+### WEB-014 - Add Shipment and Delivery Notifications
+
+- **Priority:** High
+- **Area:** checkout
+- **Goal:** Automatically keep customers informed from label creation through delivery and reduce order-status support work.
+- **Acceptance Criteria:**
+  - Label creation sends one shipment email containing carrier, tracking link, shipped items, and estimated delivery.
+  - Carrier webhook updates can trigger delivered, delayed, and exception communications according to documented rules.
+  - Notification attempts and provider ids are stored, visible to admins, and safely retryable.
+  - Order details show the latest transactional email state and provide an idempotent retry action for failed messages.
+  - Duplicate carrier or admin events cannot send duplicate customer messages.
+- **Verification:**
+  - Automated lifecycle tests cover delivered, delayed, exception, ordinary transit, exact-quote replay, in-flight purchase, and second-quote label protection.
+  - TypeScript validation passed with `tsc --noEmit`.
+  - Production webhook delivery, email-provider failure, replay, and rendered-email checks remain.
+- **Notes / Links:** Added a secret-protected `track_updated` Shippo webhook, deterministic event claims, tracking state persistence, delivered/delayed/exception emails, notification-attempt records, and admin status/retry support. Production configuration is documented in `docs/shippo-fulfillment.md`.
 
 ### WEB-032 - Improve Admin Dropdown Contrast
 
@@ -461,24 +462,6 @@ No cards currently in progress.
   - Live concurrent checkout and Stripe webhook replay checks remain pending configured Firebase/Stripe test services.
 - **Notes / Links:** Added transactional product reservation counters, bounded Stripe Session expiry, idempotent commit/release events and movements, asynchronous failure release, actionable cart recovery, an admin exception/release panel, server-only reservation rules, and `docs/inventory-reservations.md`.
 
-### WEB-010 - Add Guided One-Click Shipment Fulfillment
-
-- **Priority:** High
-- **Area:** admin
-- **Goal:** Let an admin validate an order, create a carrier label, record tracking, update status, and notify the customer in one guided workflow.
-- **Acceptance Criteria:**
-  - The workflow verifies paid/fulfillable state and presents address validation corrections before label purchase.
-  - Admins can select an available carrier service and see the rate and delivery estimate before purchase.
-  - A successful action stores carrier, service, tracking number/URL, label URL, shipment cost, and shipment timestamp.
-  - Tracking URLs are generated from the selected carrier and tracking number rather than entered separately.
-  - Shipment status and customer notification update automatically without separate manual saves.
-  - Failed or retried requests do not buy duplicate labels and expose a recoverable exception state.
-- **Verification:**
-  - `npm.cmd run lint` passed.
-  - `npm.cmd run build` passed; the existing large-chunk warning remains.
-  - Live Shippo test-mode checks for valid, corrected, invalid, and repeated purchases remain pending configured `SHIPPO_API_TOKEN` and sender values.
-- **Notes / Links:** Shippo is the selected provider. Added the guided quote/purchase UI, a server-enforced Pack → Validate → Purchase sequence, authenticated server routes, address correction confirmation, persisted quote claims, recoverable purchase exceptions, stored label/tracking/cost data, automatic shipment email, and `docs/shippo-fulfillment.md`.
-
 ### WEB-009 - Route Fulfillment Changes Through Authenticated Server APIs
 
 - **Priority:** High
@@ -498,6 +481,24 @@ No cards currently in progress.
 - **Notes / Links:** Added authenticated `/api/admin/orders/:orderId/:operation` commands, command idempotency records, outcome audit events, transition/refund validation, Stripe and Resend idempotency, actionable UI errors, and server-only Firestore rules for order mutations.
 
 ## Done
+
+### WEB-010 - Add Guided One-Click Shipment Fulfillment
+
+- **Priority:** High
+- **Area:** admin
+- **Goal:** Let an admin validate an order, create a carrier label, record tracking, update status, and notify the customer in one guided workflow.
+- **Acceptance Criteria:**
+  - The workflow verifies paid/fulfillable state and presents address validation corrections before label purchase.
+  - Admins can select an available carrier service and see the rate and delivery estimate before purchase.
+  - A successful action stores carrier, service, tracking number/URL, label URL, shipment cost, and shipment timestamp.
+  - Tracking URLs are generated from the selected carrier and tracking number rather than entered separately.
+  - Shipment status and customer notification update automatically without separate manual saves.
+  - Failed or retried requests do not buy duplicate labels and expose a recoverable exception state.
+- **Verification:**
+  - `npm.cmd run lint` and `npm.cmd run build` passed during implementation; TypeScript validation passed after the final lifecycle changes.
+  - Live Shippo test mode verified valid and corrected addresses, invalid-address handling, carrier rates, label purchase, stored tracking/status, and shipment email delivery.
+  - Automated tests verify exact-quote replay, in-flight purchase blocking, and rejection of a second quote once an order already has a label.
+- **Notes / Links:** Shippo is the selected provider. Added the guided quote/purchase UI, a server-enforced Pack → Validate → Purchase sequence, authenticated server routes, address correction confirmation, persisted quote claims, recoverable purchase exceptions, stored label/tracking/cost data, automatic shipment email, and `docs/shippo-fulfillment.md`.
 
 ### WEB-005 - Firebase and Security Review
 

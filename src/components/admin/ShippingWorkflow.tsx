@@ -149,7 +149,7 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
   return (
     <div className="p-10 border-b border-white/5 space-y-6">
       <div className="flex items-center gap-3"><Truck className="text-brand-gold" size={20} /><div><p className="text-[10px] uppercase tracking-[0.25em] text-brand-gold/50 font-black">Create Shippo Label</p><p className="text-sm text-brand-parchment/40">Validate the address, compare live services, then purchase once.</p></div></div>
-      {order.shipmentException && <div className="border border-red-400/30 bg-red-400/5 p-5 text-sm text-red-200"><p className="font-black">Label purchase requires review</p><p className="mt-2">{order.shipmentException.message}</p><p className="mt-2 text-xs text-red-200/60">Quote {order.shipmentException.quoteId}. Check Shippo for this order before trying another label.</p></div>}
+      {order.shipmentException && <div className="border border-red-400/30 bg-red-400/5 p-5 text-sm text-red-200"><p className="font-black">{order.shipmentException.type === 'carrier_exception' ? 'Carrier update requires review' : 'Label purchase requires review'}</p><p className="mt-2">{order.shipmentException.message}</p>{order.shipmentException.quoteId && <p className="mt-2 text-xs text-red-200/60">Quote {order.shipmentException.quoteId}. Check Shippo for this order before trying another label.</p>}</div>}
       {!quote ? (
         <>
           <div className="border border-white/10 bg-white/[0.015] p-5 space-y-5">

@@ -14,6 +14,18 @@ Both quote creation and label purchase enforce the packed state on the server. A
 
 Label purchase is claimed with a deterministic command record for its quote. An uncertain Shippo response creates a shipment exception and does not automatically attempt a second purchase; reconcile the order in Shippo before retrying.
 
+The exact same completed quote is an idempotent replay: it returns the stored label result without calling Shippo. A request using a different quote is also rejected once the order contains a Shippo transaction id or label URL. Run `npm test` to exercise both duplicate-purchase guards.
+
+## Tracking webhook
+
+Create a random `SHIPPO_WEBHOOK_SECRET` in Vercel Production environment variables, then create an active `track_updated` webhook in the matching Shippo account:
+
+`https://YOUR_PRODUCTION_DOMAIN/api/webhooks/shippo?secret=YOUR_SHIPPO_WEBHOOK_SECRET`
+
+Use a test webhook while the app uses a `shippo_test_...` token and a live webhook after switching to a `shippo_live_...` token. The handler rejects a missing or incorrect secret, claims each carrier event once, stores the latest tracking state, marks delivered orders as delivered, records carrier exceptions for admin attention, and sends one delivered, delayed, or exception email when applicable. Replayed webhook payloads return successfully without sending another email.
+
+Notification results are stored in `order_notification_attempts`, summarized on the order, and shown in the admin order detail. A failed tracking notification becomes the target of the existing retry button.
+
 ## API debugging
 
 Set `SHIPPO_DEBUG=true` temporarily to show Shippo request and response JSON in the authenticated admin shipping panel. Authorization headers and the API token are never included, but address payloads contain customer information. Keep `SHIPPO_DEBUG=false` in production and redeploy after changing the value.

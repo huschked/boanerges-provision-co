@@ -40,7 +40,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
   const selectedOrderStatus = selectedOrder?.fulfillmentStatus || selectedOrder?.status || 'pending';
   const canPackSelectedOrder = ['pending', 'processing', 'needs_manual_intervention'].includes(selectedOrderStatus);
   const canCancelSelectedOrder = ['pending', 'processing', 'packed', 'needs_manual_intervention'].includes(selectedOrderStatus);
-  const retryNotificationType = selectedOrder?.shipmentEmailStatus === 'failed' ? 'shipment' : 'confirmation';
+  const retryNotificationType = selectedOrder?.latestTransactionalEmail?.status === 'failed'
+    ? selectedOrder.latestTransactionalEmail.type
+    : selectedOrder?.shipmentEmailStatus === 'failed' ? 'shipment' : 'confirmation';
 
   useEffect(() => {
     if (!orders.length) {
@@ -352,7 +354,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                 <div className="space-y-1">
                   <p className="text-[10px] uppercase tracking-[0.25em] text-brand-gold/40 font-black">Payment & Notifications</p>
                   <p className="text-sm text-brand-parchment/40">Refunds require a reason and cannot exceed the remaining paid amount.</p>
-                  <p className="text-xs text-brand-parchment/35">Order confirmation: {selectedOrder.resendEmailStatus || 'unknown'}{selectedOrder.labelUrl ? ` · Shipment email: ${selectedOrder.shipmentEmailStatus || 'unknown'}` : ''}</p>
+                  <p className="text-xs text-brand-parchment/35">Order confirmation: {selectedOrder.resendEmailStatus || 'unknown'}{selectedOrder.labelUrl ? ` · Shipment email: ${selectedOrder.shipmentEmailStatus || 'unknown'}` : ''}{selectedOrder.latestTransactionalEmail ? ` · Latest ${selectedOrder.latestTransactionalEmail.type}: ${selectedOrder.latestTransactionalEmail.status}` : ''}</p>
+                  {selectedOrder.latestTrackingStatus && <p className="text-xs text-brand-parchment/35">Carrier status: {selectedOrder.latestTrackingStatus.status}{selectedOrder.latestTrackingStatus.details ? ` — ${selectedOrder.latestTrackingStatus.details}` : ''}</p>}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <input value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} type="number" min="0.01" step="0.01" placeholder="Refund amount" className="input-premium py-3" />
@@ -376,7 +379,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                     disabled={activeCommand !== null}
                     className="px-5 py-3 rounded-sm border border-brand-gold/30 text-brand-gold text-[10px] uppercase tracking-[0.2em] font-black hover:bg-brand-gold/10 disabled:opacity-40"
                   >
-                    {activeCommand === 'notification-retry' ? 'Sending...' : retryNotificationType === 'shipment' ? 'Retry Shipment Email' : 'Retry Confirmation Email'}
+                    {activeCommand === 'notification-retry' ? 'Sending...' : `Retry ${retryNotificationType === 'confirmation' ? 'Confirmation' : retryNotificationType.charAt(0).toUpperCase() + retryNotificationType.slice(1)} Email`}
                   </button>
                 </div>
               </div>

@@ -1,5 +1,5 @@
 import express from "express";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID, timingSafeEqual } from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
 import Stripe from "stripe";
@@ -10,6 +10,7 @@ import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
+import { classifyShippoTracking, decideLabelPurchase, normalizeShippoTrackingStatus, type TrackingNotificationKind } from "./src/lib/shippingLifecycle";
 
 dotenv.config();
 
@@ -166,6 +167,26 @@ type ShippoDebugEntry = {
   response: unknown;
 };
 
+type ShippoTrackingWebhook = {
+  event?: string;
+  test?: boolean;
+  data?: {
+    transaction?: string;
+    carrier?: string;
+    tracking_number?: string;
+    tracking_url_provider?: string;
+    eta?: string | null;
+    tracking_status?: {
+      object_id?: string;
+      status?: string;
+      status_date?: string;
+      status_details?: string;
+      substatus?: { code?: string; text?: string; action_required?: boolean };
+      location?: { city?: string; state?: string; zip?: string; country?: string };
+    };
+  };
+};
+
 type AdminActor = { uid: string; email: string | null };
 
 class AdminCommandError extends Error {
@@ -220,6 +241,7 @@ const RESEND_TEST_RECIPIENT =
 const SHIPPO_API_URL = "https://api.goshippo.com";
 const SHIPPO_API_VERSION = "2018-02-08";
 const SHIPPO_DEBUG = process.env.SHIPPO_DEBUG?.trim().toLowerCase() === "true";
+const SHIPPO_WEBHOOK_SECRET = process.env.SHIPPO_WEBHOOK_SECRET || "";
 const INVENTORY_RESERVATION_MINUTES = Math.min(1440, Math.max(31, Number(process.env.INVENTORY_RESERVATION_MINUTES || 31)));
 const configuredStripeEventTimeout = Number(process.env.STRIPE_EVENT_PROCESSING_TIMEOUT_SECONDS || 300);
 const STRIPE_EVENT_PROCESSING_TIMEOUT_SECONDS = Number.isFinite(configuredStripeEventTimeout)
@@ -955,6 +977,154 @@ async function sendShipmentNotification(orderId: string, order: FirebaseFirestor
   return result.data?.id || "";
 }
 
+async function sendTrackingNotification(
+  orderId: string,
+  order: FirebaseFirestore.DocumentData,
+  kind: Exclude<TrackingNotificationKind, null>,
+  tracking: NonNullable<ShippoTrackingWebhook["data"]>,
+  idempotencyKey: string,
+) {
+  const trackingUrl = String(tracking.tracking_url_provider || order.trackingUrl || "");
+  const details = tracking.tracking_status?.status_details || tracking.tracking_status?.substatus?.text || "";
+  const content = {
+    delivered: {
+      eyebrow: "Order Delivered",
+      title: "Your provisions have arrived.",
+      intro: "The carrier has marked your package as delivered.",
+      subject: `Your order #${orderId.slice(-6).toUpperCase()} was delivered`,
+      footer: "If you cannot locate the package, reply to this email and our support team will help.",
+    },
+    delayed: {
+      eyebrow: "Shipment Update",
+      title: "Your delivery is taking a little longer.",
+      intro: "The carrier reported a delay. Your package is still being tracked, and the latest details are below.",
+      subject: `Delivery update for order #${orderId.slice(-6).toUpperCase()}`,
+      footer: "We will keep monitoring the shipment. Reply to this email if you need help.",
+    },
+    exception: {
+      eyebrow: "Shipment Attention",
+      title: "Your shipment needs attention.",
+      intro: "The carrier reported an issue that may affect delivery. Our team can help with the next step.",
+      subject: `Shipping issue for order #${orderId.slice(-6).toUpperCase()}`,
+      footer: "Reply to this email and our support team will help resolve the shipment issue.",
+    },
+  }[kind];
+  const result = await resend.emails.send({
+    from: ORDERS_EMAIL_FROM,
+    replyTo: ORDERS_REPLY_TO,
+    to: order.customerEmail,
+    subject: content.subject,
+    html: buildEmailLayout({
+      eyebrow: content.eyebrow,
+      title: content.title,
+      intro: content.intro,
+      ctaLabel: trackingUrl ? "Track Package" : undefined,
+      ctaHref: trackingUrl || undefined,
+      body: `<div style="padding:20px;border:1px solid rgba(197,160,89,0.16);"><p style="margin:0;color:#c5a059;font-size:11px;text-transform:uppercase;letter-spacing:.2em;">Carrier Update</p><p style="margin:10px 0 0;color:#f4ecd8;font-size:16px;line-height:1.6;">${escapeHtml(details || "No additional carrier details were provided.")}</p><p style="margin:12px 0 0;color:#b7ae9c;font-size:13px;">Tracking: ${escapeHtml(String(tracking.tracking_number || order.trackingNumber || "Unavailable"))}</p></div>`,
+      footerNote: content.footer,
+    }),
+  }, { idempotencyKey });
+  if (result.error) throw new Error(result.error.message || "Email provider rejected the request.");
+  return result.data?.id || "";
+}
+
+function secureValuesMatch(actual: string, expected: string) {
+  if (!actual || !expected) return false;
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function shippoTrackingEventId(payload: ShippoTrackingWebhook) {
+  const data = payload.data || {};
+  const status = data.tracking_status || {};
+  return createHash("sha256").update(JSON.stringify([
+    payload.event, data.transaction, data.carrier, data.tracking_number,
+    status.object_id, status.status, status.status_date, status.substatus?.code,
+  ])).digest("hex");
+}
+
+async function processShippoTrackingWebhook(payload: ShippoTrackingWebhook) {
+  if (payload.event !== "track_updated" || !payload.data?.tracking_status) return { ignored: true, reason: "unsupported_event" };
+  const eventId = shippoTrackingEventId(payload);
+  const eventRef = db.collection("shippo_webhook_events").doc(eventId);
+  const claimed = await db.runTransaction(async transaction => {
+    const snapshot = await transaction.get(eventRef);
+    if (snapshot.exists && snapshot.data()?.status !== "failed") return false;
+    transaction.set(eventRef, { eventId, event: payload.event, test: payload.test === true, status: "processing", receivedAt: admin.firestore.FieldValue.serverTimestamp(), attempts: admin.firestore.FieldValue.increment(1) }, { merge: true });
+    return true;
+  });
+  if (!claimed) return { duplicate: true };
+
+  const data = payload.data;
+  const orderQuery = data.transaction
+    ? db.collection("orders").where("shippoTransactionId", "==", data.transaction).limit(1)
+    : db.collection("orders").where("trackingNumber", "==", data.tracking_number || "").limit(1);
+  const orderSnapshot = await orderQuery.get();
+  if (orderSnapshot.empty) {
+    await eventRef.set({ status: "ignored", reason: "order_not_found", completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return { ignored: true, reason: "order_not_found" };
+  }
+
+  const orderDoc = orderSnapshot.docs[0];
+  const order = orderDoc.data();
+  const trackingStatus = data.tracking_status;
+  const notificationKind = classifyShippoTracking(trackingStatus.status, trackingStatus.substatus?.code, trackingStatus.status_details);
+  const normalizedStatus = normalizeShippoTrackingStatus(trackingStatus.status);
+  const updates: Record<string, unknown> = {
+    shipmentStatus: normalizedStatus,
+    latestTrackingStatus: {
+      status: trackingStatus.status || "UNKNOWN",
+      details: trackingStatus.status_details || "",
+      substatus: trackingStatus.substatus || null,
+      location: trackingStatus.location || null,
+      statusDate: trackingStatus.status_date || null,
+      eventId,
+    },
+    estimatedDelivery: data.eta || order.estimatedDelivery || null,
+    trackingUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  if (normalizedStatus === "delivered") {
+    updates.status = "delivered";
+    updates.fulfillmentStatus = "delivered";
+    updates.deliveredAt = admin.firestore.FieldValue.serverTimestamp();
+    updates.shipmentException = admin.firestore.FieldValue.delete();
+  } else if (notificationKind === "exception") {
+    updates.shipmentException = {
+      status: "requires_review",
+      type: "carrier_exception",
+      message: trackingStatus.status_details || trackingStatus.substatus?.text || "Carrier reported a shipment exception.",
+      occurredAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+  }
+  await orderDoc.ref.set(updates, { merge: true });
+
+  if (!notificationKind) {
+    await eventRef.set({ status: "completed", orderId: orderDoc.id, notification: "not_required", completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return { orderId: orderDoc.id, notification: "not_required" };
+  }
+
+  const attemptRef = db.collection("order_notification_attempts").doc(`${eventId}-${notificationKind}`);
+  try {
+    const emailId = await sendTrackingNotification(orderDoc.id, { ...order, ...updates }, notificationKind, data, `shippo-track-${eventId}-${notificationKind}`);
+    await Promise.all([
+      attemptRef.set({ orderId: orderDoc.id, type: notificationKind, status: "sent", providerId: emailId, eventId, sentAt: admin.firestore.FieldValue.serverTimestamp() }),
+      orderDoc.ref.set({ [`${notificationKind}EmailStatus`]: "sent", [`${notificationKind}EmailId`]: emailId, latestTransactionalEmail: { type: notificationKind, status: "sent", providerId: emailId, eventId }, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+      eventRef.set({ status: "completed", orderId: orderDoc.id, notification: notificationKind, emailId, completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+    ]);
+    return { orderId: orderDoc.id, notification: notificationKind };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Tracking notification failed.";
+    await Promise.all([
+      attemptRef.set({ orderId: orderDoc.id, type: notificationKind, status: "failed", error: message, eventId, failedAt: admin.firestore.FieldValue.serverTimestamp() }),
+      orderDoc.ref.set({ [`${notificationKind}EmailStatus`]: "failed", [`${notificationKind}EmailError`]: message, latestTransactionalEmail: { type: notificationKind, status: "failed", error: message, eventId }, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+      eventRef.set({ status: "completed_with_notification_failure", orderId: orderDoc.id, notification: notificationKind, error: message, completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+    ]);
+    return { orderId: orderDoc.id, notification: notificationKind, notificationStatus: "failed" };
+  }
+}
+
 async function validateShippoAddress(
   address: ShippoAddress,
   kind: "destination" | "origin",
@@ -1085,11 +1255,17 @@ async function purchaseShippoLabel(orderId: string, payload: Record<string, unkn
     const [quoteSnap, commandSnap, orderSnap] = await Promise.all([
       transaction.get(quoteRef), transaction.get(commandRef), transaction.get(orderRef),
     ]);
-    if (commandSnap.exists) return { duplicate: true, command: commandSnap.data() };
     if (!quoteSnap.exists || quoteSnap.data()?.orderId !== orderId) throw new AdminCommandError(404, "Shipping quote not found.", "quote_not_found");
     if (!orderSnap.exists) throw new AdminCommandError(404, "Order not found.", "not_found");
     const quote = quoteSnap.data()!;
     const order = orderSnap.data()!;
+    const purchaseDecision = decideLabelPurchase(commandSnap.data()?.status, Boolean(order.shippoTransactionId || order.labelUrl));
+    if (purchaseDecision === "replay_completed" || purchaseDecision === "block_processing") {
+      return { duplicate: true, command: commandSnap.data() };
+    }
+    if (purchaseDecision === "block_existing_label") {
+      throw new AdminCommandError(409, "This order already has a label.", "label_already_exists");
+    }
     const orderStatus = order.fulfillmentStatus || order.status || "pending";
     if (order.paymentStatus !== "paid" && order.paymentStatus !== "partially_refunded") {
       throw new AdminCommandError(409, "Only paid orders can purchase a shipping label.", "order_not_paid");
@@ -1103,7 +1279,6 @@ async function purchaseShippoLabel(orderId: string, payload: Record<string, unkn
     }
     const rate = quote.rates?.find((item: { id: string }) => item.id === rateId);
     if (!rate) throw new AdminCommandError(400, "Select a rate from this quote.", "invalid_rate");
-    if (order.shippoTransactionId || order.labelUrl) throw new AdminCommandError(409, "This order already has a label.", "label_already_exists");
     transaction.create(commandRef, { orderId, operation: "create-label", actor, quoteId, rateId, status: "processing", createdAt: admin.firestore.FieldValue.serverTimestamp() });
     transaction.update(quoteRef, { status: "purchasing", selectedRate: rate, purchaseStartedAt: admin.firestore.FieldValue.serverTimestamp() });
     return { duplicate: false, quote, rate, order: orderSnap.data()! };
@@ -1257,10 +1432,11 @@ async function executeFulfillmentCommand(
       result.refundId = refund.id;
       result.refundedAmount = amount;
     } else if (operation === "notification-retry") {
-      if (payload.notificationType != null && payload.notificationType !== "shipment" && payload.notificationType !== "confirmation") {
-        throw new AdminCommandError(400, "Notification type must be confirmation or shipment.", "invalid_notification_type");
+      const validNotificationTypes = ["confirmation", "shipment", "delivered", "delayed", "exception"];
+      if (payload.notificationType != null && !validNotificationTypes.includes(String(payload.notificationType))) {
+        throw new AdminCommandError(400, "Notification type is not supported.", "invalid_notification_type");
       }
-      const notificationType = payload.notificationType === "shipment" ? "shipment" : "confirmation";
+      const notificationType = validNotificationTypes.includes(String(payload.notificationType)) ? String(payload.notificationType) : "confirmation";
       if (notificationType === "shipment") {
         if (!String(order.trackingNumber || "").trim() || !["shipped", "delivered"].includes(currentStatus)) {
           throw new AdminCommandError(409, "A shipped order with tracking is required before retrying the shipment email.", "shipment_notification_unavailable");
@@ -1271,12 +1447,34 @@ async function executeFulfillmentCommand(
         updates.shipmentEmailError = admin.firestore.FieldValue.delete();
         updates.shipmentEmailRetriedAt = admin.firestore.FieldValue.serverTimestamp();
         result.emailId = emailId;
-      } else {
+      } else if (notificationType === "confirmation") {
         const emailId = await sendOrderConfirmation(orderId, order, `order-confirmation-${idempotencyKey}`);
         updates.resendEmailStatus = "sent";
         updates.resendEmailId = emailId;
         updates.resendEmailError = admin.firestore.FieldValue.delete();
         updates.resendEmailRetriedAt = admin.firestore.FieldValue.serverTimestamp();
+        result.emailId = emailId;
+      } else {
+        const kind = notificationType as Exclude<TrackingNotificationKind, null>;
+        const latest = order.latestTrackingStatus;
+        if (!latest?.status) throw new AdminCommandError(409, "No carrier update is available to retry.", "tracking_notification_unavailable");
+        const emailId = await sendTrackingNotification(orderId, order, kind, {
+          carrier: order.carrier,
+          tracking_number: order.trackingNumber,
+          tracking_url_provider: order.trackingUrl,
+          eta: order.estimatedDelivery,
+          tracking_status: {
+            status: latest.status,
+            status_date: latest.statusDate,
+            status_details: latest.details,
+            substatus: latest.substatus,
+            location: latest.location,
+          },
+        }, `tracking-${kind}-retry-${idempotencyKey}`);
+        updates[`${kind}EmailStatus`] = "sent";
+        updates[`${kind}EmailId`] = emailId;
+        updates[`${kind}EmailError`] = admin.firestore.FieldValue.delete();
+        updates.latestTransactionalEmail = { type: kind, status: "sent", providerId: emailId, retried: true };
         result.emailId = emailId;
       }
       result.notificationType = notificationType;
@@ -1509,6 +1707,31 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
 
   // Standard JSON parsing for other routes
   app.use(express.json());
+
+  app.post("/api/webhooks/shippo", async (req, res) => {
+    if (!SHIPPO_WEBHOOK_SECRET) {
+      return res.status(503).json({ error: "Shippo webhook is not configured." });
+    }
+    const suppliedSecret = typeof req.query.secret === "string" ? req.query.secret : "";
+    if (!secureValuesMatch(suppliedSecret, SHIPPO_WEBHOOK_SECRET)) {
+      return res.status(401).json({ error: "Invalid webhook secret." });
+    }
+    try {
+      const result = await processShippoTrackingWebhook(req.body as ShippoTrackingWebhook);
+      return res.json({ received: true, ...result });
+    } catch (error) {
+      console.error("Shippo webhook processing error:", error);
+      const payload = req.body as ShippoTrackingWebhook;
+      if (payload?.event === "track_updated" && payload.data?.tracking_status) {
+        await db.collection("shippo_webhook_events").doc(shippoTrackingEventId(payload)).set({
+          status: "failed",
+          error: error instanceof Error ? error.message : "Webhook processing failed.",
+          failedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true }).catch(() => undefined);
+      }
+      return res.status(500).json({ error: "Webhook processing failed." });
+    }
+  });
 
   // Rate Limiting for public endpoints
   const apiLimiter = rateLimit({
