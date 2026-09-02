@@ -14,6 +14,7 @@ import { OrdersView } from '../components/admin/OrdersView';
 import { SubscribersView, Subscriber } from '../components/admin/SubscribersView';
 import { MessagesView, ContactMessage } from '../components/admin/MessagesView';
 import { AnalyticsView } from '../components/admin/AnalyticsView';
+import { normalizeOrderLifecycle } from '@/src/lib/orderLifecycle';
 
 type AdminTab = 'dashboard' | 'analytics' | 'products' | 'orders' | 'subscribers' | 'contact';
 
@@ -42,12 +43,12 @@ export const Admin: React.FC = () => {
       const ordersSnap = await getDocs(query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(300)));
       const oData = ordersSnap.docs.map((snapshot) => {
         const data = snapshot.data();
+        const lifecycle = normalizeOrderLifecycle(data);
         return {
           id: snapshot.id,
           ...data,
           totalAmount: data.totalAmount ?? data.total ?? 0,
-          status: data.status ?? data.fulfillmentStatus ?? 'pending',
-          fulfillmentStatus: data.fulfillmentStatus ?? data.status ?? 'pending',
+          ...lifecycle,
         } as Order;
       });
       setOrders(oData);
@@ -207,7 +208,8 @@ export const Admin: React.FC = () => {
     (order.customerName || '').toLowerCase().includes(normalizedSearchTerm) ||
     (order.customerPhone || '').toLowerCase().includes(normalizedSearchTerm) ||
     (order.paymentStatus || '').toLowerCase().includes(normalizedSearchTerm) ||
-    (order.fulfillmentStatus || order.status || '').toLowerCase().includes(normalizedSearchTerm) ||
+    (order.fulfillmentStatus || '').toLowerCase().includes(normalizedSearchTerm) ||
+    (order.shipmentStatus || '').toLowerCase().includes(normalizedSearchTerm) ||
     [order.shippingAddress?.line1, order.shippingAddress?.city, order.shippingAddress?.state, order.shippingAddress?.postalCode]
       .filter(Boolean)
       .join(' ')

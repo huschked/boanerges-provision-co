@@ -37,9 +37,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
     [orders, selectedOrderId]
   );
   const normalizedSearchTerm = searchTerm.trim();
-  const selectedOrderStatus = selectedOrder?.fulfillmentStatus || selectedOrder?.status || 'pending';
-  const canPackSelectedOrder = ['pending', 'processing', 'needs_manual_intervention'].includes(selectedOrderStatus);
-  const canCancelSelectedOrder = ['pending', 'processing', 'packed', 'needs_manual_intervention'].includes(selectedOrderStatus);
+  const selectedOrderStatus = selectedOrder?.fulfillmentStatus || 'pending';
+  const canPackSelectedOrder = ['pending', 'requires_attention'].includes(selectedOrderStatus);
+  const canCancelSelectedOrder = ['pending', 'packed', 'requires_attention'].includes(selectedOrderStatus);
   const retryNotificationType = selectedOrder?.latestTransactionalEmail?.status === 'failed'
     ? selectedOrder.latestTransactionalEmail.type
     : selectedOrder?.shipmentEmailStatus === 'failed' ? 'shipment' : 'confirmation';
@@ -142,7 +142,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
           <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Needs Attention</p>
           <p className="text-2xl font-serif text-brand-parchment">
             {orders.filter((order) =>
-              ['pending', 'needs_manual_intervention'].includes(order.fulfillmentStatus || order.status || 'pending')
+              order.fulfillmentStatus === 'requires_attention' || order.shipmentStatus === 'exception' || order.shipmentStatus === 'failure'
             ).length}
           </p>
         </div>
@@ -158,7 +158,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
         <div className="min-w-0 xl:col-span-2 card-premium overflow-hidden">
           <div className="max-h-[760px] overflow-y-auto divide-y divide-white/5">
             {orders.map((order) => {
-              const orderStatus = order.fulfillmentStatus || order.status || 'pending';
+              const orderStatus = order.fulfillmentStatus || 'pending';
               const totalAmount = order.totalAmount ?? 0;
               const isSelected = selectedOrder?.id === order.id;
               const paymentStatus = order.paymentStatus || 'unknown';
@@ -180,15 +180,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                       <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/25 font-black">
                         Payment: {paymentStatus.replaceAll('_', ' ')}
                       </p>
+                      <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/25 font-black">Shipment: {(order.shipmentStatus || 'not_shipped').replaceAll('_', ' ')}</p>
                     </div>
                     <div className="text-right space-y-2">
                       <p className="text-sm text-brand-parchment font-black">${totalAmount.toFixed(2)}</p>
                       <span className={cn(
                         'inline-flex items-center gap-2 px-3 py-1 rounded-full text-[8px] uppercase tracking-[0.2em] font-black border',
-                        orderStatus === 'delivered' ? 'bg-green-400/5 text-green-400 border-green-400/10' :
                         orderStatus === 'shipped' || orderStatus === 'packed' ? 'bg-blue-400/5 text-blue-400 border-blue-400/10' :
-                        orderStatus === 'processing' ? 'bg-purple-400/5 text-purple-400 border-purple-400/10' :
-                        orderStatus === 'needs_manual_intervention' ? 'bg-red-400/5 text-red-400 border-red-400/10' :
+                        orderStatus === 'requires_attention' ? 'bg-red-400/5 text-red-400 border-red-400/10' :
                         'bg-brand-gold/5 text-brand-gold border-brand-gold/10'
                       )}>
                         {orderStatus.replaceAll('_', ' ')}
@@ -272,6 +271,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                   <div>
                     <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black mb-2">Payment Status</p>
                     <p className="text-brand-parchment">{selectedOrder.paymentStatus || 'Unknown'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black mb-2">Fulfillment Status</p>
+                    <p className="text-brand-parchment">{selectedOrder.fulfillmentStatus || 'Unknown'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black mb-2">Shipment Status</p>
+                    <p className="text-brand-parchment">{selectedOrder.shipmentStatus || 'Not shipped'}</p>
                   </div>
                   <div>
                     <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black mb-2">Stripe Session</p>

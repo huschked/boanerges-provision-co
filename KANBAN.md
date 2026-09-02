@@ -164,22 +164,6 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Ready
 
-### WEB-012 - Separate Payment, Fulfillment, and Shipment State Machines
-
-- **Priority:** High
-- **Area:** admin
-- **Goal:** Represent the real order lifecycle without conflating payment, warehouse work, carrier progress, cancellation, and exceptions.
-- **Acceptance Criteria:**
-  - Orders have independently typed payment, fulfillment, and shipment states with documented transitions.
-  - Lifecycle timestamps include paid, packed, shipped, delivered, cancelled, and refunded events where applicable.
-  - Invalid transitions are rejected server-side with an actionable message.
-  - Existing orders are migrated or normalized without losing refund, dispute, tracking, or manual-review information.
-  - Admin badges and queues clearly communicate all three state dimensions.
-- **Verification:**
-  - Unit-test valid and invalid transitions, including paid/cancelled, shipped/refunded, disputed, returned, and carrier-exception cases.
-  - Browser-check migrated and newly created orders in dashboard and order detail views.
-- **Notes / Links:** Current code mirrors `status` and `fulfillmentStatus`; coordinate with WEB-009.
-
 ### WEB-013 - Build an Exception-First Fulfillment Queue
 
 - **Priority:** High
@@ -281,6 +265,23 @@ This board is the working queue for website development. Keep cards actionable e
 No cards currently in progress.
 
 ## Review / Verify
+
+### WEB-012 - Separate Payment, Fulfillment, and Shipment State Machines
+
+- **Priority:** High
+- **Area:** admin
+- **Goal:** Represent the real order lifecycle without conflating payment, warehouse work, carrier progress, cancellation, and exceptions.
+- **Acceptance Criteria:**
+  - Orders have independently typed payment, fulfillment, and shipment states with documented transitions.
+  - Lifecycle timestamps include paid, packed, shipped, delivered, cancelled, and refunded events where applicable.
+  - Invalid transitions are rejected server-side with an actionable message.
+  - Existing orders are migrated or normalized without losing refund, dispute, tracking, or manual-review information.
+  - Admin badges and queues clearly communicate all three state dimensions.
+- **Verification:**
+  - Automated tests cover legacy normalization and valid/invalid payment, fulfillment, shipment, dispute recovery, return, and carrier-exception transitions.
+  - TypeScript validation and the production build pass.
+  - Browser verification remains for migrated and newly created orders in the deployed dashboard and order detail views.
+- **Notes / Links:** Added the versioned lifecycle model and transition guards in `src/lib/orderLifecycle.ts`, normalized legacy orders at read and server-operation boundaries, stopped mirroring fulfillment into legacy `status`, separated carrier delivery from warehouse completion, and documented the model in `docs/order-lifecycle.md`.
 
 ### WEB-014 - Add Shipment and Delivery Notifications
 

@@ -136,7 +136,7 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
     );
   }
 
-  const fulfillmentStatus = order.fulfillmentStatus || order.status || 'pending';
+  const fulfillmentStatus = order.fulfillmentStatus || 'pending';
   if (fulfillmentStatus !== 'packed') {
     return (
       <div className="p-10 border-b border-white/5 space-y-3">

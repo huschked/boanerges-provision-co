@@ -11,6 +11,7 @@ import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 import { classifyShippoTracking, decideLabelPurchase, normalizeShippoTrackingStatus, type TrackingNotificationKind } from "./src/lib/shippingLifecycle.js";
+import { canTransitionFulfillment, canTransitionPayment, canTransitionShipment, normalizeOrderLifecycle, type FulfillmentState, type PaymentState, type ShipmentState } from "./src/lib/orderLifecycle.js";
 
 dotenv.config();
 
@@ -888,16 +889,6 @@ function buildOrderEmailHtml({
   });
 }
 
-const fulfillmentTransitions: Record<string, string[]> = {
-  pending: ["packed", "cancelled"],
-  processing: ["packed", "cancelled"],
-  packed: ["shipped", "cancelled"],
-  shipped: [],
-  delivered: [],
-  cancelled: [],
-  needs_manual_intervention: ["packed", "cancelled"],
-};
-
 function normalizedCommandValue(value: unknown, field: string, maxLength: number, required = false) {
   if (value == null && !required) return "";
   if (typeof value !== "string") throw new AdminCommandError(400, `${field} must be text.`, "validation_error");
@@ -1070,9 +1061,18 @@ async function processShippoTrackingWebhook(payload: ShippoTrackingWebhook) {
   const order = orderDoc.data();
   const trackingStatus = data.tracking_status;
   const notificationKind = classifyShippoTracking(trackingStatus.status, trackingStatus.substatus?.code, trackingStatus.status_details);
-  const normalizedStatus = normalizeShippoTrackingStatus(trackingStatus.status);
+  const normalizedStatus = normalizeShippoTrackingStatus(trackingStatus.status) as ShipmentState;
+  const lifecycle = normalizeOrderLifecycle(order);
+  const nextShipmentStatus: ShipmentState = notificationKind === "delayed" ? "delayed" : notificationKind === "exception" && !["returned", "failure"].includes(normalizedStatus) ? "exception" : normalizedStatus;
+  if (!canTransitionShipment(lifecycle.shipmentStatus, nextShipmentStatus)) {
+    await eventRef.set({ status: "ignored", reason: "invalid_shipment_transition", orderId: orderDoc.id, from: lifecycle.shipmentStatus, to: nextShipmentStatus, completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return { ignored: true, reason: "invalid_shipment_transition" };
+  }
   const updates: Record<string, unknown> = {
-    shipmentStatus: normalizedStatus,
+    lifecycleVersion: 2,
+    paymentStatus: lifecycle.paymentStatus,
+    fulfillmentStatus: lifecycle.fulfillmentStatus,
+    shipmentStatus: nextShipmentStatus,
     latestTrackingStatus: {
       status: trackingStatus.status || "UNKNOWN",
       details: trackingStatus.status_details || "",
@@ -1085,9 +1085,7 @@ async function processShippoTrackingWebhook(payload: ShippoTrackingWebhook) {
     trackingUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
-  if (normalizedStatus === "delivered") {
-    updates.status = "delivered";
-    updates.fulfillmentStatus = "delivered";
+  if (nextShipmentStatus === "delivered") {
     updates.deliveredAt = admin.firestore.FieldValue.serverTimestamp();
     updates.shipmentException = admin.firestore.FieldValue.delete();
   } else if (notificationKind === "exception") {
@@ -1162,11 +1160,11 @@ async function createShippoQuote(orderId: string, payload: Record<string, unknow
   const orderSnap = await db.collection("orders").doc(orderId).get();
   if (!orderSnap.exists) throw new AdminCommandError(404, "Order not found.", "not_found");
   const order = orderSnap.data()!;
-  const status = order.fulfillmentStatus || order.status || "pending";
-  if (order.paymentStatus !== "paid" && order.paymentStatus !== "partially_refunded") {
+  const lifecycle = normalizeOrderLifecycle(order);
+  if (lifecycle.paymentStatus !== "paid" && lifecycle.paymentStatus !== "partially_refunded") {
     throw new AdminCommandError(409, "Only paid orders can be shipped.", "order_not_paid");
   }
-  if (status !== "packed") {
+  if (lifecycle.fulfillmentStatus !== "packed") {
     throw new AdminCommandError(409, "Pack this order before validating its address or requesting shipping rates.", "order_not_packed");
   }
   if (order.shippoTransactionId || order.labelUrl) {
@@ -1266,11 +1264,11 @@ async function purchaseShippoLabel(orderId: string, payload: Record<string, unkn
     if (purchaseDecision === "block_existing_label") {
       throw new AdminCommandError(409, "This order already has a label.", "label_already_exists");
     }
-    const orderStatus = order.fulfillmentStatus || order.status || "pending";
-    if (order.paymentStatus !== "paid" && order.paymentStatus !== "partially_refunded") {
+    const lifecycle = normalizeOrderLifecycle(order);
+    if (lifecycle.paymentStatus !== "paid" && lifecycle.paymentStatus !== "partially_refunded") {
       throw new AdminCommandError(409, "Only paid orders can purchase a shipping label.", "order_not_paid");
     }
-    if (orderStatus !== "packed") {
+    if (lifecycle.fulfillmentStatus !== "packed") {
       throw new AdminCommandError(409, "This order must still be packed when its shipping label is purchased.", "order_not_packed");
     }
     if (quote.expiresAt?.toMillis?.() < Date.now()) throw new AdminCommandError(409, "This quote expired. Request fresh rates.", "quote_expired");
@@ -1309,7 +1307,7 @@ async function purchaseShippoLabel(orderId: string, payload: Record<string, unkn
   const corrected = claimed.quote!.correctedAddress;
   const addressWasCorrected = claimed.quote!.addressChanged === true;
   const shipmentUpdates = {
-    status: "shipped", fulfillmentStatus: "shipped", shipmentStatus: "pre_transit",
+    lifecycleVersion: 2, fulfillmentStatus: "shipped", shipmentStatus: "pre_transit",
     carrier: rate.carrier, shippingService: rate.service, trackingNumber: shippoTransaction.tracking_number || "",
     trackingUrl: shippoTransaction.tracking_url_provider || "", labelUrl: shippoTransaction.label_url || "",
     shipmentCost: Number(rate.amount), shipmentCurrency: rate.currency, estimatedDelivery: shippoTransaction.eta || null,
@@ -1328,7 +1326,12 @@ async function purchaseShippoLabel(orderId: string, payload: Record<string, unkn
     } : {}),
     shippedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
-  const result = { carrier: rate.carrier, service: rate.service, trackingNumber: shippoTransaction.tracking_number || "", trackingUrl: shippoTransaction.tracking_url_provider || "", labelUrl: shippoTransaction.label_url || "", shipmentCost: Number(rate.amount), estimatedDelivery: shippoTransaction.eta || null };
+  const lifecycleBefore = normalizeOrderLifecycle(claimed.order!);
+  const result = {
+    carrier: rate.carrier, service: rate.service, trackingNumber: shippoTransaction.tracking_number || "", trackingUrl: shippoTransaction.tracking_url_provider || "", labelUrl: shippoTransaction.label_url || "", shipmentCost: Number(rate.amount), estimatedDelivery: shippoTransaction.eta || null,
+    lifecycleBefore,
+    lifecycleAfter: { ...lifecycleBefore, fulfillmentStatus: "shipped", shipmentStatus: "pre_transit" },
+  };
   await db.runTransaction(async transaction => {
     transaction.set(orderRef, shipmentUpdates, { merge: true });
     transaction.set(commandRef, { status: "completed", result, completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
@@ -1390,21 +1393,27 @@ async function executeFulfillmentCommand(
   }
 
   const order = claimed.order!;
-  const currentStatus = order.fulfillmentStatus || order.status || "pending";
-  const updates: Record<string, unknown> = {};
-  const result: Record<string, unknown> = { operation };
+  const lifecycle = normalizeOrderLifecycle(order);
+  const currentStatus = lifecycle.fulfillmentStatus;
+  const updates: Record<string, unknown> = { ...lifecycle };
+  const result: Record<string, unknown> = { operation, lifecycleBefore: lifecycle };
 
   try {
     if (operation === "pack" || operation === "ship" || operation === "cancel") {
       const nextStatus = operation === "pack" ? "packed" : operation === "ship" ? "shipped" : "cancelled";
-      if (!fulfillmentTransitions[currentStatus]?.includes(nextStatus)) {
+      if (!canTransitionFulfillment(currentStatus, nextStatus as FulfillmentState)) {
         throw new AdminCommandError(409, `Order cannot move from ${currentStatus} to ${nextStatus}.`, "invalid_transition");
       }
       if (operation === "ship" && !String(order.trackingNumber || "").trim()) {
         throw new AdminCommandError(409, "Add a tracking number before marking this order shipped.", "tracking_required");
       }
-      updates.status = nextStatus;
       updates.fulfillmentStatus = nextStatus;
+      if (operation === "ship") {
+        if (!canTransitionShipment(lifecycle.shipmentStatus, "pre_transit")) {
+          throw new AdminCommandError(409, `Shipment cannot move from ${lifecycle.shipmentStatus} to pre_transit.`, "invalid_shipment_transition");
+        }
+        updates.shipmentStatus = "pre_transit";
+      }
       updates[`${nextStatus === "cancelled" ? "cancelled" : nextStatus}At`] = admin.firestore.FieldValue.serverTimestamp();
       result.status = nextStatus;
     } else if (operation === "tracking") {
@@ -1426,7 +1435,11 @@ async function executeFulfillmentCommand(
         metadata: { orderId, adminUid: actor.uid, reason },
       }, { idempotencyKey: `admin-refund-${idempotencyKey}` });
       updates.refundedAmount = Number((Number(order.refundedAmount || 0) + amount).toFixed(2));
-      updates.paymentStatus = amount === remaining ? "refunded" : "partially_refunded";
+      const nextPaymentStatus: PaymentState = amount === remaining ? "refunded" : "partially_refunded";
+      if (!canTransitionPayment(lifecycle.paymentStatus, nextPaymentStatus)) {
+        throw new AdminCommandError(409, `Payment cannot move from ${lifecycle.paymentStatus} to ${nextPaymentStatus}.`, "invalid_payment_transition");
+      }
+      updates.paymentStatus = nextPaymentStatus;
       updates.refundedAt = admin.firestore.FieldValue.serverTimestamp();
       updates.lastRefundReason = reason;
       result.refundId = refund.id;
@@ -1480,6 +1493,7 @@ async function executeFulfillmentCommand(
       result.notificationType = notificationType;
     }
 
+    result.lifecycleAfter = { ...lifecycle, ...Object.fromEntries(["paymentStatus", "fulfillmentStatus", "shipmentStatus"].map(key => [key, updates[key] ?? lifecycle[key as keyof typeof lifecycle]])) };
     updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
     await db.runTransaction(async transaction => {
       transaction.set(orderRef, updates, { merge: true });
@@ -2375,8 +2389,8 @@ async function recordDispute(dispute: Stripe.Dispute, eventType: string) {
       orderDoc.ref.set(
         {
           paymentStatus: "disputed",
-          fulfillmentStatus: "needs_manual_intervention",
-          status: "needs_manual_intervention",
+          lifecycleVersion: 2,
+          fulfillmentStatus: "requires_attention",
           stripeDisputeId: dispute.id,
           disputeStatus: dispute.status || "",
           disputeReason: dispute.reason || "",
@@ -2391,7 +2405,7 @@ async function recordDispute(dispute: Stripe.Dispute, eventType: string) {
 async function completePaidOrderEffects(orderId: string) {
   const orderRef = db.collection("orders").doc(orderId);
   let orderSnap = await orderRef.get();
-  if (!orderSnap.exists || orderSnap.data()?.fulfillmentStatus === "needs_manual_intervention") return;
+  if (!orderSnap.exists || normalizeOrderLifecycle(orderSnap.data()!).fulfillmentStatus === "requires_attention") return;
   await recordPaidOrderAnalyticsOnce(orderId);
   orderSnap = await orderRef.get();
   if (!orderSnap.exists || orderSnap.data()?.resendEmailStatus === "sent") return;
@@ -2469,7 +2483,8 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session, event:
     pendingOrderId,
     paymentStatus: "paid",
     fulfillmentStatus: "pending",
-    status: "pending",
+    shipmentStatus: "not_shipped",
+    lifecycleVersion: 2,
     customerEmail,
     customerName,
     customerPhone,
@@ -2504,8 +2519,7 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session, event:
     // Mark order as needs manual intervention because user paid!
     await orderRef.set({
       ...orderBase,
-      fulfillmentStatus: "needs_manual_intervention",
-      status: "needs_manual_intervention",
+      fulfillmentStatus: "requires_attention",
       reservationId: session.metadata?.reservationId || pendingOrderId,
       error: error.message,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),

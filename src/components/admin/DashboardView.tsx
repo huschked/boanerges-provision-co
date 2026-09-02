@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { DollarSign, ShoppingCart, Package, AlertCircle, TrendingUp, PackageCheck } from 'lucide-react';
 import { Product } from '@/src/services/productService';
+import type { FulfillmentState, PaymentState, ShipmentState } from '@/src/lib/orderLifecycle';
 
 export interface Order {
   id: string;
@@ -19,7 +20,8 @@ export interface Order {
   stripeDisputeId?: string;
   disputeStatus?: string;
   disputeReason?: string;
-  paymentStatus?: string;
+  lifecycleVersion?: number;
+  paymentStatus?: PaymentState;
   stripeSessionId?: string;
   stripePaymentIntentId?: string;
   trackingNumber?: string;
@@ -40,7 +42,7 @@ export interface Order {
   exceptionEmailStatus?: string;
   latestTransactionalEmail?: { type: 'shipment' | 'delivered' | 'delayed' | 'exception'; status: string; providerId?: string; error?: string };
   latestTrackingStatus?: { status: string; details?: string; statusDate?: string };
-  shipmentStatus?: string;
+  shipmentStatus?: ShipmentState;
   shipmentException?: { status: string; type: string; quoteId?: string; message: string };
   adminNotes?: string;
   paidAt?: any;
@@ -62,8 +64,8 @@ export interface Order {
     postalCode?: string;
     country?: string;
   } | null;
-  status?: 'pending' | 'processing' | 'packed' | 'shipped' | 'delivered' | 'cancelled' | 'needs_manual_intervention';
-  fulfillmentStatus?: 'pending' | 'processing' | 'packed' | 'shipped' | 'delivered' | 'cancelled' | 'needs_manual_intervention';
+  status?: string;
+  fulfillmentStatus?: FulfillmentState;
   createdAt: any;
   items: any[];
 }
@@ -144,7 +146,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, pro
               </thead>
               <tbody className="divide-y divide-white/5">
                 {orders.slice(0, 6).map((order) => {
-                  const orderStatus = order.fulfillmentStatus || order.status || 'pending';
+                  const orderStatus = order.fulfillmentStatus || 'pending';
                   const totalAmount = order.totalAmount ?? 0;
 
                   return (
@@ -154,18 +156,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, pro
                     <td className="px-10 py-6 text-sm text-brand-parchment font-black tracking-tight">${totalAmount.toFixed(2)}</td>
                     <td className="px-10 py-6 text-right">
                       <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[9px] uppercase tracking-[0.2em] font-black border ${
-                        orderStatus === 'delivered' ? 'bg-green-400/5 text-green-400 border-green-400/10' :
-                        orderStatus === 'processing' || orderStatus === 'packed' || orderStatus === 'shipped' ? 'bg-blue-400/5 text-blue-400 border-blue-400/10' :
-                        orderStatus === 'needs_manual_intervention' ? 'bg-red-400/5 text-red-400 border-red-400/10' :
+                        order.shipmentStatus === 'delivered' ? 'bg-green-400/5 text-green-400 border-green-400/10' :
+                        orderStatus === 'packed' || orderStatus === 'shipped' ? 'bg-blue-400/5 text-blue-400 border-blue-400/10' :
+                        orderStatus === 'requires_attention' ? 'bg-red-400/5 text-red-400 border-red-400/10' :
                         'bg-brand-gold/5 text-brand-gold border-brand-gold/10'
                       }`}>
                         <div className={`w-1.5 h-1.5 rounded-full ${
-                          orderStatus === 'delivered' ? 'bg-green-400' :
-                          orderStatus === 'processing' || orderStatus === 'packed' || orderStatus === 'shipped' ? 'bg-blue-400' :
-                          orderStatus === 'needs_manual_intervention' ? 'bg-red-400' :
+                          order.shipmentStatus === 'delivered' ? 'bg-green-400' :
+                          orderStatus === 'packed' || orderStatus === 'shipped' ? 'bg-blue-400' :
+                          orderStatus === 'requires_attention' ? 'bg-red-400' :
                           'bg-brand-gold'
                         }`} />
-                        {orderStatus.replaceAll('_', ' ')}
+                        F: {orderStatus.replaceAll('_', ' ')} · S: {(order.shipmentStatus || 'not_shipped').replaceAll('_', ' ')}
                       </span>
                     </td>
                   </tr>
