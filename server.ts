@@ -10,7 +10,7 @@ import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
-import { classifyShippoTracking, decideLabelPurchase, normalizeShippoTrackingStatus, type TrackingNotificationKind } from "./src/lib/shippingLifecycle";
+import { classifyShippoTracking, decideLabelPurchase, normalizeShippoTrackingStatus, type TrackingNotificationKind } from "./src/lib/shippingLifecycle.js";
 
 dotenv.config();
 
