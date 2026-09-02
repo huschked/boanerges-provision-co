@@ -47,6 +47,15 @@ export interface Order {
     postalCode?: string;
     country?: string;
   } | null;
+  originalShippingAddress?: {
+    name?: string;
+    line1?: string;
+    line2?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    country?: string;
+  } | null;
   status?: 'pending' | 'processing' | 'packed' | 'shipped' | 'delivered' | 'cancelled' | 'needs_manual_intervention';
   fulfillmentStatus?: 'pending' | 'processing' | 'packed' | 'shipped' | 'delivered' | 'cancelled' | 'needs_manual_intervention';
   createdAt: any;

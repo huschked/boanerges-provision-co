@@ -147,7 +147,7 @@ type ShippoRate = {
 type AdminActor = { uid: string; email: string | null };
 
 class AdminCommandError extends Error {
-  constructor(public status: number, message: string, public code: string) {
+  constructor(public status: number, message: string, public code: string, public details?: Record<string, unknown>) {
     super(message);
   }
 }
@@ -251,8 +251,31 @@ function orderShippoAddress(order: FirebaseFirestore.DocumentData): ShippoAddres
   return address;
 }
 
+function shippingAddressOverride(value: unknown, order: FirebaseFirestore.DocumentData): ShippoAddress | null {
+  if (value == null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new AdminCommandError(400, "Shipping address must be an object.", "validation_error");
+  }
+  const source = value as Record<string, unknown>;
+  const country = normalizedCommandValue(source.country, "Country", 2, true).toUpperCase();
+  if (!/^[A-Z]{2}$/.test(country)) {
+    throw new AdminCommandError(400, "Country must be a two-letter code such as US.", "validation_error");
+  }
+  return {
+    name: normalizedCommandValue(source.name, "Recipient name", 120, true),
+    street1: normalizedCommandValue(source.street1, "Address line 1", 160, true),
+    street2: normalizedCommandValue(source.street2, "Address line 2", 160),
+    city: normalizedCommandValue(source.city, "City", 100, true),
+    state: normalizedCommandValue(source.state, "State", 100, true),
+    zip: normalizedCommandValue(source.zip, "Postal code", 20, true),
+    country,
+    phone: order.customerPhone || "",
+    email: order.customerEmail || "",
+  };
+}
+
 function addressFingerprint(address: ShippoAddress) {
-  return [address.street1, address.street2, address.city, address.state, address.zip, address.country]
+  return [address.name, address.street1, address.street2, address.city, address.state, address.zip, address.country]
     .map(value => String(value || "").trim().toLowerCase()).join("|");
 }
 
@@ -912,14 +935,21 @@ async function createShippoQuote(orderId: string, payload: Record<string, unknow
   }
 
   const originalAddress = orderShippoAddress(order);
+  const submittedAddress = shippingAddressOverride(payload.addressOverride, order) || originalAddress;
   const validatedAddress = await shippoRequest<ShippoAddress & {
     object_id: string;
     is_complete: boolean;
     validation_results?: { is_valid: boolean; messages?: Array<{ code?: string; text?: string; type?: string }> };
-  }>("/addresses/", { ...originalAddress, validate: true });
+  }>("/addresses/", { ...submittedAddress, validate: true });
   if (!validatedAddress.is_complete || validatedAddress.validation_results?.is_valid === false) {
-    const details = validatedAddress.validation_results?.messages?.map(message => message.text).filter(Boolean).join(" ");
-    throw new AdminCommandError(409, details || "Shippo could not validate this destination address.", "invalid_address");
+    const validationMessages = validatedAddress.validation_results?.messages || [];
+    const message = validationMessages.map(item => item.text).filter(Boolean).join(" ");
+    throw new AdminCommandError(
+      409,
+      message || "Shippo could not validate this destination address.",
+      "invalid_address",
+      { validationMessages }
+    );
   }
 
   const shipment = await shippoRequest<{
@@ -942,7 +972,7 @@ async function createShippoQuote(orderId: string, payload: Record<string, unknow
   const correctedAddress: ShippoAddress = {
     name: validatedAddress.name, street1: validatedAddress.street1, street2: validatedAddress.street2 || "",
     city: validatedAddress.city, state: validatedAddress.state, zip: validatedAddress.zip, country: validatedAddress.country,
-    phone: validatedAddress.phone || originalAddress.phone, email: validatedAddress.email || originalAddress.email,
+    phone: validatedAddress.phone || submittedAddress.phone, email: validatedAddress.email || submittedAddress.email,
   };
   const addressChanged = addressFingerprint(originalAddress) !== addressFingerprint(correctedAddress);
   const rates = shipment.rates.map(rate => ({
@@ -957,11 +987,11 @@ async function createShippoQuote(orderId: string, payload: Record<string, unknow
   })).sort((a, b) => a.amount - b.amount);
   await quoteRef.set({
     orderId, actor, status: "quoted", shippoShipmentId: shipment.object_id, parcel,
-    originalAddress, correctedAddress, addressChanged, rates,
+    originalAddress, submittedAddress, correctedAddress, addressChanged, rates,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 6 * 24 * 60 * 60 * 1000),
   });
-  return { quoteId: quoteRef.id, originalAddress, correctedAddress, addressChanged, rates };
+  return { quoteId: quoteRef.id, originalAddress, submittedAddress, correctedAddress, addressChanged, rates };
 }
 
 async function purchaseShippoLabel(orderId: string, payload: Record<string, unknown>, actor: AdminActor) {
@@ -1021,6 +1051,7 @@ async function purchaseShippoLabel(orderId: string, payload: Record<string, unkn
 
   const rate = claimed.rate!;
   const corrected = claimed.quote!.correctedAddress;
+  const addressWasCorrected = claimed.quote!.addressChanged === true;
   const shipmentUpdates = {
     status: "shipped", fulfillmentStatus: "shipped", shipmentStatus: "pre_transit",
     carrier: rate.carrier, shippingService: rate.service, trackingNumber: shippoTransaction.tracking_number || "",
@@ -1029,6 +1060,16 @@ async function purchaseShippoLabel(orderId: string, payload: Record<string, unkn
     shippoShipmentId: claimed.quote!.shippoShipmentId, shippoTransactionId: shippoTransaction.object_id,
     shipmentException: admin.firestore.FieldValue.delete(),
     shippingAddress: { name: corrected.name, line1: corrected.street1, line2: corrected.street2 || "", city: corrected.city, state: corrected.state, postalCode: corrected.zip, country: corrected.country },
+    ...(addressWasCorrected ? {
+      originalShippingAddress: claimed.order!.originalShippingAddress || claimed.order!.shippingAddress || null,
+      shippingAddressCorrection: {
+        source: "shippo_label",
+        actor,
+        submittedAddress: claimed.quote!.submittedAddress || claimed.quote!.originalAddress,
+        normalizedAddress: corrected,
+        correctedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+    } : {}),
     shippedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
   const result = { carrier: rate.carrier, service: rate.service, trackingNumber: shippoTransaction.tracking_number || "", trackingUrl: shippoTransaction.tracking_url_provider || "", labelUrl: shippoTransaction.label_url || "", shipmentCost: Number(rate.amount), estimatedDelivery: shippoTransaction.eta || null };
@@ -1036,7 +1077,21 @@ async function purchaseShippoLabel(orderId: string, payload: Record<string, unkn
     transaction.set(orderRef, shipmentUpdates, { merge: true });
     transaction.set(commandRef, { status: "completed", result, completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     transaction.set(quoteRef, { status: "purchased", shippoTransactionId: shippoTransaction.object_id, purchasedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-    transaction.create(db.collection("order_audit_events").doc(`shippo-label-${quoteId}`), { orderId, operation: "create-label", actor, outcome: "completed", result, occurredAt: admin.firestore.FieldValue.serverTimestamp() });
+    transaction.create(db.collection("order_audit_events").doc(`shippo-label-${quoteId}`), {
+      orderId,
+      operation: "create-label",
+      actor,
+      outcome: "completed",
+      result,
+      ...(addressWasCorrected ? {
+        addressCorrection: {
+          originalAddress: claimed.quote!.originalAddress,
+          submittedAddress: claimed.quote!.submittedAddress || claimed.quote!.originalAddress,
+          normalizedAddress: corrected,
+        },
+      } : {}),
+      occurredAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
   });
 
   try {
@@ -1401,7 +1456,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
     } catch (error) {
       const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "Shipping rates could not be loaded.", "shipping_quote_failed");
       console.error("Shippo quote error:", error);
-      res.status(commandError.status).json({ error: commandError.message, code: commandError.code });
+      res.status(commandError.status).json({ error: commandError.message, code: commandError.code, details: commandError.details });
     }
   });
 

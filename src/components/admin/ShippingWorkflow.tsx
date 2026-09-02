@@ -1,10 +1,30 @@
 import React, { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { ExternalLink, PackageCheck, Truck } from 'lucide-react';
+import { AlertTriangle, ExternalLink, PackageCheck, Pencil, RotateCcw, Truck } from 'lucide-react';
 import { AdminOrderApiError, purchaseShippingLabel, requestShippingQuote, type ShippingAddress, type ShippingQuote } from '@/src/lib/adminOrders';
 import type { Order } from './DashboardView';
 
 const displayAddress = (address: ShippingAddress) => [address.name, address.street1, address.street2, `${address.city}, ${address.state} ${address.zip}`, address.country].filter(Boolean).join('\n');
+
+const addressFromOrder = (order: Order): ShippingAddress => ({
+  name: order.shippingAddress?.name || order.customerName || '',
+  street1: order.shippingAddress?.line1 || '',
+  street2: order.shippingAddress?.line2 || '',
+  city: order.shippingAddress?.city || '',
+  state: order.shippingAddress?.state || '',
+  zip: order.shippingAddress?.postalCode || '',
+  country: order.shippingAddress?.country || 'US',
+});
+
+const addressFields: Array<{ key: keyof ShippingAddress; label: string; required?: boolean; className?: string }> = [
+  { key: 'name', label: 'Recipient name', required: true, className: 'md:col-span-2' },
+  { key: 'street1', label: 'Address line 1', required: true, className: 'md:col-span-2' },
+  { key: 'street2', label: 'Address line 2' },
+  { key: 'city', label: 'City', required: true },
+  { key: 'state', label: 'State', required: true },
+  { key: 'zip', label: 'Postal code', required: true },
+  { key: 'country', label: 'Country code', required: true },
+];
 
 export function ShippingWorkflow({ order, onComplete }: { order: Order; onComplete: () => void | Promise<void> }) {
   const [parcel, setParcel] = useState({ length: '8', width: '6', height: '4', weight: '1', distanceUnit: 'in', massUnit: 'lb' });
@@ -12,25 +32,53 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
   const [selectedRateId, setSelectedRateId] = useState('');
   const [acceptedCorrection, setAcceptedCorrection] = useState(false);
   const [loading, setLoading] = useState<'quote' | 'purchase' | null>(null);
+  const [addressDraft, setAddressDraft] = useState<ShippingAddress>(() => addressFromOrder(order));
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [validationError, setValidationError] = useState<{ message: string; code?: string } | null>(null);
 
   useEffect(() => {
     setQuote(null);
     setSelectedRateId('');
     setAcceptedCorrection(false);
+    setAddressDraft(addressFromOrder(order));
+    setEditingAddress(false);
+    setValidationError(null);
   }, [order.id]);
 
   const errorMessage = (error: unknown) => error instanceof AdminOrderApiError ? error.message : 'Shipping operation failed. Please retry.';
   const updateParcel = (field: keyof typeof parcel, value: string) => setParcel(current => ({ ...current, [field]: value }));
+  const updateAddress = (field: keyof ShippingAddress, value: string) => {
+    setAddressDraft(current => ({ ...current, [field]: value }));
+    setQuote(null);
+    setSelectedRateId('');
+    setAcceptedCorrection(false);
+    setValidationError(null);
+  };
+  const resetAddress = () => {
+    setAddressDraft(addressFromOrder(order));
+    setQuote(null);
+    setSelectedRateId('');
+    setAcceptedCorrection(false);
+    setValidationError(null);
+  };
 
   const loadRates = async () => {
     setLoading('quote');
     try {
-      const nextQuote = await requestShippingQuote(order.id, parcel);
+      const nextQuote = await requestShippingQuote(order.id, parcel, addressDraft);
       setQuote(nextQuote);
       setSelectedRateId(nextQuote.rates[0]?.id || '');
       setAcceptedCorrection(!nextQuote.addressChanged);
+      setValidationError(null);
+      setEditingAddress(false);
     } catch (error) {
-      toast.error(errorMessage(error));
+      const message = errorMessage(error);
+      if (error instanceof AdminOrderApiError && ['invalid_address', 'shipping_address_incomplete', 'validation_error'].includes(error.code || '')) {
+        setValidationError({ message, code: error.code });
+        setEditingAddress(true);
+      } else {
+        toast.error(message);
+      }
     } finally {
       setLoading(null);
     }
@@ -85,6 +133,44 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
       {order.shipmentException && <div className="border border-red-400/30 bg-red-400/5 p-5 text-sm text-red-200"><p className="font-black">Label purchase requires review</p><p className="mt-2">{order.shipmentException.message}</p><p className="mt-2 text-xs text-red-200/60">Quote {order.shipmentException.quoteId}. Check Shippo for this order before trying another label.</p></div>}
       {!quote ? (
         <>
+          <div className="border border-white/10 bg-white/[0.015] p-5 space-y-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-[9px] uppercase tracking-[0.2em] text-brand-gold/50 font-black">Destination address</p>
+                {!editingAddress && <p className="mt-3 whitespace-pre-line text-sm leading-6 text-brand-parchment/70">{displayAddress(addressDraft)}</p>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => setEditingAddress(current => !current)} disabled={loading !== null} className="inline-flex items-center gap-2 px-4 py-2 border border-brand-gold/25 text-brand-gold text-[9px] uppercase tracking-[0.16em] font-black disabled:opacity-40">
+                  <Pencil size={12} /> {editingAddress ? 'Done editing' : 'Edit address'}
+                </button>
+                <button type="button" onClick={resetAddress} disabled={loading !== null} className="inline-flex items-center gap-2 px-4 py-2 border border-white/10 text-brand-parchment/60 text-[9px] uppercase tracking-[0.16em] font-black disabled:opacity-40">
+                  <RotateCcw size={12} /> Reset
+                </button>
+              </div>
+            </div>
+            {validationError && (
+              <div role="alert" className="flex items-start gap-3 border border-amber-400/30 bg-amber-400/[0.06] p-4 text-sm text-amber-100">
+                <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-300" />
+                <div><p className="font-black">Shippo could not confirm one deliverable address.</p><p className="mt-1 text-amber-100/75">{validationError.message}</p><p className="mt-2 text-xs text-amber-100/55">Check the street direction, apartment or suite, city, state, and postal code, then validate again.</p></div>
+              </div>
+            )}
+            {editingAddress && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {addressFields.map(field => (
+                  <label key={field.key} className={`text-[9px] uppercase tracking-[0.18em] text-brand-parchment/40 ${field.className || ''}`}>
+                    {field.label}{field.required ? ' *' : ''}
+                    <input
+                      value={addressDraft[field.key] || ''}
+                      onChange={event => updateAddress(field.key, event.target.value)}
+                      required={field.required}
+                      autoComplete="off"
+                      className="input-premium py-3 mt-2 normal-case tracking-normal"
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {(['length', 'width', 'height', 'weight'] as const).map(field => <label key={field} className="text-[9px] uppercase tracking-[0.18em] text-brand-parchment/40">{field}<input type="number" min="0.01" step="0.01" value={parcel[field]} onChange={event => updateParcel(field, event.target.value)} className="input-premium py-3 mt-2" /></label>)}
           </div>
@@ -92,11 +178,11 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
             <select value={parcel.distanceUnit} onChange={event => updateParcel('distanceUnit', event.target.value)} className="input-premium py-3"><option value="in">Inches</option><option value="cm">Centimeters</option></select>
             <select value={parcel.massUnit} onChange={event => updateParcel('massUnit', event.target.value)} className="input-premium py-3"><option value="lb">Pounds</option><option value="oz">Ounces</option><option value="kg">Kilograms</option></select>
           </div>
-          <button onClick={loadRates} disabled={loading !== null} className="px-5 py-3 bg-brand-gold text-brand-black text-[10px] uppercase tracking-[0.2em] font-black disabled:opacity-50">{loading === 'quote' ? 'Validating...' : 'Validate & Get Rates'}</button>
+          <button onClick={loadRates} disabled={loading !== null} className="px-5 py-3 bg-brand-gold text-brand-black text-[10px] uppercase tracking-[0.2em] font-black disabled:opacity-50">{loading === 'quote' ? 'Validating...' : validationError ? 'Validate Corrected Address' : 'Validate & Get Rates'}</button>
         </>
       ) : (
         <>
-          {quote.addressChanged && <div className="border border-amber-400/30 bg-amber-400/5 p-5 space-y-4"><p className="text-xs text-amber-300 font-black">Shippo recommends an address correction.</p><div className="grid md:grid-cols-2 gap-5 whitespace-pre-line text-sm text-brand-parchment/60"><div><span className="text-[9px] uppercase block text-brand-parchment/30">Original</span>{displayAddress(quote.originalAddress)}</div><div><span className="text-[9px] uppercase block text-brand-parchment/30">Recommended</span>{displayAddress(quote.correctedAddress)}</div></div><label className="flex gap-3 text-sm text-brand-parchment/70"><input type="checkbox" checked={acceptedCorrection} onChange={event => setAcceptedCorrection(event.target.checked)} /> Use the recommended address</label></div>}
+          {quote.addressChanged && <div className="border border-amber-400/30 bg-amber-400/5 p-5 space-y-4"><p className="text-xs text-amber-300 font-black">Confirm the validated shipping address.</p><div className="grid md:grid-cols-2 gap-5 whitespace-pre-line text-sm text-brand-parchment/60"><div><span className="text-[9px] uppercase block text-brand-parchment/30">Checkout address</span>{displayAddress(quote.originalAddress)}</div><div><span className="text-[9px] uppercase block text-brand-parchment/30">Validated address</span>{displayAddress(quote.correctedAddress)}</div></div><label className="flex items-start gap-3 text-sm text-brand-parchment/70"><input type="checkbox" className="mt-1" checked={acceptedCorrection} onChange={event => setAcceptedCorrection(event.target.checked)} /> Use this validated address for the label and record the correction on the order</label></div>}
           <div className="space-y-3">{quote.rates.map(rate => <label key={rate.id} className={`block border p-4 cursor-pointer ${selectedRateId === rate.id ? 'border-brand-gold/50 bg-brand-gold/5' : 'border-white/10'}`}><input type="radio" className="mr-3" name="shipping-rate" checked={selectedRateId === rate.id} onChange={() => setSelectedRateId(rate.id)} /><span className="text-brand-parchment font-black">{rate.carrier} {rate.service}</span><span className="float-right text-brand-gold font-black">${rate.amount.toFixed(2)} {rate.currency}</span><span className="block ml-6 text-xs text-brand-parchment/40">{rate.estimatedDays ? `About ${rate.estimatedDays} days` : rate.durationTerms || 'Carrier estimate unavailable'}</span></label>)}</div>
           <div className="flex gap-3"><button onClick={() => setQuote(null)} disabled={loading !== null} className="px-5 py-3 border border-white/10 text-brand-parchment/60 text-[10px] uppercase tracking-[0.2em] font-black">Back</button><button onClick={purchase} disabled={loading !== null || !selectedRateId || !acceptedCorrection} className="px-5 py-3 bg-brand-gold text-brand-black text-[10px] uppercase tracking-[0.2em] font-black disabled:opacity-40">{loading === 'purchase' ? 'Purchasing Once...' : 'Purchase Label & Ship'}</button></div>
         </>

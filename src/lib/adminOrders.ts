@@ -10,7 +10,7 @@ export type FulfillmentOperation =
   | 'notification-retry';
 
 export class AdminOrderApiError extends Error {
-  constructor(message: string, public status: number, public code?: string) {
+  constructor(message: string, public status: number, public code?: string, public details?: Record<string, unknown>) {
     super(message);
   }
 }
@@ -25,7 +25,7 @@ async function adminPost(path: string, payload: Record<string, unknown>) {
     body: JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new AdminOrderApiError(data.error || 'The operation failed.', response.status, data.code);
+  if (!response.ok) throw new AdminOrderApiError(data.error || 'The operation failed.', response.status, data.code, data.details);
   return data;
 }
 
@@ -48,10 +48,10 @@ export async function runOrderCommand(
 
 export type ShippingAddress = { name: string; street1: string; street2?: string; city: string; state: string; zip: string; country: string };
 export type ShippingRate = { id: string; amount: number; currency: string; carrier: string; service: string; estimatedDays: number | null; durationTerms: string };
-export type ShippingQuote = { quoteId: string; originalAddress: ShippingAddress; correctedAddress: ShippingAddress; addressChanged: boolean; rates: ShippingRate[] };
+export type ShippingQuote = { quoteId: string; originalAddress: ShippingAddress; submittedAddress: ShippingAddress; correctedAddress: ShippingAddress; addressChanged: boolean; rates: ShippingRate[] };
 
-export function requestShippingQuote(orderId: string, parcel: Record<string, unknown>): Promise<ShippingQuote> {
-  return adminPost(`/api/admin/orders/${encodeURIComponent(orderId)}/shipping/quote`, parcel);
+export function requestShippingQuote(orderId: string, parcel: Record<string, unknown>, addressOverride: ShippingAddress): Promise<ShippingQuote> {
+  return adminPost(`/api/admin/orders/${encodeURIComponent(orderId)}/shipping/quote`, { ...parcel, addressOverride });
 }
 
 export function purchaseShippingLabel(orderId: string, payload: { quoteId: string; rateId: string; acceptCorrectedAddress: boolean }) {
