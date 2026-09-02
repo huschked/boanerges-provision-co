@@ -1010,7 +1010,7 @@ async function createShippoQuote(orderId: string, payload: Record<string, unknow
 
   const shipment = await shippoRequest<{
     object_id: string;
-    object_state: string;
+    object_state?: string;
     status?: string;
     rates: ShippoRate[];
     messages?: ShippoMessage[];
@@ -1021,7 +1021,8 @@ async function createShippoQuote(orderId: string, payload: Record<string, unknow
     async: false,
     metadata: `Order ${orderId}`,
   }, debugTrace);
-  if (shipment.object_state !== "VALID" || !shipment.rates?.length) {
+  const shipmentSucceeded = shipment.status === "SUCCESS" || shipment.object_state === "VALID";
+  if (!shipmentSucceeded || !shipment.rates?.length) {
     const carrierMessages = shipment.messages || [];
     const summary = carrierMessageSummary(carrierMessages);
     throw new AdminCommandError(
