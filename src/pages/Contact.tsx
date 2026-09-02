@@ -69,7 +69,7 @@ export const Contact: React.FC = () => {
                 </div>
                 <div className="space-y-1">
                   <p className="text-[10px] uppercase tracking-widest font-black text-brand-parchment/40">Email Us</p>
-                  <p className="text-lg font-serif text-brand-parchment">hello@boanergesprovision.com</p>
+                  <a href="mailto:hello@boanergesprovisions.com" className="text-lg font-serif text-brand-parchment hover:text-brand-gold transition-colors">hello@boanergesprovisions.com</a>
                 </div>
               </div>
 

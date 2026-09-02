@@ -195,19 +195,28 @@ const STANDARD_SHIPPING_AMOUNT = Number(process.env.STANDARD_SHIPPING_AMOUNT || 
 const DEFAULT_PRODUCT_TAX_CODE = process.env.STRIPE_PRODUCT_TAX_CODE || "txcd_99999999";
 const RESEND_AUDIENCE_ID = process.env.RESEND_AUDIENCE_ID || "";
 const ORDERS_EMAIL_FROM =
-  process.env.EMAIL_FROM_ORDERS || "Boanerges Provisions Co <onboarding@resend.dev>";
+  process.env.EMAIL_FROM_ORDERS || "Boanerges Provisions Co <orders@boanergesprovisions.com>";
 const SUPPORT_EMAIL_FROM =
-  process.env.EMAIL_FROM_SUPPORT || "Boanerges Provisions Co <onboarding@resend.dev>";
-const ADMIN_EMAIL_FROM =
-  process.env.EMAIL_FROM_ADMIN || "Boanerges Provisions Co <onboarding@resend.dev>";
-const ADMIN_NOTIFICATION_EMAIL =
-  process.env.ADMIN_EMAIL && EMAIL_REGEX.test(process.env.ADMIN_EMAIL)
-    ? process.env.ADMIN_EMAIL
-    : "huschked@gmail.com";
+  process.env.EMAIL_FROM_SUPPORT || "Boanerges Provisions Co Support <support@boanergesprovisions.com>";
+const GENERAL_EMAIL_FROM =
+  process.env.EMAIL_FROM_GENERAL || "Boanerges Provisions Co <hello@boanergesprovisions.com>";
+const ORDERS_REPLY_TO = "support@boanergesprovisions.com";
+const GENERAL_REPLY_TO = "hello@boanergesprovisions.com";
+const legacyAdminEmail = process.env.ADMIN_EMAIL && EMAIL_REGEX.test(process.env.ADMIN_EMAIL)
+  ? process.env.ADMIN_EMAIL
+  : "";
+const ORDERS_NOTIFICATION_EMAIL =
+  process.env.ORDERS_NOTIFICATION_EMAIL && EMAIL_REGEX.test(process.env.ORDERS_NOTIFICATION_EMAIL)
+    ? process.env.ORDERS_NOTIFICATION_EMAIL
+    : legacyAdminEmail || "orders@boanergesprovisions.com";
+const INQUIRIES_NOTIFICATION_EMAIL =
+  process.env.INQUIRIES_NOTIFICATION_EMAIL && EMAIL_REGEX.test(process.env.INQUIRIES_NOTIFICATION_EMAIL)
+    ? process.env.INQUIRIES_NOTIFICATION_EMAIL
+    : legacyAdminEmail || "hello@boanergesprovisions.com";
 const RESEND_TEST_RECIPIENT =
   process.env.RESEND_TEST_RECIPIENT && EMAIL_REGEX.test(process.env.RESEND_TEST_RECIPIENT)
     ? process.env.RESEND_TEST_RECIPIENT
-    : ADMIN_NOTIFICATION_EMAIL;
+    : ORDERS_NOTIFICATION_EMAIL;
 const SHIPPO_API_URL = "https://api.goshippo.com";
 const SHIPPO_API_VERSION = "2018-02-08";
 const INVENTORY_RESERVATION_MINUTES = Math.min(1440, Math.max(31, Number(process.env.INVENTORY_RESERVATION_MINUTES || 31)));
@@ -899,6 +908,7 @@ async function authenticateAdmin(req: express.Request): Promise<AdminActor> {
 async function sendOrderConfirmation(orderId: string, order: FirebaseFirestore.DocumentData, idempotencyKey: string) {
   const result = await resend.emails.send({
     from: ORDERS_EMAIL_FROM,
+    replyTo: ORDERS_REPLY_TO,
     to: order.customerEmail,
     subject: `Order Confirmation #${orderId.slice(-6).toUpperCase()}`,
     html: buildOrderEmailHtml({
@@ -927,6 +937,7 @@ async function sendShipmentNotification(orderId: string, order: FirebaseFirestor
     : "";
   const result = await resend.emails.send({
     from: ORDERS_EMAIL_FROM,
+    replyTo: ORDERS_REPLY_TO,
     to: order.customerEmail,
     subject: `Your order #${orderId.slice(-6).toUpperCase()} has shipped`,
     html: buildEmailLayout({
@@ -1814,7 +1825,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       let welcomeEmailStatus = "sent";
       let welcomeEmailError = "";
 
-      if (usesResendTestSender(ORDERS_EMAIL_FROM) && email.toLowerCase() !== RESEND_TEST_RECIPIENT.toLowerCase()) {
+      if (usesResendTestSender(GENERAL_EMAIL_FROM) && email.toLowerCase() !== RESEND_TEST_RECIPIENT.toLowerCase()) {
         welcomeEmailStatus = "blocked_test_domain";
         welcomeEmailError = `Resend test sender can only email ${RESEND_TEST_RECIPIENT}. Verify a sending domain to deliver to other recipients.`;
 
@@ -1829,7 +1840,8 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       } else {
         try {
           const welcomeEmailResult = await resend.emails.send({
-            from: ORDERS_EMAIL_FROM,
+            from: GENERAL_EMAIL_FROM,
+            replyTo: GENERAL_REPLY_TO,
             to: email,
             subject: "Welcome to Boanerges Provisions Co.",
             html: buildNewsletterEmailHtml({ email }),
@@ -1957,18 +1969,20 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
         console.warn("Could not save to contact_messages in sandbox DB due to Service Account mismatch. Skipping save for local test:", dbError.message);
       }
 
-      // Auto-response to customer (redirected to admin for testing)
+      // General-inquiry receipt to the customer.
       await resend.emails.send({
-        from: SUPPORT_EMAIL_FROM,
-        to: ADMIN_NOTIFICATION_EMAIL,
+        from: GENERAL_EMAIL_FROM,
+        replyTo: GENERAL_REPLY_TO,
+        to: email,
         subject: `We've received your ${normalizedSubject.toLowerCase()}`,
         html: `<p>Hi ${name},</p><p>Thanks for reaching out. We'll get back to you shortly.</p>`,
       });
 
       // Notification to admin
       await resend.emails.send({
-        from: ADMIN_EMAIL_FROM,
-        to: ADMIN_NOTIFICATION_EMAIL,
+        from: SUPPORT_EMAIL_FROM,
+        replyTo: email,
+        to: INQUIRIES_NOTIFICATION_EMAIL,
         subject: `New Inquiry from ${name}`,
         html: `
           <h3>New Contact Form Submission</h3>
@@ -2296,8 +2310,9 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session, event:
 
     // Notify admin
     await resend.emails.send({
-      from: ADMIN_EMAIL_FROM,
-      to: ADMIN_NOTIFICATION_EMAIL,
+      from: ORDERS_EMAIL_FROM,
+      replyTo: ORDERS_REPLY_TO,
+      to: ORDERS_NOTIFICATION_EMAIL,
       subject: `URGENT: Order Fulfillment Error #${orderId.slice(-6).toUpperCase()}`,
       html: `<h3>Payment received but inventory failed to decrement!</h3>
              <p>Error: ${error.message}</p>

@@ -99,7 +99,7 @@ export const Footer: React.FC = () => {
         <div className="pt-12 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="flex flex-col md:flex-row gap-8 items-center text-[10px] uppercase tracking-widest text-brand-parchment/60 font-black">
             <div className="flex items-center gap-2"><MapPin size={12} /> Small Batch, USA</div>
-            <div className="flex items-center gap-2"><Mail size={12} /> hello@boanergesprovision.com</div>
+            <a href="mailto:hello@boanergesprovisions.com" className="flex items-center gap-2 hover:text-brand-gold transition-colors"><Mail size={12} /> hello@boanergesprovisions.com</a>
           </div>
           <p className="text-[10px] uppercase tracking-widest text-brand-parchment/40 font-black">
             © 2026 Boanerges Provisions Co. All Rights Reserved.
