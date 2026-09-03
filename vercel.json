@@ -57,6 +57,10 @@
     {
       "source": "/returns",
       "destination": "/index.html"
+    },
+    {
+      "source": "/order-status",
+      "destination": "/index.html"
     }
   ]
 }

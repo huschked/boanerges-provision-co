@@ -10,6 +10,7 @@ type CheckoutSessionStatus = {
   customerEmail?: string;
   orderId?: string;
   orderStatus?: string;
+  orderStatusUrl?: string;
   amounts?: {
     subtotal: number;
     shipping: number;
@@ -157,9 +158,15 @@ export const CheckoutSuccess: React.FC = () => {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
+              {sessionStatus?.orderStatusUrl && <a
+                href={sessionStatus.orderStatusUrl}
+                className="w-full sm:w-auto px-10 py-5 bg-brand-gold text-brand-black text-[11px] uppercase tracking-[0.25em] font-black hover:bg-brand-parchment transition-all text-center"
+              >
+                View Order Status
+              </a>}
               <Link
                 to="/shop"
-                className="w-full sm:w-auto px-10 py-5 bg-brand-gold text-brand-black text-[11px] uppercase tracking-[0.25em] font-black hover:bg-brand-parchment transition-all text-center"
+                className={sessionStatus?.orderStatusUrl ? "w-full sm:w-auto px-10 py-5 border border-brand-gold/30 text-brand-gold text-[11px] uppercase tracking-[0.25em] font-black hover:bg-brand-gold/10 transition-all text-center" : "w-full sm:w-auto px-10 py-5 bg-brand-gold text-brand-black text-[11px] uppercase tracking-[0.25em] font-black hover:bg-brand-parchment transition-all text-center"}
               >
                 Continue Shopping
               </Link>

@@ -14,6 +14,8 @@ import { classifyShippoTracking, decideLabelPurchase, normalizeShippoTrackingSta
 import { canTransitionFulfillment, canTransitionPayment, canTransitionShipment, normalizeOrderLifecycle, type FulfillmentState, type PaymentState, type ShipmentState } from "./src/lib/orderLifecycle.js";
 import { CHECKOUT_NEWSLETTER_SOURCE, shouldActivateCheckoutNewsletter } from "./src/lib/checkoutConsent.js";
 import { buildRefundWorkflowPlan, isLabelRefundComplete, type RefundWorkflowRequest } from "./src/lib/refundWorkflow.js";
+import { createOrderStatusToken, verifyOrderStatusToken } from "./src/lib/orderStatusToken.js";
+import { buildPublicOrderStatus } from "./src/lib/orderStatusView.js";
 
 dotenv.config();
 
@@ -245,6 +247,9 @@ const SHIPPO_API_URL = "https://api.goshippo.com";
 const SHIPPO_API_VERSION = "2018-02-08";
 const SHIPPO_DEBUG = process.env.SHIPPO_DEBUG?.trim().toLowerCase() === "true";
 const SHIPPO_WEBHOOK_SECRET = process.env.SHIPPO_WEBHOOK_SECRET || "";
+const ORDER_STATUS_SECRET = process.env.ORDER_STATUS_SECRET || "";
+const configuredOrderStatusDays = Number(process.env.ORDER_STATUS_TOKEN_DAYS || 90);
+const ORDER_STATUS_TOKEN_SECONDS = Math.floor(Number.isFinite(configuredOrderStatusDays) ? Math.min(365, Math.max(1, configuredOrderStatusDays)) : 90) * 24 * 60 * 60;
 const INVENTORY_RESERVATION_MINUTES = Math.min(1440, Math.max(31, Number(process.env.INVENTORY_RESERVATION_MINUTES || 31)));
 const configuredStripeEventTimeout = Number(process.env.STRIPE_EVENT_PROCESSING_TIMEOUT_SECONDS || 300);
 const STRIPE_EVENT_PROCESSING_TIMEOUT_SECONDS = Number.isFinite(configuredStripeEventTimeout)
@@ -702,6 +707,17 @@ function getPublicAppUrl(fallback?: string) {
   return (process.env.APP_URL || process.env.SHARED_APP_URL || fallback || "").replace(/\/$/, "");
 }
 
+function getOrderStatusUrl(orderId: string) {
+  if (ORDER_STATUS_SECRET.length < 32) return "";
+  const baseUrl = getPublicAppUrl("https://boanerges-provision-co.vercel.app");
+  try {
+    const token = createOrderStatusToken(orderId, ORDER_STATUS_SECRET, Date.now(), ORDER_STATUS_TOKEN_SECONDS);
+    return `${baseUrl}/order-status?token=${encodeURIComponent(token)}`;
+  } catch {
+    return "";
+  }
+}
+
 function getPublicEmailAssetUrl(pathname: string) {
   const baseUrl = (process.env.SHARED_APP_URL || process.env.APP_URL || "").replace(/\/$/, "");
   return /^https:\/\//i.test(baseUrl) ? `${baseUrl}${pathname}` : "";
@@ -892,6 +908,7 @@ function buildOrderEmailHtml({
   shippingAmount,
   taxAmount,
   totalAmount,
+  orderStatusUrl,
 }: {
   shippingAddress: ReturnType<typeof getShippingAddress>;
   customerName: string;
@@ -901,6 +918,7 @@ function buildOrderEmailHtml({
   shippingAmount: number;
   taxAmount: number;
   totalAmount: number;
+  orderStatusUrl: string;
 }) {
   const itemMarkup = items
     .map(
@@ -920,8 +938,8 @@ function buildOrderEmailHtml({
     eyebrow: "Order Confirmed",
     title: `Thank you${customerName ? `, ${escapeHtml(customerName)}` : ""}.`,
     intro: "Your provisions are now in our fulfillment queue. We have received payment successfully and we will follow up again as soon as your order ships.",
-    ctaLabel: "Continue Shopping",
-    ctaHref: `${getPublicAppUrl() || "https://boanerges-provision-co.vercel.app"}/shop`,
+    ctaLabel: orderStatusUrl ? "View Order Status" : "Continue Shopping",
+    ctaHref: orderStatusUrl || `${getPublicAppUrl() || "https://boanerges-provision-co.vercel.app"}/shop`,
     body: `
       <div style="display:grid;gap:24px;">
         <div style="display:grid;grid-template-columns:1fr;gap:20px;">
@@ -1009,6 +1027,7 @@ async function sendOrderConfirmation(orderId: string, order: FirebaseFirestore.D
       shippingAmount: Number(order.shippingAmount || 0),
       taxAmount: Number(order.taxAmount || 0),
       totalAmount: Number(order.totalAmount || 0),
+      orderStatusUrl: getOrderStatusUrl(orderId),
     }),
   }, { idempotencyKey });
   if (result.error) throw new Error(result.error.message || "Email provider rejected the request.");
@@ -1017,6 +1036,7 @@ async function sendOrderConfirmation(orderId: string, order: FirebaseFirestore.D
 
 async function sendShipmentNotification(orderId: string, order: FirebaseFirestore.DocumentData, idempotencyKey: string) {
   const trackingUrl = String(order.trackingUrl || "");
+  const orderStatusUrl = getOrderStatusUrl(orderId);
   const shippedItems = Array.isArray(order.items)
     ? (order.items as Array<PendingOrderItem & { cancelledQuantity?: number }>)
       .map(item => ({ ...item, quantity: Math.max(0, Number(item.quantity || 0) - Number(item.cancelledQuantity || 0)) }))
@@ -1037,8 +1057,8 @@ async function sendShipmentNotification(orderId: string, order: FirebaseFirestor
       eyebrow: "Order Shipped",
       title: "Your provisions are on the way.",
       intro: `${order.carrier || "The carrier"} has your package${order.estimatedDelivery ? `, with estimated delivery ${order.estimatedDelivery}` : ""}.`,
-      ctaLabel: trackingUrl ? "Track Package" : undefined,
-      ctaHref: trackingUrl || undefined,
+      ctaLabel: orderStatusUrl ? "View Order Status" : trackingUrl ? "Track Package" : undefined,
+      ctaHref: orderStatusUrl || trackingUrl || undefined,
       body: `<div style="padding:20px;border:1px solid rgba(197,160,89,0.16);"><p style="margin:0;color:#c5a059;font-size:11px;text-transform:uppercase;letter-spacing:.2em;">Tracking Number</p><p style="margin:10px 0 0;color:#f4ecd8;font-size:18px;font-weight:700;">${escapeHtml(String(order.trackingNumber || "Pending"))}</p></div>${shippedItemsMarkup}`,
       footerNote: "Need help with your shipment? Reply to this email and our team will take care of you.",
     }),
@@ -1075,6 +1095,7 @@ async function sendTrackingNotification(
   idempotencyKey: string,
 ) {
   const trackingUrl = String(tracking.tracking_url_provider || order.trackingUrl || "");
+  const orderStatusUrl = getOrderStatusUrl(orderId);
   const details = tracking.tracking_status?.status_details || tracking.tracking_status?.substatus?.text || "";
   const content = {
     delivered: {
@@ -1108,8 +1129,8 @@ async function sendTrackingNotification(
       eyebrow: content.eyebrow,
       title: content.title,
       intro: content.intro,
-      ctaLabel: trackingUrl ? "Track Package" : undefined,
-      ctaHref: trackingUrl || undefined,
+      ctaLabel: orderStatusUrl ? "View Order Status" : trackingUrl ? "Track Package" : undefined,
+      ctaHref: orderStatusUrl || trackingUrl || undefined,
       body: `<div style="padding:20px;border:1px solid rgba(197,160,89,0.16);"><p style="margin:0;color:#c5a059;font-size:11px;text-transform:uppercase;letter-spacing:.2em;">Carrier Update</p><p style="margin:10px 0 0;color:#f4ecd8;font-size:16px;line-height:1.6;">${escapeHtml(details || "No additional carrier details were provided.")}</p><p style="margin:12px 0 0;color:#b7ae9c;font-size:13px;">Tracking: ${escapeHtml(String(tracking.tracking_number || order.trackingNumber || "Unavailable"))}</p></div>`,
       footerNote: content.footer,
     }),
@@ -2069,6 +2090,36 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
   app.use("/api/contact", apiLimiter);
   app.use("/api/analytics/events", apiLimiter);
 
+  const orderStatusLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 60,
+    message: { error: "Too many status requests. Please wait before trying again.", code: "rate_limited" },
+  });
+
+  app.get("/api/order-status", orderStatusLimiter, async (req, res) => {
+    res.set("Cache-Control", "private, no-store, max-age=0");
+    if (ORDER_STATUS_SECRET.length < 32) {
+      return res.status(503).json({ error: "Order tracking is temporarily unavailable.", code: "order_status_unavailable" });
+    }
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    const verified = verifyOrderStatusToken(token, ORDER_STATUS_SECRET);
+    if (!verified.valid) {
+      return res.status(404).json({ error: "This order-status link is invalid or has expired.", code: "order_status_unavailable" });
+    }
+
+    try {
+      const orderSnap = await db.collection("orders").doc(verified.orderId).get();
+      if (!orderSnap.exists) {
+        return res.status(404).json({ error: "This order-status link is invalid or has expired.", code: "order_status_unavailable" });
+      }
+      const order = orderSnap.data()!;
+      return res.json(buildPublicOrderStatus(orderSnap.id, order, verified.expiresAt, normalizeOrderLifecycle(order)));
+    } catch (error) {
+      console.error("Order status lookup error:", error);
+      return res.status(500).json({ error: "Order tracking is temporarily unavailable.", code: "order_status_unavailable" });
+    }
+  });
+
   const checkoutLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 10,
@@ -2303,6 +2354,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
         customerEmail: session.customer_details?.email || session.customer_email || "",
         orderId: orderSnap.exists ? orderSnap.id : "",
         orderStatus: orderSnap.exists ? orderSnap.data()?.status || "" : "",
+        orderStatusUrl: orderSnap.exists ? getOrderStatusUrl(orderSnap.id) : "",
         amounts: {
           subtotal: toMoneyFromCents(session.amount_subtotal),
           shipping: selectedShipping.amountTotal,

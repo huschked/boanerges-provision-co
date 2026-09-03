@@ -60,21 +60,6 @@ This board is the working queue for website development. Keep cards actionable e
   - Compare aggregate counts and revenue against known fixture totals.
 - **Notes / Links:** Current loading is capped in `src/pages/Admin.tsx`.
 
-### WEB-020 - Add Secure Customer Order Tracking
-
-- **Priority:** Medium
-- **Area:** checkout
-- **Goal:** Reduce order-status inquiries by giving customers a secure, account-free view of fulfillment and tracking progress.
-- **Acceptance Criteria:**
-  - Confirmation and shipment emails link to an expiring or revocable signed order-status URL.
-  - The page shows purchased items, totals, fulfillment stage, tracking, estimated delivery, and support contact.
-  - The page does not expose customer or order data when the token is missing, invalid, expired, or for another order.
-  - Address-change or cancellation options appear only while the order is still eligible.
-- **Verification:**
-  - Browser-check valid, expired, modified, and cross-order tokens.
-  - Confirm carrier updates appear without exposing admin-only notes or payment identifiers.
-- **Notes / Links:** Extend `src/pages/CheckoutSuccess.tsx`; depends on WEB-010 and WEB-014.
-
 ### WEB-021 - Add Consistent Order References and Fulfillment Copy
 
 - **Priority:** Low
@@ -203,6 +188,24 @@ This board is the working queue for website development. Keep cards actionable e
 No cards currently in progress.
 
 ## Review / Verify
+
+### WEB-020 - Add Secure Customer Order Tracking
+
+- **Priority:** Medium
+- **Area:** checkout
+- **Goal:** Reduce order-status inquiries by giving customers a secure, account-free view of fulfillment and tracking progress.
+- **Acceptance Criteria:**
+  - Confirmation, shipment, and carrier-update emails link to a 90-day HMAC-signed order-status URL when production signing is configured.
+  - Checkout success also links to the status page once the webhook-created order is available.
+  - The page shows purchased items, totals, fulfillment stage, tracking, estimated delivery, and support contact.
+  - A strict public response whitelist excludes customer identity, address, product ids, admin notes, Stripe fields, and internal order ids.
+  - Missing, invalid, expired, modified, cross-order, and nonexistent-order tokens do not expose order data.
+  - Address-change and cancellation contact options appear only while the order remains eligible.
+- **Verification:**
+  - Six targeted tests cover valid, expired, modified, and cross-order tokens; response privacy; change eligibility; and unsafe tracking links.
+  - All 29 automated tests and TypeScript validation pass.
+  - Production build passes; live browser verification remains after configuring `ORDER_STATUS_SECRET` and deploying.
+- **Notes / Links:** The public route is `/order-status`; the rate-limited API is `/api/order-status`. Set a stable Production `ORDER_STATUS_SECRET` of at least 32 unpredictable characters so emailed links remain valid. See `docs/customer-order-status.md`.
 
 ### WEB-017 - Add Packing Slips and Consolidated Pick Lists
 

@@ -17,6 +17,7 @@ import { Checkout } from './pages/Checkout';
 import { CheckoutSuccess } from './pages/CheckoutSuccess';
 import { Admin } from './pages/Admin';
 import { ReturnsPolicy } from './pages/ReturnsPolicy';
+import { OrderStatus } from './pages/OrderStatus';
 import { auth } from './lib/firebase';
 
 function ScrollToTop() {
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="/checkout-success" element={<CheckoutSuccess />} />
           <Route path="/success" element={<CheckoutSuccess />} />
           <Route path="/returns" element={<ReturnsPolicy />} />
+          <Route path="/order-status" element={<OrderStatus />} />
           <Route path="/admin" element={<Admin />} />
         </Routes>
       </main>
