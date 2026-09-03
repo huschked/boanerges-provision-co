@@ -1,12 +1,23 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { X, Minus, Plus, ShoppingCart, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
+import { getProductsByIds } from '@/src/services/productService';
 
 export const CartDrawer: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-  const { items, removeItem, updateQuantity, total, itemCount } = useCart();
+  const { items, removeItem, updateQuantity, refreshProductSnapshots, total, itemCount } = useCart();
+  const productIds = items.map((item) => item.product.id).sort().join('|');
+
+  useEffect(() => {
+    if (!isOpen || !productIds) return;
+    let cancelled = false;
+    getProductsByIds(productIds.split('|'))
+      .then((products) => { if (!cancelled) refreshProductSnapshots(products); })
+      .catch((error) => console.error('Unable to refresh cart product data:', error));
+    return () => { cancelled = true; };
+  }, [isOpen, productIds, refreshProductSnapshots]);
 
   return (
     <AnimatePresence>

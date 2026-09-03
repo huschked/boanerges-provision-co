@@ -21,7 +21,7 @@ const db = typedFirebaseConfig.firestoreDatabaseId
   ? getFirestore(typedFirebaseConfig.firestoreDatabaseId)
   : getFirestore();
 
-const products = [
+const productSeeds = [
   {
     name: "Smoked Jalapeño Garlic",
     slug: "smoked-jalapeno-garlic",
@@ -151,6 +151,22 @@ const products = [
     imageUrl: "https://picsum.photos/seed/porcini/800/800",
   },
 ];
+
+// Seed data is intentionally draft-only. Product facts must be entered and approved in Admin before activation.
+const products = productSeeds.map((product) => ({
+  ...product,
+  active: false,
+  heatLabel: ["No Heat", "Mild", "Medium", "Hot", "Very Hot", "Extreme"][product.heatLevel],
+  ingredients: [],
+  allergenStatement: "",
+  crossContactStatement: "",
+  storageInstructions: "",
+  shelfLife: "",
+  dietaryClaims: [],
+  dietaryClaimsApproved: false,
+  productFactsApproved: false,
+  productDataVersion: 1,
+}));
 
 async function seed() {
   const batch = db.batch();

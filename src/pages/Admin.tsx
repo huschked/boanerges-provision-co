@@ -6,7 +6,7 @@ import logo from '@/src/assets/BoanergesLogoTransparent-v2.png';
 import { auth, db } from '@/src/lib/firebase';
 import { inMemoryPersistence, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, setPersistence, signOut, User } from 'firebase/auth';
 import { collection, query, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
-import { Product, getProducts } from '@/src/services/productService';
+import { Product, getAllProducts } from '@/src/services/productService';
 import toast from 'react-hot-toast';
 import { DashboardView, Order } from '../components/admin/DashboardView';
 import { ProductsView } from '../components/admin/ProductsView';
@@ -41,7 +41,7 @@ export const Admin: React.FC = () => {
   const fetchData = async () => {
     setIsRefreshing(true);
     try {
-      const pData = await getProducts();
+      const pData = await getAllProducts();
       setProducts(pData);
 
       const ordersSnap = await getDocs(query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(300)));

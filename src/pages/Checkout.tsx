@@ -1,17 +1,28 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck, Lock, CreditCard, ArrowLeft, Zap, Award, Loader2, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useCart } from '@/src/store';
 import toast from 'react-hot-toast';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
+import { getProductsByIds } from '@/src/services/productService';
 
 export const Checkout: React.FC = () => {
-  const { items, total, updateQuantity, removeItem } = useCart();
+  const { items, total, updateQuantity, removeItem, refreshProductSnapshots } = useCart();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [newsletterOptIn, setNewsletterOptIn] = useState(false);
-  const [unavailableItems, setUnavailableItems] = useState<Array<{ productId: string; name: string; requested: number; available: number }>>([]);
+  const [unavailableItems, setUnavailableItems] = useState<Array<{ productId: string; name: string; requested: number; available: number; reason?: string }>>([]);
   const [checkoutError, setCheckoutError] = useState<{ message: string; code?: string } | null>(null);
+  const productIds = items.map((item) => item.product.id).sort().join('|');
+
+  useEffect(() => {
+    if (!productIds) return;
+    let cancelled = false;
+    getProductsByIds(productIds.split('|'))
+      .then((products) => { if (!cancelled) refreshProductSnapshots(products); })
+      .catch((error) => console.error('Unable to refresh checkout product data:', error));
+    return () => { cancelled = true; };
+  }, [productIds, refreshProductSnapshots]);
 
   const handleCheckout = async () => {
     setLoading(true);
@@ -151,7 +162,7 @@ export const Checkout: React.FC = () => {
                   <p className="text-sm text-red-200 font-black">Update your cart to continue</p>
                   {unavailableItems.map(item => (
                     <div key={item.productId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm">
-                      <p className="text-brand-parchment/70"><strong className="text-brand-parchment">{item.name}</strong> — requested {item.requested}, {item.available} available</p>
+                      <p className="text-brand-parchment/70"><strong className="text-brand-parchment">{item.name}</strong> — {item.reason || `requested ${item.requested}, ${item.available} available`}</p>
                       <div className="flex gap-2">
                         {item.available > 0 && <button onClick={() => { updateQuantity(item.productId, item.available); setUnavailableItems(current => current.filter(entry => entry.productId !== item.productId)); }} className="px-3 py-2 border border-brand-gold/30 text-brand-gold text-[9px] uppercase tracking-wider font-black">Use {item.available}</button>}
                         <button onClick={() => { removeItem(item.productId); setUnavailableItems(current => current.filter(entry => entry.productId !== item.productId)); }} className="px-3 py-2 border border-red-400/30 text-red-200 text-[9px] uppercase tracking-wider font-black">Remove</button>

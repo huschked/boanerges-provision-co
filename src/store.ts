@@ -12,6 +12,7 @@ interface CartStore {
   addItem: (product: Product, quantity?: number) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
+  refreshProductSnapshots: (products: Product[]) => void;
   clearCart: () => void;
   total: () => number;
   itemCount: () => number;
@@ -46,6 +47,15 @@ export const useCart = create<CartStore>()(persist((set, get) => ({
       items: get().items.map((item) =>
         item.product.id === productId ? { ...item, quantity } : item
       ),
+    });
+  },
+  refreshProductSnapshots: (products) => {
+    const currentProducts = new Map(products.map((product) => [product.id, product]));
+    set({
+      items: get().items.map((item) => {
+        const currentProduct = currentProducts.get(item.product.id);
+        return currentProduct ? { ...item, product: currentProduct } : item;
+      }),
     });
   },
   clearCart: () => set({ items: [] }),

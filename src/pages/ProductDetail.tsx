@@ -65,6 +65,7 @@ export const ProductDetail: React.FC = () => {
   const flavorNotes = product.flavorNotes ?? [];
   const pairings = product.pairings ?? [];
   const ingredients = product.ingredients ?? [];
+  const dietaryClaims = product.dietaryClaims ?? [];
 
   return (
     <div className="pt-40 pb-32 animate-fade-in editorial-surface-dark relative overflow-hidden">
@@ -94,18 +95,6 @@ export const ProductDetail: React.FC = () => {
                 referrerPolicy="no-referrer"
               />
             </motion.div>
-            <div className="grid grid-cols-4 gap-4">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="aspect-square bg-white rounded-sm overflow-hidden border border-white/10 cursor-pointer hover:border-brand-gold transition-colors">
-                  <img 
-                    src={`https://picsum.photos/seed/salt-detail-${i}/400/400`} 
-                    alt="Detail" 
-                    className="w-full h-full object-cover opacity-60 hover:opacity-100 transition-opacity"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* Product Info */}
@@ -120,7 +109,10 @@ export const ProductDetail: React.FC = () => {
             </div>
 
             <div className="space-y-6">
-              <HeatScale level={product.heatLevel} className="scale-110 origin-left" />
+              <div className="flex items-center gap-4">
+                <HeatScale level={product.heatLevel} className="scale-110 origin-left" />
+                <span className="text-[10px] uppercase tracking-widest font-black text-brand-gold">{product.heatLabel}</span>
+              </div>
               <p className="text-lg text-brand-parchment/60 leading-relaxed font-light">
                 {product.shortDescription}
               </p>
@@ -208,7 +200,11 @@ export const ProductDetail: React.FC = () => {
               {[
                 { title: 'Flavor Notes', content: flavorNotes.length ? flavorNotes.join(', ') : 'Flavor notes coming soon.' },
                 { title: 'Suggested Pairings', content: pairings.length ? pairings.join(', ') : 'Pairing ideas coming soon.' },
-                { title: 'Ingredients', content: ingredients.length ? ingredients.join(', ') : 'Ingredient details coming soon.' },
+                { title: 'Ingredients', content: ingredients.join(', ') },
+                { title: 'Allergen Information', content: product.allergenStatement },
+                { title: 'Cross-contact Information', content: product.crossContactStatement },
+                { title: 'Storage & Shelf Life', content: `${product.storageInstructions} ${product.shelfLife}` },
+                ...(dietaryClaims.length ? [{ title: 'Dietary Claims', content: dietaryClaims.join(', ') }] : []),
               ].map((item, i) => (
                 <details key={i} className="group border-b border-white/10 pb-4">
                   <summary className="flex items-center justify-between cursor-pointer list-none">

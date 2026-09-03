@@ -1,4 +1,5 @@
 import { db, collection, getDocs, query, where, doc, getDoc } from '../lib/firebase';
+import { isProductPublishReady } from '../lib/productCatalog';
 
 export interface Product {
   id: string;
@@ -12,6 +13,15 @@ export interface Product {
   pairings: string[];
   tags: string[];
   ingredients?: string[];
+  allergenStatement?: string;
+  crossContactStatement?: string;
+  storageInstructions?: string;
+  shelfLife?: string;
+  dietaryClaims?: string[];
+  dietaryClaimsApproved?: boolean;
+  productFactsApproved?: boolean;
+  productDataVersion?: number;
+  heatLabel?: string;
   active: boolean;
   featured: boolean;
   currentInventory: number;
@@ -32,14 +42,31 @@ export const getProducts = async (category?: string) => {
   }
 
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+  return snapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() } as Product))
+    .filter((product) => isProductPublishReady(product as unknown as Record<string, unknown>));
+};
+
+export const getAllProducts = async () => {
+  const snapshot = await getDocs(collection(db, 'products'));
+  return snapshot.docs.map(productDoc => ({ id: productDoc.id, ...productDoc.data() } as Product));
+};
+
+export const getProductsByIds = async (ids: string[]) => {
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  const snapshots = await Promise.all(uniqueIds.map((id) => getDoc(doc(db, 'products', id))));
+  return snapshots
+    .filter((snapshot) => snapshot.exists())
+    .map((snapshot) => ({ id: snapshot.id, ...snapshot.data() } as Product))
+    .filter((product) => product.active && isProductPublishReady(product as unknown as Record<string, unknown>));
 };
 
 export const getProductBySlug = async (slug: string) => {
   const docRef = doc(db, 'products', slug);
   const snapshot = await getDoc(docRef);
   if (snapshot.exists()) {
-    return { id: snapshot.id, ...snapshot.data() } as Product;
+    const product = { id: snapshot.id, ...snapshot.data() } as Product;
+    return product.active && isProductPublishReady(product as unknown as Record<string, unknown>) ? product : null;
   }
   return null;
 };

@@ -47,11 +47,43 @@ service cloud.firestore {
       return value == null || (value is string && value.size() <= maxLength);
     }
 
+    function hasApprovedProductFacts(data) {
+      return data.keys().hasAll([
+          "name", "slug", "category", "shortDescription", "imageUrl", "price", "sizeOz",
+          "currentInventory", "reorderThreshold", "heatLevel", "heatLabel", "ingredients",
+          "allergenStatement", "crossContactStatement", "storageInstructions", "shelfLife",
+          "dietaryClaims", "dietaryClaimsApproved", "productFactsApproved", "productDataVersion"
+        ]) &&
+        isShortText(data.name, 160) &&
+        isShortText(data.slug, 160) &&
+        isShortText(data.category, 80) &&
+        isShortText(data.shortDescription, 1000) &&
+        isShortText(data.imageUrl, 2000) &&
+        data.price is number && data.price > 0 &&
+        data.sizeOz is number && data.sizeOz > 0 &&
+        data.currentInventory is int && data.currentInventory >= 0 &&
+        data.reorderThreshold is int && data.reorderThreshold >= 0 &&
+        data.heatLevel is int && data.heatLevel >= 0 && data.heatLevel <= 5 &&
+        data.heatLabel in ["No Heat", "Mild", "Medium", "Hot", "Very Hot", "Extreme"] &&
+        data.ingredients is list && data.ingredients.size() > 0 &&
+        isShortText(data.allergenStatement, 1000) &&
+        isShortText(data.crossContactStatement, 1000) &&
+        isShortText(data.storageInstructions, 1000) &&
+        isShortText(data.shelfLife, 1000) &&
+        data.dietaryClaims is list &&
+        data.dietaryClaimsApproved == true &&
+        data.productFactsApproved == true &&
+        data.productDataVersion == 1;
+    }
+
     // Collection Rules
 
     match /products/{productId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, update: if isAdmin() &&
+        request.resource.data.active is bool &&
+        (request.resource.data.active == false || hasApprovedProductFacts(request.resource.data));
+      allow delete: if isAdmin();
     }
 
     match /inventory_movements/{movementId} {

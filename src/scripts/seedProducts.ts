@@ -11,7 +11,7 @@ const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "fire
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-const products = [
+const productSeeds = [
   {
     name: "Smoked Jalapeño Garlic",
     slug: "smoked-jalapeno-garlic",
@@ -157,6 +157,22 @@ const products = [
     updatedAt: new Date().toISOString(),
   },
 ];
+
+// Seed data is intentionally draft-only. Product facts must be entered and approved in Admin before activation.
+const products = productSeeds.map((product) => ({
+  ...product,
+  active: false,
+  heatLabel: ["No Heat", "Mild", "Medium", "Hot", "Very Hot", "Extreme"][product.heatLevel],
+  ingredients: [],
+  allergenStatement: "",
+  crossContactStatement: "",
+  storageInstructions: "",
+  shelfLife: "",
+  dietaryClaims: [],
+  dietaryClaimsApproved: false,
+  productFactsApproved: false,
+  productDataVersion: 1,
+}));
 
 async function seed() {
   console.log("Seeding products...");

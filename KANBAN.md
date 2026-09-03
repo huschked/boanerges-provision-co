@@ -152,22 +152,6 @@ This board is the working queue for website development. Keep cards actionable e
   - Browser-check every active SKU and bundle at desktop and mobile sizes.
 - **Notes / Links:** Real product photography is a business input and should not be replaced with AI imagery that could misrepresent the food. Implementation can establish the gallery and publish guard while final assets are prepared.
 
-### WEB-035 - Enforce Complete and Consistent Product Data
-
-- **Priority:** High
-- **Area:** storefront/checkout/admin
-- **Goal:** Make Firestore the authoritative, publish-safe source for accurate food-product information on every customer and operational surface.
-- **Acceptance Criteria:**
-  - Active products require exact net weight, ingredients in approved order, allergen/cross-contact language, storage guidance, shelf life, price, inventory, heat rating/label, and approved dietary claims.
-  - Admin validation distinguishes required facts from optional marketing copy and blocks incomplete records from becoming active.
-  - Shop, PDP, cart, checkout, Stripe line items, emails, packing slips, and order status use the same stored price, size, name, and image data.
-  - Orders retain an immutable snapshot of the facts shown at purchase even if the product is edited later.
-  - A migration/report identifies currently active products with incomplete or conflicting data.
-- **Verification:**
-  - Attempt to publish incomplete records and confirm actionable validation.
-  - Compare every active SKU across storefront, Stripe Checkout, email, order, and fulfillment documents.
-- **Notes / Links:** Extend the existing Firestore product model rather than creating a second catalog. Regulatory and dietary language requires business approval.
-
 ### WEB-036 - Rebuild or Disable Bundle Commerce
 
 - **Priority:** High
@@ -323,6 +307,25 @@ No cards currently in progress.
 
 ## Review / Verify
 
+### WEB-035 - Enforce Complete and Consistent Product Data
+
+- **Priority:** High
+- **Area:** storefront/checkout/admin
+- **Goal:** Make Firestore the authoritative, publish-safe source for accurate food-product information on every customer and operational surface.
+- **Acceptance Criteria:**
+  - Active products require exact net weight, ingredients in approved order, allergen/cross-contact language, storage guidance, shelf life, price, inventory, heat rating/label, and approved dietary claims.
+  - Admin validation distinguishes required facts from optional marketing copy and blocks incomplete records from becoming active.
+  - Shop, PDP, cart, checkout, Stripe line items, emails, packing slips, and order status use the same stored price, size, name, and image data.
+  - Orders retain an immutable snapshot of the facts shown at purchase even if the product is edited later.
+  - A migration/report identifies currently active products with incomplete or conflicting data.
+- **Verification:**
+  - Shared publication validation, storefront filtering, server checkout enforcement, complete order snapshots, and the Admin catalog report are implemented.
+  - TypeScript validation, all 33 automated tests, and the production build pass; the existing large-chunk warning remains.
+  - Owner must enter approved facts for each real SKU, deploy `firestore.rules`, confirm incomplete active records are reported/hidden, and compare one complete test SKU across Shop, PDP, cart, Stripe Checkout, confirmation email, order status, and packing slip.
+- **Notes / Links:** Migration and verification instructions are in `docs/product-catalog-readiness.md`. No ingredient, allergen, cross-contact, storage, shelf-life, or dietary values were invented.
+
+## Done
+
 ### WEB-038 - Publish Legal Pages and Clean Customer Trust Surfaces
 
 - **Priority:** High
@@ -336,13 +339,11 @@ No cards currently in progress.
   - Admin Portal is removed from customer navigation and remains available only by direct protected URL.
   - Footer policy and support links have no broken destinations.
 - **Verification:**
-  - Source checks confirm both React routes, both Vercel direct-navigation rewrites, and policy links from the footer and consent surfaces.
-  - Source checks confirm fake contact details, placeholder social links, and the customer-facing Admin link are absent.
-  - TypeScript validation, all 29 automated tests, and the production build pass; the existing large-chunk warning remains.
-  - Deployed direct-route checks and owner/legal approval of the policy content remain.
+  - Source checks confirmed both React routes, both Vercel direct-navigation rewrites, and policy links from the footer and consent surfaces.
+  - Source checks confirmed fake contact details, placeholder social links, and the customer-facing Admin link are absent.
+  - TypeScript validation, all 29 automated tests, and the production build passed; the existing large-chunk warning remains.
+  - Owner confirmed the deployed implementation on 2026-09-03.
 - **Notes / Links:** Draft policy assumptions, owner-review items, and authoritative references are documented in `docs/legal-policy-review.md`. WEB-044 tracks the separate marketing-email unsubscribe and postal-address workflow discovered during review.
-
-## Done
 
 ### WEB-037 - Remove Unsupported Storefront Claims
 

@@ -16,6 +16,7 @@ import { CHECKOUT_NEWSLETTER_SOURCE, shouldActivateCheckoutNewsletter } from "./
 import { buildRefundWorkflowPlan, isLabelRefundComplete, type RefundWorkflowRequest } from "./src/lib/refundWorkflow.js";
 import { createOrderStatusToken, verifyOrderStatusToken } from "./src/lib/orderStatusToken.js";
 import { buildPublicOrderStatus } from "./src/lib/orderStatusView.js";
+import { createProductSnapshot, isProductPublishReady } from "./src/lib/productCatalog.js";
 
 dotenv.config();
 
@@ -99,6 +100,14 @@ type PendingOrderItem = {
   heatLevel: number;
   imageUrl?: string;
   sizeOz?: number;
+  heatLabel?: string;
+  ingredients?: string[];
+  allergenStatement?: string;
+  crossContactStatement?: string;
+  storageInstructions?: string;
+  shelfLife?: string;
+  dietaryClaims?: string[];
+  productDataVersion?: number;
 };
 
 type NormalizedCartItem = {
@@ -201,7 +210,7 @@ class AdminCommandError extends Error {
 }
 
 class CheckoutAvailabilityError extends Error {
-  constructor(public unavailableItems: Array<{ productId: string; name: string; requested: number; available: number }>) {
+  constructor(public unavailableItems: Array<{ productId: string; name: string; requested: number; available: number; reason?: string }>) {
     super("Some cart items are no longer available in the requested quantity.");
   }
 }
@@ -723,6 +732,12 @@ function getPublicEmailAssetUrl(pathname: string) {
   return /^https:\/\//i.test(baseUrl) ? `${baseUrl}${pathname}` : "";
 }
 
+function getProductEmailImageUrl(imageUrl: string | undefined) {
+  if (typeof imageUrl !== "string" || !imageUrl.trim()) return "";
+  if (/^https:\/\//i.test(imageUrl)) return imageUrl;
+  return imageUrl.startsWith("/") ? getPublicEmailAssetUrl(imageUrl) : "";
+}
+
 function escapeHtml(value: unknown) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -921,17 +936,17 @@ function buildOrderEmailHtml({
   orderStatusUrl: string;
 }) {
   const itemMarkup = items
-    .map(
-      (item) =>
-        `
+    .map((item) => {
+      const productImageUrl = getProductEmailImageUrl(item.imageUrl);
+      return `
           <tr>
-            <td style="padding:12px 8px 12px 0;color:#f4ecd8;font-size:15px;font-weight:600;">${escapeHtml(item.name)}</td>
+            <td style="padding:12px 8px 12px 0;color:#f4ecd8;font-size:15px;font-weight:600;">${productImageUrl ? `<img src="${escapeHtml(productImageUrl)}" alt="" width="44" height="44" style="display:inline-block;width:44px;height:44px;object-fit:cover;vertical-align:middle;margin-right:10px;border:1px solid rgba(255,255,255,0.08);" />` : ""}<span style="display:inline-block;vertical-align:middle;">${escapeHtml(item.name)}${item.sizeOz ? `<br><span style="color:#8e8576;font-size:12px;font-weight:400;">${item.sizeOz} oz</span>` : ""}</span></td>
             <td style="padding:12px 8px;color:#b7ae9c;font-size:14px;text-align:right;white-space:nowrap;">$${item.price.toFixed(2)}</td>
             <td style="padding:12px 8px;color:#b7ae9c;font-size:14px;text-align:center;">${item.quantity}</td>
             <td style="padding:12px 0;color:#c5a059;font-size:14px;text-align:right;font-weight:700;">$${(item.price * item.quantity).toFixed(2)}</td>
           </tr>
-        `
-    )
+        `;
+    })
     .join("");
 
   return buildEmailLayout({
@@ -1877,17 +1892,30 @@ async function createInventoryReservation({
       const reserved = Number(data?.reservedInventory || 0);
       const available = Math.max(0, inventory - reserved);
       const price = Number(data?.price);
-      if (!snap.exists || data?.active === false || !Number.isInteger(inventory) || available < item.quantity) {
+      if (!snap.exists || data?.active !== true || !data || !isProductPublishReady(data)) {
+        unavailableItems.push({ productId: item.id, name, requested: item.quantity, available: 0, reason: "This product is temporarily unavailable while its catalog information is reviewed." });
+        continue;
+      }
+      if (!Number.isInteger(inventory) || available < item.quantity) {
         unavailableItems.push({ productId: item.id, name, requested: item.quantity, available });
         continue;
       }
-      if (!Number.isFinite(price) || price <= 0) throw new Error(`${name} has an invalid price.`);
       const images = typeof data?.imageUrl === "string" && /^https?:\/\//i.test(data.imageUrl) ? [data.imageUrl] : undefined;
       lineItems.push({
-        price_data: { currency: CURRENCY, product_data: { name, images, tax_code: data?.stripeTaxCode || DEFAULT_PRODUCT_TAX_CODE }, unit_amount: toStripeAmount(price) },
+        price_data: {
+          currency: CURRENCY,
+          product_data: {
+            name,
+            description: `${data.sizeOz} oz · ${data.heatLabel}`,
+            images,
+            tax_code: data?.stripeTaxCode || DEFAULT_PRODUCT_TAX_CODE,
+            metadata: { productId: item.id, productDataVersion: String(data.productDataVersion) },
+          },
+          unit_amount: toStripeAmount(price),
+        },
         quantity: item.quantity,
       });
-      orderItems.push({ productId: item.id, name, price, quantity: item.quantity, heatLevel: data?.heatLevel || 0, imageUrl: data?.imageUrl || "", sizeOz: data?.sizeOz || 0 });
+      orderItems.push(createProductSnapshot(data, item.id, item.quantity));
       calculatedTotal += price * item.quantity;
     }
 

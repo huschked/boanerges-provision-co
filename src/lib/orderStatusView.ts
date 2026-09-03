@@ -47,6 +47,7 @@ export function buildPublicOrderStatus(
     shipmentStatus: lifecycle.shipmentStatus,
     items: (Array.isArray(order.items) ? order.items : []).map((item: Record<string, unknown>) => ({
       name: String(item.name || 'Item'),
+      imageUrl: safePublicUrl(item.imageUrl),
       sizeOz: Number(item.sizeOz || 0),
       unitPrice: Number(item.price || 0),
       quantity: Number(item.quantity || 0),

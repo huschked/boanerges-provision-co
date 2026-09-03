@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Filter, Plus, Edit, Trash2, X, Upload, Loader2, Package, Search } from 'lucide-react';
+import { Filter, Plus, Edit, Trash2, X, Upload, Loader2, Package, Search, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, storage, doc, getDoc, setDoc, deleteDoc, Timestamp, ref, uploadBytes, getDownloadURL, deleteObject } from '@/src/lib/firebase';
 import { cn } from '@/src/lib/utils';
 import { Product } from '@/src/services/productService';
+import { PRODUCT_DATA_VERSION, auditProductCatalog, getHeatLabel, validateProductForPublication } from '@/src/lib/productCatalog';
 import toast from 'react-hot-toast';
 
 interface ProductsViewProps {
@@ -24,6 +25,13 @@ type ProductFormState = {
   imageUrl: string;
   tagsText: string;
   ingredientsText: string;
+  allergenStatement: string;
+  crossContactStatement: string;
+  storageInstructions: string;
+  shelfLife: string;
+  dietaryClaimsText: string;
+  dietaryClaimsApproved: boolean;
+  productFactsApproved: boolean;
   flavorNotesText: string;
   pairingsText: string;
   stripePriceId: string;
@@ -44,11 +52,18 @@ const defaultFormState: ProductFormState = {
   imageUrl: '',
   tagsText: 'Spicy',
   ingredientsText: '',
+  allergenStatement: '',
+  crossContactStatement: '',
+  storageInstructions: '',
+  shelfLife: '',
+  dietaryClaimsText: '',
+  dietaryClaimsApproved: false,
+  productFactsApproved: false,
   flavorNotesText: '',
   pairingsText: '',
   stripePriceId: '',
   featured: false,
-  active: true,
+  active: false,
 };
 
 const MAX_PRODUCT_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -72,12 +87,51 @@ const hydrateForm = (product: Product): ProductFormState => ({
   imageUrl: product.imageUrl || '',
   tagsText: (product.tags || []).join(', '),
   ingredientsText: (product.ingredients || []).join(', '),
+  allergenStatement: product.allergenStatement || '',
+  crossContactStatement: product.crossContactStatement || '',
+  storageInstructions: product.storageInstructions || '',
+  shelfLife: product.shelfLife || '',
+  dietaryClaimsText: (product.dietaryClaims || []).join(', '),
+  dietaryClaimsApproved: product.dietaryClaimsApproved === true,
+  productFactsApproved: product.productFactsApproved === true,
   flavorNotesText: (product.flavorNotes || []).join(', '),
   pairingsText: (product.pairings || []).join(', '),
   stripePriceId: product.stripePriceId || '',
   featured: Boolean(product.featured),
   active: product.active !== false,
 });
+
+const buildProductPayload = (formData: ProductFormState) => {
+  const heatLevel = Number(formData.heatLevel);
+  return {
+    name: formData.name.trim(),
+    slug: slugify(formData.slug || formData.name),
+    category: formData.category,
+    price: Number(formData.price),
+    sizeOz: Number(formData.sizeOz),
+    currentInventory: Number(formData.currentInventory),
+    reorderThreshold: Number(formData.reorderThreshold),
+    heatLevel,
+    heatLabel: getHeatLabel(heatLevel),
+    shortDescription: formData.shortDescription.trim(),
+    imageUrl: formData.imageUrl.trim(),
+    tags: Array.from(new Set([...splitList(formData.tagsText), formData.category])),
+    ingredients: splitList(formData.ingredientsText),
+    allergenStatement: formData.allergenStatement.trim(),
+    crossContactStatement: formData.crossContactStatement.trim(),
+    storageInstructions: formData.storageInstructions.trim(),
+    shelfLife: formData.shelfLife.trim(),
+    dietaryClaims: splitList(formData.dietaryClaimsText),
+    dietaryClaimsApproved: formData.dietaryClaimsApproved,
+    productFactsApproved: formData.productFactsApproved,
+    productDataVersion: PRODUCT_DATA_VERSION,
+    flavorNotes: splitList(formData.flavorNotesText),
+    pairings: splitList(formData.pairingsText),
+    stripePriceId: formData.stripePriceId.trim(),
+    featured: formData.featured,
+    active: formData.active,
+  };
+};
 
 export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh }) => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -87,6 +141,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<ProductFormState>(defaultFormState);
+  const catalogAudit = auditProductCatalog(products as unknown as Array<Record<string, unknown> & { id?: string }>);
+  const incompleteActiveProducts = catalogAudit.filter((result) => result.active && result.issues.length > 0);
+  const publicationIssues = validateProductForPublication(buildProductPayload(formData));
 
   const filteredProducts = products.filter((product) => {
     const lowStockThreshold = product.reorderThreshold || 10;
@@ -112,6 +169,12 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
       const next = { ...current, [field]: value } as ProductFormState;
       if (field === 'name' && !editingId) {
         next.slug = slugify(String(value));
+      }
+      if (['sizeOz', 'heatLevel', 'ingredientsText', 'allergenStatement', 'crossContactStatement', 'storageInstructions', 'shelfLife'].includes(field)) {
+        next.productFactsApproved = false;
+      }
+      if (field === 'dietaryClaimsText') {
+        next.dietaryClaimsApproved = false;
       }
       return next;
     });
@@ -153,29 +216,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
 
     if (!formData.name.trim()) return toast.error('Product name is required.');
     if (!slug) return toast.error('A valid slug is required.');
-    if (!formData.shortDescription.trim()) return toast.error('Short description is required.');
-    if (!formData.imageUrl.trim()) return toast.error('Product image is required.');
-
-    const productPayload = {
-      name: formData.name.trim(),
-      slug,
-      category: formData.category,
-      price: Number(formData.price) || 0,
-      sizeOz: Number(formData.sizeOz) || 0,
-      currentInventory: Number(formData.currentInventory) || 0,
-      reorderThreshold: Number(formData.reorderThreshold) || 0,
-      heatLevel: Number(formData.heatLevel) || 0,
-      shortDescription: formData.shortDescription.trim(),
-      imageUrl: formData.imageUrl.trim(),
-      tags: Array.from(new Set([...splitList(formData.tagsText), formData.category])),
-      ingredients: splitList(formData.ingredientsText),
-      flavorNotes: splitList(formData.flavorNotesText),
-      pairings: splitList(formData.pairingsText),
-      stripePriceId: formData.stripePriceId.trim(),
-      featured: formData.featured,
-      active: formData.active,
-      updatedAt: Timestamp.now(),
-    };
+    const productPayload = { ...buildProductPayload(formData), slug, updatedAt: Timestamp.now() };
+    const issues = validateProductForPublication(productPayload);
+    if (formData.active && issues.length > 0) {
+      return toast.error(`Cannot activate this product: ${issues[0].message} (${issues.length} required item${issues.length === 1 ? '' : 's'} remaining.)`);
+    }
 
     setIsSaving(true);
     try {
@@ -240,6 +285,26 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
 
   return (
     <div className="space-y-10">
+      <div className={cn('border p-6 flex flex-col lg:flex-row lg:items-start justify-between gap-4', incompleteActiveProducts.length ? 'border-amber-400/30 bg-amber-400/[0.06]' : 'border-green-400/20 bg-green-400/[0.04]')}>
+        <div className="flex items-start gap-3">
+          {incompleteActiveProducts.length ? <AlertTriangle size={20} className="text-amber-300 mt-0.5 shrink-0" /> : <CheckCircle2 size={20} className="text-green-300 mt-0.5 shrink-0" />}
+          <div>
+            <p className="text-sm font-black text-brand-parchment">Catalog publication report</p>
+            <p className="mt-1 text-sm text-brand-parchment/60">
+              {incompleteActiveProducts.length
+                ? `${incompleteActiveProducts.length} active product${incompleteActiveProducts.length === 1 ? '' : 's'} will be hidden from sale until required facts are completed.`
+                : 'Every active product has the required approved facts.'}
+            </p>
+          </div>
+        </div>
+        {incompleteActiveProducts.length > 0 && (
+          <ul className="text-xs text-amber-100/75 space-y-2 lg:max-w-xl">
+            {incompleteActiveProducts.map((result) => (
+              <li key={result.id}><strong>{result.name}:</strong> {result.issues.map((issue) => issue.label).join(', ')}</li>
+            ))}
+          </ul>
+        )}
+      </div>
       <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-6">
         <div className="flex flex-col md:flex-row gap-4">
           <div className="relative">
@@ -280,6 +345,45 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
                   <div className="space-y-3">
                     <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-brand-parchment/30">Slug</label>
                     <input value={formData.slug} onChange={(e) => handleFieldChange('slug', slugify(e.target.value))} className="input-premium block w-full" />
+                  </div>
+                </div>
+
+                <div className="border border-brand-gold/20 bg-brand-gold/[0.04] p-6 space-y-6">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.2em] font-black text-brand-gold">Required product facts</p>
+                    <p className="mt-2 text-xs leading-relaxed text-brand-parchment/45">Use approved label and production information. Marketing notes below remain optional.</p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <label className="space-y-3">
+                      <span className="block text-[10px] uppercase tracking-[0.2em] font-black text-brand-parchment/40">Allergen Statement</span>
+                      <textarea rows={3} value={formData.allergenStatement} onChange={(e) => handleFieldChange('allergenStatement', e.target.value)} className="input-premium block w-full resize-none" placeholder="Enter the approved statement; do not assume none" />
+                    </label>
+                    <label className="space-y-3">
+                      <span className="block text-[10px] uppercase tracking-[0.2em] font-black text-brand-parchment/40">Cross-contact Statement</span>
+                      <textarea rows={3} value={formData.crossContactStatement} onChange={(e) => handleFieldChange('crossContactStatement', e.target.value)} className="input-premium block w-full resize-none" placeholder="Enter the approved facility statement" />
+                    </label>
+                    <label className="space-y-3">
+                      <span className="block text-[10px] uppercase tracking-[0.2em] font-black text-brand-parchment/40">Storage Guidance</span>
+                      <textarea rows={3} value={formData.storageInstructions} onChange={(e) => handleFieldChange('storageInstructions', e.target.value)} className="input-premium block w-full resize-none" placeholder="Enter approved storage instructions" />
+                    </label>
+                    <label className="space-y-3">
+                      <span className="block text-[10px] uppercase tracking-[0.2em] font-black text-brand-parchment/40">Shelf Life</span>
+                      <textarea rows={3} value={formData.shelfLife} onChange={(e) => handleFieldChange('shelfLife', e.target.value)} className="input-premium block w-full resize-none" placeholder="Enter approved shelf-life guidance" />
+                    </label>
+                  </div>
+                  <label className="space-y-3 block">
+                    <span className="block text-[10px] uppercase tracking-[0.2em] font-black text-brand-parchment/40">Dietary Claims</span>
+                    <textarea rows={2} value={formData.dietaryClaimsText} onChange={(e) => handleFieldChange('dietaryClaimsText', e.target.value)} className="input-premium block w-full resize-none" placeholder="Gluten-Free, Vegan — leave blank if making no claims" />
+                  </label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label className="flex items-start gap-3 text-xs text-brand-parchment/65 leading-relaxed">
+                      <input type="checkbox" checked={formData.productFactsApproved} onChange={(e) => handleFieldChange('productFactsApproved', e.target.checked)} className="mt-1 accent-brand-gold" />
+                      I confirm the net weight, heat, ingredients, allergen, cross-contact, storage, and shelf-life facts are approved.
+                    </label>
+                    <label className="flex items-start gap-3 text-xs text-brand-parchment/65 leading-relaxed">
+                      <input type="checkbox" checked={formData.dietaryClaimsApproved} onChange={(e) => handleFieldChange('dietaryClaimsApproved', e.target.checked)} className="mt-1 accent-brand-gold" />
+                      I confirm the dietary claims are approved, including when no dietary claims are listed.
+                    </label>
                   </div>
                 </div>
 
@@ -387,6 +491,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
                     </div>
                   ))}
                 </div>
+                <div className={cn('p-6 border text-xs leading-relaxed', publicationIssues.length ? 'border-amber-400/25 bg-amber-400/[0.05] text-amber-100/70' : 'border-green-400/20 bg-green-400/[0.04] text-green-100/70')}>
+                  <p className="font-black text-brand-parchment mb-2">{publicationIssues.length ? `${publicationIssues.length} required item${publicationIssues.length === 1 ? '' : 's'} remaining` : 'Ready to activate'}</p>
+                  {publicationIssues.length > 0 && <ul className="list-disc pl-4 space-y-1">{publicationIssues.map((issue) => <li key={issue.field}>{issue.label}: {issue.message}</li>)}</ul>}
+                </div>
               </div>
             </div>
 
@@ -443,9 +551,16 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
                   </div>
                 </td>
                 <td className="px-10 py-8">
-                  <span className={cn('px-4 py-1.5 rounded-full text-[8px] uppercase tracking-[0.2em] font-black border', product.active ? 'bg-green-400/5 text-green-400 border-green-400/10' : 'bg-white/5 text-brand-parchment/40 border-white/10')}>
-                    {product.active ? 'Active' : 'Hidden'}
-                  </span>
+                  <div className="flex flex-col items-start gap-2">
+                    <span className={cn('px-4 py-1.5 rounded-full text-[8px] uppercase tracking-[0.2em] font-black border', product.active ? 'bg-green-400/5 text-green-400 border-green-400/10' : 'bg-white/5 text-brand-parchment/40 border-white/10')}>
+                      {product.active ? 'Active' : 'Hidden'}
+                    </span>
+                    {validateProductForPublication(product as unknown as Record<string, unknown>).length > 0 ? (
+                      <span className="text-[8px] uppercase tracking-widest font-black text-amber-300" title={validateProductForPublication(product as unknown as Record<string, unknown>).map((issue) => issue.message).join(' ')}>Needs facts</span>
+                    ) : (
+                      <span className="text-[8px] uppercase tracking-widest font-black text-green-300">Publish ready</span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-10 py-8 text-right">
                   <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-all duration-500">
