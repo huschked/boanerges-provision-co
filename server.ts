@@ -12,6 +12,7 @@ import rateLimit from "express-rate-limit";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 import { classifyShippoTracking, decideLabelPurchase, normalizeShippoTrackingStatus, type TrackingNotificationKind } from "./src/lib/shippingLifecycle.js";
 import { canTransitionFulfillment, canTransitionPayment, canTransitionShipment, normalizeOrderLifecycle, type FulfillmentState, type PaymentState, type ShipmentState } from "./src/lib/orderLifecycle.js";
+import { CHECKOUT_NEWSLETTER_SOURCE, shouldActivateCheckoutNewsletter } from "./src/lib/checkoutConsent.js";
 
 dotenv.config();
 
@@ -808,6 +809,79 @@ function buildNewsletterEmailHtml({ email }: { email: string }) {
   });
 }
 
+async function activateNewsletterSubscriber({
+  email,
+  source,
+  consentAt,
+  checkoutOrderId,
+}: {
+  email: string;
+  source: string;
+  consentAt?: unknown;
+  checkoutOrderId?: string;
+}) {
+  const normalizedEmail = normalizeCustomerEmail(email);
+  if (!normalizedEmail) throw new Error("A valid subscriber email is required.");
+
+  const subscriberRef = db.collection("subscribers").doc(normalizedEmail);
+  const existingSubscriber = await subscriberRef.get();
+  const existing = existingSubscriber.data() || {};
+  const wasActive = existingSubscriber.exists && existing.status === "active" && existing.consent === true;
+
+  await subscriberRef.set({
+    email: normalizedEmail,
+    source,
+    consent: true,
+    consentAt: consentAt || admin.firestore.FieldValue.serverTimestamp(),
+    status: "active",
+    ...(checkoutOrderId ? { checkoutOrderId } : {}),
+    createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    welcomeEmailStatus: existing.welcomeEmailStatus === "sent" ? "sent" : "queued",
+    resendAudienceId: RESEND_AUDIENCE_ID || "",
+  }, { merge: true });
+
+  if (!wasActive) await incrementAnalyticsDaily(getDateKey(), { newsletterSignups: 1 });
+
+  const shouldSyncAudience = !existingSubscriber.exists || !existing.resendContactId || ["failed", "skipped", ""].includes(existing.resendSyncStatus || "");
+  const audienceSyncResult = shouldSyncAudience
+    ? await syncSubscriberToResendAudience({ email: normalizedEmail, existingContactId: existing.resendContactId || "" })
+    : { status: "updated" as const, contactId: existing.resendContactId || "", error: "" };
+
+  await subscriberRef.set({
+    resendAudienceId: RESEND_AUDIENCE_ID || "",
+    resendContactId: audienceSyncResult.contactId || "",
+    resendSyncStatus: audienceSyncResult.status,
+    resendSyncError: audienceSyncResult.error || "",
+    resendSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  if (existing.welcomeEmailStatus === "sent") return { welcomeEmailStatus: "sent", welcomeEmailError: "", alreadySubscribed: true };
+
+  if (usesResendTestSender(GENERAL_EMAIL_FROM) && normalizedEmail !== RESEND_TEST_RECIPIENT.toLowerCase()) {
+    const welcomeEmailError = `Resend test sender can only email ${RESEND_TEST_RECIPIENT}. Verify a sending domain to deliver to other recipients.`;
+    await subscriberRef.set({ welcomeEmailStatus: "blocked_test_domain", welcomeEmailError, welcomeEmailFailedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return { welcomeEmailStatus: "blocked_test_domain", welcomeEmailError, alreadySubscribed: false };
+  }
+
+  try {
+    const welcomeEmailResult = await resend.emails.send({
+      from: GENERAL_EMAIL_FROM,
+      replyTo: GENERAL_REPLY_TO,
+      to: normalizedEmail,
+      subject: "Welcome to Boanerges Provisions Co.",
+      html: buildNewsletterEmailHtml({ email: normalizedEmail }),
+    }, checkoutOrderId ? { idempotencyKey: `checkout-newsletter-${checkoutOrderId}` } : undefined);
+    if (welcomeEmailResult.error) throw new Error(welcomeEmailResult.error.message || "Email provider rejected the welcome email.");
+    await subscriberRef.set({ welcomeEmailStatus: "sent", welcomeEmailSentAt: admin.firestore.FieldValue.serverTimestamp(), welcomeEmailId: welcomeEmailResult.data?.id || "", welcomeEmailError: "" }, { merge: true });
+    return { welcomeEmailStatus: "sent", welcomeEmailError: "", alreadySubscribed: false };
+  } catch (error) {
+    const welcomeEmailError = sanitizeResendError(error);
+    await subscriberRef.set({ welcomeEmailStatus: "failed", welcomeEmailError, welcomeEmailFailedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return { welcomeEmailStatus: "failed", welcomeEmailError, alreadySubscribed: false };
+  }
+}
+
 function buildOrderEmailHtml({
   shippingAddress,
   customerName,
@@ -1556,11 +1630,13 @@ async function createInventoryReservation({
   cartItems,
   customerEmail,
   appUrl,
+  newsletterOptIn,
 }: {
   pendingOrderId: string;
   cartItems: NormalizedCartItem[];
   customerEmail: string;
   appUrl: string;
+  newsletterOptIn: boolean;
 }) {
   const pendingOrderRef = db.collection("pending_orders").doc(pendingOrderId);
   const reservationRef = db.collection("inventory_reservations").doc(pendingOrderId);
@@ -1612,6 +1688,9 @@ async function createInventoryReservation({
     transaction.create(pendingOrderRef, {
       customerEmail, items: orderItems, reservationId: reservationRef.id, reservationStatus: "reserved", reservationExpiresAt: expiresAt,
       appUrl, currency: CURRENCY, subtotalAmount: calculatedTotal, shippingAmount: shippingCost, totalAmount: calculatedTotal + shippingCost,
+      newsletterOptIn, newsletterConsentSource: CHECKOUT_NEWSLETTER_SOURCE,
+      newsletterConsentAt: newsletterOptIn ? admin.firestore.FieldValue.serverTimestamp() : null,
+      newsletterChoiceRecordedAt: admin.firestore.FieldValue.serverTimestamp(),
       freeShippingThreshold: FREE_SHIPPING_THRESHOLD, pricingSource: "firestore", createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(), paymentStatus: "pending", status: "pending",
     });
@@ -1926,18 +2005,19 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       const { items } = req.body;
       const normalizedEmail = normalizeCustomerEmail(req.body?.customerEmail);
       const normalizedCart = normalizeCartItems(items);
+      const newsletterOptIn = req.body?.newsletterOptIn === true;
 
       if (normalizedCart.error || !normalizedCart.items) {
-        return res.status(400).json({ error: normalizedCart.error || "Invalid cart." });
+        return res.status(400).json({ error: normalizedCart.error || "Review your cart and try again.", code: "validation_error" });
       }
 
       if (req.body?.customerEmail && !normalizedEmail) {
-        return res.status(400).json({ error: "Enter a valid email address." });
+        return res.status(400).json({ error: "Enter a valid email address or leave the email field blank to provide it securely in Stripe.", code: "invalid_email" });
       }
 
       const pendingOrderId = db.collection("pending_orders").doc().id;
       const reservation = await createInventoryReservation({
-        pendingOrderId, cartItems: normalizedCart.items, customerEmail: normalizedEmail, appUrl,
+        pendingOrderId, cartItems: normalizedCart.items, customerEmail: normalizedEmail, appUrl, newsletterOptIn,
       });
       const { lineItems, shippingCost, expiresAt, pendingOrderRef, reservationRef } = reservation;
       const shippingOptions: Stripe.Checkout.SessionCreateParams.ShippingOption[] = [
@@ -1962,7 +2042,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       try {
         session = await stripe.checkout.sessions.create({
           line_items: lineItems, mode: "payment", customer_email: normalizedEmail || undefined, customer_creation: "always",
-          billing_address_collection: "required", phone_number_collection: { enabled: true },
+          billing_address_collection: "required", phone_number_collection: { enabled: false },
           shipping_address_collection: { allowed_countries: ["US"] }, shipping_options: shippingOptions,
           automatic_tax: { enabled: true }, expires_at: Math.floor(expiresAt.toMillis() / 1000),
           success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${appUrl}/checkout`,
@@ -1991,9 +2071,14 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
         return res.status(409).json({ error: error.message, code: "inventory_unavailable", unavailableItems: error.unavailableItems });
       }
       if (error instanceof CheckoutProviderError) {
-        return res.status(502).json({ error: `Stripe could not start checkout: ${error.message}`, code: error.code });
+        return res.status(502).json({
+          error: error.code === "stripe_authentication_error"
+            ? "Secure checkout is temporarily unavailable because its payment configuration needs attention. Please try again later."
+            : "Stripe could not start secure checkout. Your cart has been preserved; please try again.",
+          code: error.code,
+        });
       }
-      res.status(500).json({ error: "Unable to reserve inventory and start checkout." });
+      res.status(500).json({ error: "Checkout could not be started. Your cart has been preserved; please try again.", code: "checkout_unavailable" });
     }
   });
 
@@ -2036,127 +2121,13 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
   app.post("/api/subscribers", async (req, res) => {
     try {
       const { email, source, consent } = req.body;
-      if (!email || !consent) return res.status(400).json({ error: "Email and consent required" });
-
-      const subscriberRef = db.collection("subscribers").doc(email);
-      const existingSubscriber = await subscriberRef.get();
-      const existingSubscriberData = existingSubscriber.data();
-
-      if (existingSubscriber.exists && existingSubscriberData?.welcomeEmailStatus === "sent") {
-        return res.status(200).json({ message: "Already subscribed" });
-      }
-
-      try {
-        await subscriberRef.set({
-          email,
-          source: source || "storefront",
-          consent,
-          status: "active",
-          createdAt: existingSubscriber.exists ? existingSubscriberData?.createdAt || admin.firestore.FieldValue.serverTimestamp() : admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        await incrementAnalyticsDaily(getDateKey(), { newsletterSignups: 1 });
-        await subscriberRef.set(
-          {
-            welcomeEmailStatus: "queued",
-            resendAudienceId: RESEND_AUDIENCE_ID || "",
-          },
-          { merge: true }
-        );
-      } catch (dbError: any) {
-        console.warn("Could not save to subscribers in sandbox DB due to Service Account mismatch.", dbError.message);
-      }
-
-      const shouldSyncAudience =
-        !existingSubscriber.exists ||
-        !existingSubscriberData?.resendContactId ||
-        ["failed", "skipped", ""].includes(existingSubscriberData?.resendSyncStatus || "");
-
-      const audienceSyncResult = shouldSyncAudience
-        ? await syncSubscriberToResendAudience({
-            email,
-            existingContactId: existingSubscriberData?.resendContactId || "",
-          })
-        : {
-            status: "updated" as const,
-            contactId: existingSubscriberData?.resendContactId || "",
-            error: "",
-          };
-
-      await subscriberRef.set(
-        {
-          resendAudienceId: RESEND_AUDIENCE_ID || "",
-          resendContactId: audienceSyncResult.contactId || "",
-          resendSyncStatus: audienceSyncResult.status,
-          resendSyncError: audienceSyncResult.error || "",
-          resendSyncAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      let welcomeEmailStatus = "sent";
-      let welcomeEmailError = "";
-
-      if (usesResendTestSender(GENERAL_EMAIL_FROM) && email.toLowerCase() !== RESEND_TEST_RECIPIENT.toLowerCase()) {
-        welcomeEmailStatus = "blocked_test_domain";
-        welcomeEmailError = `Resend test sender can only email ${RESEND_TEST_RECIPIENT}. Verify a sending domain to deliver to other recipients.`;
-
-        await subscriberRef.set(
-          {
-            welcomeEmailStatus,
-            welcomeEmailError,
-            welcomeEmailFailedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-      } else {
-        try {
-          const welcomeEmailResult = await resend.emails.send({
-            from: GENERAL_EMAIL_FROM,
-            replyTo: GENERAL_REPLY_TO,
-            to: email,
-            subject: "Welcome to Boanerges Provisions Co.",
-            html: buildNewsletterEmailHtml({ email }),
-          });
-
-          await subscriberRef.set(
-            {
-              welcomeEmailStatus: "sent",
-              welcomeEmailSentAt: admin.firestore.FieldValue.serverTimestamp(),
-              welcomeEmailId: welcomeEmailResult.data?.id || "",
-              welcomeEmailError: "",
-            },
-            { merge: true }
-          );
-        } catch (emailError) {
-          welcomeEmailStatus = "failed";
-          welcomeEmailError = sanitizeResendError(emailError);
-
-          await subscriberRef.set(
-            {
-              welcomeEmailStatus: "failed",
-              welcomeEmailError,
-              welcomeEmailFailedAt: admin.firestore.FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-          );
-        }
-      }
-
-      res.status(201).json({ success: true, welcomeEmailStatus, welcomeEmailError });
+      const normalizedEmail = normalizeCustomerEmail(email);
+      if (!normalizedEmail || consent !== true) return res.status(400).json({ error: "Enter a valid email and confirm newsletter consent.", code: "validation_error" });
+      const result = await activateNewsletterSubscriber({ email: normalizedEmail, source: typeof source === "string" ? source.slice(0, 80) : "storefront" });
+      res.status(result.alreadySubscribed ? 200 : 201).json({ success: true, ...result });
     } catch (error: any) {
       console.error("Subscriber Error:", error);
-      if (req.body?.email) {
-        await db.collection("subscribers").doc(req.body.email).set(
-          {
-            welcomeEmailStatus: "failed",
-            welcomeEmailError: error.message || "Unknown email failure",
-            welcomeEmailFailedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: "Unable to complete newsletter signup right now.", code: "newsletter_unavailable" });
     }
   });
 
@@ -2436,10 +2407,38 @@ async function recordDispute(dispute: Stripe.Dispute, eventType: string) {
   );
 }
 
+async function completeCheckoutNewsletterConsent(orderId: string, order: FirebaseFirestore.DocumentData) {
+  if (!shouldActivateCheckoutNewsletter(order) || order.newsletterSubscriptionStatus === "active") return;
+  const orderRef = db.collection("orders").doc(orderId);
+  try {
+    const result = await activateNewsletterSubscriber({
+      email: order.customerEmail,
+      source: order.newsletterConsentSource || CHECKOUT_NEWSLETTER_SOURCE,
+      consentAt: order.newsletterConsentAt,
+      checkoutOrderId: orderId,
+    });
+    await orderRef.set({
+      newsletterSubscriptionStatus: "active",
+      newsletterWelcomeEmailStatus: result.welcomeEmailStatus,
+      newsletterSubscribedAt: admin.firestore.FieldValue.serverTimestamp(),
+      newsletterSubscriptionError: admin.firestore.FieldValue.delete(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  } catch (error) {
+    await orderRef.set({
+      newsletterSubscriptionStatus: "failed",
+      newsletterSubscriptionError: sanitizeResendError(error),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+}
+
 async function completePaidOrderEffects(orderId: string) {
   const orderRef = db.collection("orders").doc(orderId);
   let orderSnap = await orderRef.get();
-  if (!orderSnap.exists || normalizeOrderLifecycle(orderSnap.data()!).fulfillmentStatus === "requires_attention") return;
+  if (!orderSnap.exists) return;
+  await completeCheckoutNewsletterConsent(orderId, orderSnap.data()!);
+  if (normalizeOrderLifecycle(orderSnap.data()!).fulfillmentStatus === "requires_attention") return;
   await recordPaidOrderAnalyticsOnce(orderId);
   orderSnap = await orderRef.get();
   if (!orderSnap.exists || orderSnap.data()?.resendEmailStatus === "sent") return;
@@ -2500,7 +2499,7 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session, event:
   const pendingOrderData = pendingOrderSnap.data()!;
   const orderItems = (pendingOrderData.items || []) as PendingOrderItem[];
 
-  const customerEmail = session.customer_email || "";
+  const customerEmail = normalizeCustomerEmail(session.customer_details?.email || session.customer_email || pendingOrderData.customerEmail);
   const customerName = session.customer_details?.name || "";
   const customerPhone = session.customer_details?.phone || "";
   const shippingAddress = getShippingAddress(session);
@@ -2534,6 +2533,11 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session, event:
     shippingMethod: selectedShipping.displayName,
     automaticTaxStatus: session.automatic_tax?.status || "",
     pricingSource: "firestore",
+    newsletterOptIn: pendingOrderData.newsletterOptIn === true,
+    newsletterConsentSource: pendingOrderData.newsletterConsentSource || CHECKOUT_NEWSLETTER_SOURCE,
+    newsletterConsentAt: pendingOrderData.newsletterConsentAt || null,
+    newsletterChoiceRecordedAt: pendingOrderData.newsletterChoiceRecordedAt || null,
+    newsletterSubscriptionStatus: pendingOrderData.newsletterOptIn === true ? "pending_payment_completion" : "not_requested",
     items: orderItems,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     paidAt: admin.firestore.FieldValue.serverTimestamp(),

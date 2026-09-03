@@ -164,22 +164,6 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Ready
 
-### WEB-024 - Fix Checkout Newsletter Consent and Actionable Errors
-
-- **Priority:** High
-- **Area:** checkout
-- **Goal:** Honor the customer's newsletter choice and help customers recover from checkout validation failures.
-- **Acceptance Criteria:**
-  - The checkout request persists newsletter opt-in, consent timestamp, and source with the pending order.
-  - A customer is subscribed only after successful payment and only when explicit consent was recorded.
-  - Safe server validation messages, including unavailable inventory, are shown instead of a generic error.
-  - Recovery actions let customers return to the cart or adjust an affected quantity without losing unrelated cart items.
-  - Phone collection is optional unless a documented carrier or business rule requires it.
-- **Verification:**
-  - Test opted-in, opted-out, abandoned, failed, and completed checkouts and inspect subscriber records.
-  - Test invalid email, inactive product, insufficient inventory, rate limit, and server-error responses.
-- **Notes / Links:** The checkbox currently affects analytics only in `src/pages/Checkout.tsx`.
-
 ### WEB-001 - Storefront Polish Pass
 
 - **Priority:** Medium
@@ -251,21 +235,22 @@ No cards currently in progress.
 
 ## Review / Verify
 
-### WEB-013 - Build an Exception-First Fulfillment Queue
+### WEB-024 - Fix Checkout Newsletter Consent and Actionable Errors
 
 - **Priority:** High
-- **Area:** admin
-- **Goal:** Define, detect, and resolve operational problems; general order filtering, saved views, and batch controls remain owned by WEB-016.
+- **Area:** checkout
+- **Goal:** Honor the customer's newsletter choice and help customers recover from checkout validation failures.
 - **Acceptance Criteria:**
-  - The queue identifies overdue unfulfilled orders, inventory conflicts, invalid addresses, disputes, email failures, label failures, tracking gaps, carrier exceptions, and refund requests.
-  - Exceptions show age, severity, reason, and the next recommended action.
-  - Dashboard counts link to the matching filtered order queue.
-  - Resolving the underlying issue removes the exception without manual cleanup.
+  - The checkout request persists newsletter opt-in, consent timestamp, and source with the pending order.
+  - A customer is subscribed only after successful payment and only when explicit consent was recorded.
+  - Safe server validation messages, including unavailable inventory, are shown instead of a generic error.
+  - Recovery actions let customers return to the cart or adjust an affected quantity without losing unrelated cart items.
+  - Phone collection is optional unless a documented carrier or business rule requires it.
 - **Verification:**
-  - Automated classifier fixtures cover all nine exception types, severity ordering, normal pending deadlines, and automatic removal after resolution.
-  - TypeScript validation, 11 lifecycle/exception tests, and the production build pass.
-  - Browser verification remains for dashboard links, category filters, responsive order details, and resolution after a live refresh.
-- **Notes / Links:** Replaced the narrow `Needs Attention` calculation with the shared classifier in `src/lib/orderExceptions.ts`. Shippo address failures are recorded and cleared by validation; packing, refunds, label purchase, email retry, and tracking updates clear their corresponding underlying markers. Operational rules are documented in `docs/order-exceptions.md`.
+  - Automated consent tests cover paid opt-in, paid opt-out, pending/abandoned, failed payment, and missing-email gating.
+  - TypeScript validation, all 12 checkout/lifecycle tests, and the production build pass.
+  - Live verification remains for pending-order consent fields, Firestore/Resend subscriber activation, expired/failed checkouts, inventory recovery, rate limits, and provider/server errors.
+- **Notes / Links:** Checkout consent is persisted with server timestamps and activated only by paid-order effects. Customer-safe errors preserve the cart and provide targeted quantity adjustment, removal, retry, and return-to-shop actions. Stripe phone collection is optional. See `docs/checkout-consent-and-recovery.md`.
 
 ### WEB-033 - Refine the Admin Orders Workspace Layout
 
@@ -500,6 +485,22 @@ No cards currently in progress.
 - **Notes / Links:** Added authenticated `/api/admin/orders/:orderId/:operation` commands, command idempotency records, outcome audit events, transition/refund validation, Stripe and Resend idempotency, actionable UI errors, and server-only Firestore rules for order mutations.
 
 ## Done
+
+### WEB-013 - Build an Exception-First Fulfillment Queue
+
+- **Priority:** High
+- **Area:** admin
+- **Goal:** Define, detect, and resolve operational problems; general order filtering, saved views, and batch controls remain owned by WEB-016.
+- **Acceptance Criteria:**
+  - The queue identifies overdue unfulfilled orders, inventory conflicts, invalid addresses, disputes, email failures, label failures, tracking gaps, carrier exceptions, and refund requests.
+  - Exceptions show age, severity, reason, and the next recommended action.
+  - Dashboard counts link to the matching filtered order queue.
+  - Resolving the underlying issue removes the exception without manual cleanup.
+- **Verification:**
+  - Automated classifier fixtures cover all nine exception types, severity ordering, normal pending deadlines, and automatic removal after resolution.
+  - TypeScript validation, 11 lifecycle/exception tests, and the production build pass.
+  - User verified the dashboard links, filtered exception queue, exception presentation, and resolution behavior in the deployed admin portal on September 3, 2026.
+- **Notes / Links:** Replaced the narrow `Needs Attention` calculation with the shared classifier in `src/lib/orderExceptions.ts`. Shippo address failures are recorded and cleared by validation; packing, refunds, label purchase, email retry, and tracking updates clear their corresponding underlying markers. Operational rules are documented in `docs/order-exceptions.md`.
 
 ### WEB-010 - Add Guided One-Click Shipment Fulfillment
 

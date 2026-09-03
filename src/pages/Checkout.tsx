@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldCheck, Lock, CreditCard, ArrowLeft, ChevronRight, Zap, Award, Loader2 } from 'lucide-react';
+import { ShieldCheck, Lock, CreditCard, ArrowLeft, Zap, Award, Loader2, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useCart } from '@/src/store';
 import toast from 'react-hot-toast';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
@@ -11,11 +11,13 @@ export const Checkout: React.FC = () => {
   const [email, setEmail] = useState('');
   const [newsletterOptIn, setNewsletterOptIn] = useState(false);
   const [unavailableItems, setUnavailableItems] = useState<Array<{ productId: string; name: string; requested: number; available: number }>>([]);
+  const [checkoutError, setCheckoutError] = useState<{ message: string; code?: string } | null>(null);
 
   const handleCheckout = async () => {
     setLoading(true);
     try {
       setUnavailableItems([]);
+      setCheckoutError(null);
       trackAnalyticsEvent({
         type: 'checkout_start',
         quantity: items.reduce((sum, item) => sum + item.quantity, 0),
@@ -38,6 +40,7 @@ export const Checkout: React.FC = () => {
             quantity: item.quantity,
           })),
           customerEmail: email || undefined,
+          newsletterOptIn,
         }),
       });
 
@@ -54,7 +57,8 @@ export const Checkout: React.FC = () => {
           toast.error(data.error || 'Some quantities are no longer available.');
           return;
         }
-        throw new Error(data.error || 'Failed to create checkout session');
+        setCheckoutError({ message: data.error || 'Secure checkout could not be started. Your cart is still here.', code: data.code });
+        return;
       }
 
       const { url } = data;
@@ -65,13 +69,7 @@ export const Checkout: React.FC = () => {
       }
     } catch (error) {
       console.error('Checkout error:', error);
-      toast.error(error instanceof Error ? error.message : 'There was an error initiating checkout. Please try again.', {
-        style: {
-          background: '#1A1A1A',
-          color: '#F4ECD8',
-          border: '1px solid #C5A059'
-        }
-      });
+      setCheckoutError({ message: error instanceof Error ? error.message : 'Secure checkout could not be started. Your cart is still here.', code: 'network_error' });
     } finally {
       setLoading(false);
     }
@@ -108,7 +106,7 @@ export const Checkout: React.FC = () => {
                 <h2 className="text-3xl font-serif text-brand-parchment">Contact Information</h2>
                 <input 
                   type="email" 
-                  placeholder="Email Address" 
+                  placeholder="Email Address (optional — Stripe will confirm it)"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-white/10 border-b border-brand-gold/30 py-4 px-4 text-brand-parchment outline-none focus:border-brand-gold transition-colors placeholder:text-brand-parchment/40"
@@ -155,6 +153,22 @@ export const Checkout: React.FC = () => {
                     </div>
                   ))}
                   <Link to="/shop" className="inline-block text-[10px] uppercase tracking-widest text-brand-gold font-black">Return to shop</Link>
+                </div>
+              )}
+
+              {checkoutError && (
+                <div role="alert" className="border border-amber-400/30 bg-amber-400/[0.06] p-6 space-y-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle size={18} className="text-amber-300 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm text-amber-200 font-black">Checkout needs attention</p>
+                      <p className="mt-1 text-sm text-brand-parchment/65">{checkoutError.message}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <button onClick={handleCheckout} disabled={loading} className="inline-flex items-center gap-2 px-4 py-2 bg-brand-gold text-brand-black text-[9px] uppercase tracking-wider font-black disabled:opacity-50"><RotateCcw size={12} /> Try again</button>
+                    <Link to="/shop" className="px-4 py-2 border border-brand-gold/30 text-brand-gold text-[9px] uppercase tracking-wider font-black">Review cart in shop</Link>
+                  </div>
                 </div>
               )}
               
