@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { getInventoryReservations, releaseInventoryReservation, type InventoryReservation } from '@/src/lib/adminOrders';
 
 export function ReservationPanel() {
@@ -26,6 +26,18 @@ export function ReservationPanel() {
     finally { setReleasing(null); }
   };
 
+  if (!loading && exceptions.length === 0) {
+    return (
+      <div className="card-premium px-5 py-3 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <CheckCircle2 size={16} className="text-green-400 shrink-0" />
+          <p className="text-xs text-brand-parchment/55 truncate"><span className="text-brand-parchment font-black">Inventory reservations healthy</span> · {active.length} active · 0 require attention</p>
+        </div>
+        <button onClick={load} className="text-brand-gold/60 hover:text-brand-gold" aria-label="Refresh reservations"><RefreshCw size={15} /></button>
+      </div>
+    );
+  }
+
   return (
     <div className="card-premium p-6 space-y-5">
       <div className="flex items-center justify-between gap-4">
@@ -38,7 +50,6 @@ export function ReservationPanel() {
           <button onClick={() => release(reservation.id)} disabled={releasing !== null} className="px-4 py-2 border border-red-400/30 text-red-200 text-[9px] uppercase tracking-[0.18em] font-black disabled:opacity-40">{releasing === reservation.id ? 'Releasing...' : 'Release Stock'}</button>
         </div>
       ))}
-      {!loading && exceptions.length === 0 && <p className="text-xs text-brand-parchment/35">No expired or stuck reservations.</p>}
     </div>
   );
 }

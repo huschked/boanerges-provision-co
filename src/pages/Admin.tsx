@@ -330,10 +330,10 @@ export const Admin: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-8">
-            <div className="relative group hidden lg:block">
+            {activeTab !== 'orders' && <div className="relative group hidden lg:block">
               <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-brand-parchment/20 group-focus-within:text-brand-gold transition-colors" size={14} />
               <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} type="text" placeholder="Search resources..." className="bg-white/5 border border-white/10 rounded-full py-3 pl-14 pr-8 text-[11px] uppercase tracking-widest text-brand-parchment outline-none focus:border-brand-gold/50 focus:bg-white/10 transition-all duration-500 w-56 xl:w-80 placeholder:text-brand-parchment/10" />
-            </div>
+            </div>}
             <button onClick={fetchData} className="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center text-brand-parchment/40 hover:text-brand-gold hover:border-brand-gold/50 hover:bg-white/5 transition-all duration-500 group">
               {isRefreshing ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} className="group-hover:rotate-180 transition-transform duration-700" />}
             </button>

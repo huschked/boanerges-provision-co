@@ -266,6 +266,23 @@ No cards currently in progress.
 
 ## Review / Verify
 
+### WEB-033 - Refine the Admin Orders Workspace Layout
+
+- **Priority:** High
+- **Area:** admin/accessibility
+- **Goal:** Turn the Orders screen into a clear, efficient master-detail fulfillment workspace at desktop and compact widths.
+- **Acceptance Criteria:**
+  - The desktop order queue does not stretch to the height of a long detail record and remains available while the detail page scrolls.
+  - Order rows and the detail summary label payment, fulfillment, and shipment states explicitly.
+  - Healthy inventory reservations use a compact status treatment while exceptions remain prominent and actionable.
+  - Technical payment identifiers are available without competing with operational details.
+  - Compact screens use a list-to-detail flow with an accessible return action.
+  - Shippo-generated tracking fields are clearly read-only and refund submission requires explicit confirmation.
+- **Verification:**
+  - TypeScript validation and the production build pass.
+  - Browser-check standard desktop, wide/zoomed-out desktop, tablet, and mobile layouts after deployment.
+- **Notes / Links:** Added a bounded sticky order queue, sticky detail summary/actions, explicit lifecycle badges, compact reservation health, collapsible Stripe identifiers, stronger selected-row focus, mobile list/detail navigation, and safer tracking/refund controls in the admin Orders workspace.
+
 ### WEB-012 - Separate Payment, Fulfillment, and Shipment State Machines
 
 - **Priority:** High
