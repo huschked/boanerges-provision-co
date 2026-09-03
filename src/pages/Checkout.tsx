@@ -232,7 +232,7 @@ export const Checkout: React.FC = () => {
 
             <div className="p-8 bg-brand-gold/5 border border-brand-gold/20 rounded-sm">
               <p className="text-[12px] text-brand-parchment/60 leading-relaxed italic font-light">
-                "Your provision will be handcrafted and shipped within 48 hours. Thank you for supporting artisan craftsmanship."
+                "Your order will typically be processed within 2–3 business days. Thank you for supporting small-batch craftsmanship."
               </p>
             </div>
           </div>

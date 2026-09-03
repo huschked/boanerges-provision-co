@@ -31,10 +31,6 @@ export const FAQ: React.FC = () => {
     {
       q: "Can I cancel an order?",
       a: "Contact orders@boanergesprovisions.com as soon as possible. We can cancel and refund an order only if fulfillment and shipment can still be stopped. Orders that have already shipped cannot be canceled or returned."
-    },
-    {
-      q: "Do you offer subscriptions?",
-      a: "Yes! You can subscribe to any of our salts and save 15% on every order. You can choose your delivery frequency and cancel or pause your subscription at any time through your account portal."
     }
   ];
 

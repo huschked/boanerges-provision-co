@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Plus, Minus, ShieldCheck, Truck, RotateCcw, ChevronRight, Star, Heart, ShoppingBag, Flame, Loader2 } from 'lucide-react';
+import { Plus, Minus, ShieldCheck, Truck, RotateCcw, ChevronRight, Heart, ShoppingBag, Flame, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getProductBySlug, getProducts, Product } from '@/src/services/productService';
 import { HeatScale } from '@/src/components/HeatScale';
@@ -16,7 +16,6 @@ export const ProductDetail: React.FC = () => {
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
-  const [purchaseType, setPurchaseType] = useState<'one-time' | 'subscribe'>('one-time');
   const addItem = useCart((state) => state.addItem);
 
   useEffect(() => {
@@ -112,13 +111,7 @@ export const ProductDetail: React.FC = () => {
           {/* Product Info */}
           <div className="space-y-10">
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-brand-gold text-[11px] uppercase tracking-[0.3em] font-black">{product.category} Collection</span>
-                <div className="flex items-center gap-1 text-brand-gold">
-                  {[...Array(5)].map((_, i) => <Star key={i} size={14} fill="currentColor" />)}
-                  <span className="text-[10px] text-brand-parchment/30 ml-2 font-black">(24 Reviews)</span>
-                </div>
-              </div>
+              <span className="text-brand-gold text-[11px] uppercase tracking-[0.3em] font-black">{product.category} Collection</span>
               <h1 className="text-4xl md:text-6xl font-serif text-brand-parchment leading-tight">{product.name}</h1>
               <div className="flex items-center gap-6">
                 <span className="text-3xl font-serif text-brand-gold">${product.price.toFixed(2)}</span>
@@ -136,40 +129,15 @@ export const ProductDetail: React.FC = () => {
             {/* Purchase Options */}
             <div className="space-y-6">
               <div className="grid grid-cols-1 gap-4">
-                <button 
-                  onClick={() => setPurchaseType('one-time')}
-                  className={cn(
-                    "p-6 border rounded-sm text-left transition-all group",
-                    purchaseType === 'one-time' ? "border-brand-gold bg-brand-gold/5" : "border-white/10 hover:border-white/30"
-                  )}
-                >
+                <div className="p-6 border border-brand-gold bg-brand-gold/5 rounded-sm">
                   <div className="flex justify-between items-center">
                     <div className="space-y-1">
                       <p className="text-[11px] font-black uppercase tracking-widest text-brand-parchment">One-time Purchase</p>
-                      <p className="text-xs text-brand-parchment/40">Standard artisan delivery</p>
+                      <p className="text-xs text-brand-parchment/40">Typically processed within 2–3 business days</p>
                     </div>
                     <span className="font-serif text-xl text-brand-parchment">${product.price.toFixed(2)}</span>
                   </div>
-                </button>
-                
-                <button 
-                  onClick={() => setPurchaseType('subscribe')}
-                  className={cn(
-                    "p-6 border rounded-sm text-left transition-all group",
-                    purchaseType === 'subscribe' ? "border-brand-gold bg-brand-gold/5" : "border-white/10 hover:border-white/30"
-                  )}
-                >
-                  <div className="flex justify-between items-center">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-[11px] font-black uppercase tracking-widest text-brand-parchment">Subscribe & Save 15%</p>
-                        <span className="bg-brand-gold text-brand-black text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">Best Value</span>
-                      </div>
-                      <p className="text-xs text-brand-parchment/40">Delivered every 30 days. Cancel anytime.</p>
-                    </div>
-                    <span className="font-serif text-xl text-brand-gold">${(product.price * 0.85).toFixed(2)}</span>
-                  </div>
-                </button>
+                </div>
               </div>
 
               <div className="flex gap-4">
@@ -200,9 +168,6 @@ export const ProductDetail: React.FC = () => {
                       category: product.category,
                       quantity,
                       value: product.price * quantity,
-                      metadata: {
-                        purchaseType,
-                      },
                     });
                   }}
                   disabled={product.currentInventory <= 0}
@@ -232,10 +197,10 @@ export const ProductDetail: React.FC = () => {
                 <ShieldCheck size={20} className="text-brand-gold" strokeWidth={1.5} />
                 <span className="text-[9px] uppercase tracking-widest font-black text-brand-parchment/40">Secure Checkout</span>
               </div>
-              <div className="flex flex-col items-center text-center gap-2">
+              <Link to="/returns" className="flex flex-col items-center text-center gap-2 hover:text-brand-gold transition-colors">
                 <RotateCcw size={20} className="text-brand-gold" strokeWidth={1.5} />
-                <span className="text-[9px] uppercase tracking-widest font-black text-brand-parchment/40">30-Day Returns</span>
-              </div>
+                <span className="text-[9px] uppercase tracking-widest font-black text-brand-parchment/40">Final Sale · Damage Support</span>
+              </Link>
             </div>
 
             {/* Accordions */}

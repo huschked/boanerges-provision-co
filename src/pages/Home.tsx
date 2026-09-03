@@ -224,8 +224,8 @@ export const Home: React.FC = () => {
               </p>
               <div className="grid grid-cols-2 gap-12 pt-4">
                 <div className="space-y-2">
-                  <span className="text-3xl font-serif text-brand-gold">100%</span>
-                  <p className="text-[10px] uppercase tracking-widest text-brand-parchment/40 font-bold">Homegrown Peppers</p>
+                  <span className="text-3xl font-serif text-brand-gold">Homegrown</span>
+                  <p className="text-[10px] uppercase tracking-widest text-brand-parchment/40 font-bold">Peppers</p>
                 </div>
                 <div className="space-y-2">
                   <span className="text-3xl font-serif text-brand-gold">Small</span>
@@ -278,22 +278,6 @@ export const Home: React.FC = () => {
                 </div>
               </Link>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section className="py-32 editorial-surface-warm text-brand-parchment">
-        <div className="max-w-4xl mx-auto px-6 text-center space-y-12">
-          <div className="flex justify-center gap-1 text-brand-gold">
-            {[...Array(5)].map((_, i) => <Award key={i} size={20} fill="currentColor" />)}
-          </div>
-          <blockquote className="text-3xl md:text-5xl font-serif italic leading-tight">
-            "The Porcini Garlic Umami salt has completely transformed my kitchen. It's the kind of depth you usually only find in high-end restaurants. Truly premium."
-          </blockquote>
-          <div className="space-y-1">
-            <p className="text-brand-gold text-[12px] uppercase tracking-[0.2em] font-bold">Chef Marcus Thorne</p>
-            <p className="text-brand-parchment/40 text-[10px] uppercase tracking-widest">Executive Chef, The Hearth</p>
           </div>
         </div>
       </section>

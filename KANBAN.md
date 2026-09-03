@@ -62,18 +62,18 @@ This board is the working queue for website development. Keep cards actionable e
 
 ### WEB-021 - Add Consistent Order References and Fulfillment Copy
 
-- **Priority:** Low
+- **Priority:** Medium
 - **Area:** checkout
 - **Goal:** Use one customer-friendly order reference and one accurate delivery promise everywhere.
 - **Acceptance Criteria:**
   - A human-readable order number is generated once and used in checkout success, emails, admin search, packing slips, and support workflows.
-  - Handling and delivery estimates are sourced from shared configuration.
-  - Checkout, FAQ, order confirmation, and shipping copy no longer conflict.
+  - Handling, shipping, and delivery estimates are sourced from shared configuration.
+  - Checkout, FAQ, order confirmation, shipment email, and order-status copy no longer conflict.
 - **Verification:**
   - Complete a test order and compare the reference and timing language in every customer/admin surface.
 - **Notes / Links:** Current views use different slices of the Stripe Checkout Session id.
 
-### WEB-023 - Replace Placeholder Admin Metrics and Optimize Bundles
+### WEB-023 - Replace Placeholder Admin Metrics and Optimize App Bundles
 
 - **Priority:** Low
 - **Area:** admin
@@ -110,19 +110,171 @@ This board is the working queue for website development. Keep cards actionable e
   - README accurately explains local setup, required env variables, and available npm scripts.
   - Deployment notes cover build command, runtime command, and expected app URL configuration.
   - Known pre-launch checks are listed, including checkout, admin auth, contact form, newsletter, analytics, and mobile browsing.
+  - The launch checklist verifies legal routes, customer contact details, internal links, product-content completeness, and the absence of placeholder or unsupported claims.
+  - A test-purchase matrix covers every enabled individual SKU and sellable bundle.
   - Any missing assets, placeholder copy, or obvious launch blockers are added as separate kanban cards.
 - **Verification:**
   - Read README setup from a fresh-contributor perspective.
   - Run `npm run lint` and `npm run build`.
 - **Notes / Links:** Current README still appears close to the initial AI Studio scaffold.
 
+### WEB-041 - Replace Template-Led Copy with Product Evidence
+
+- **Priority:** Medium
+- **Area:** content/storefront
+- **Goal:** Preserve the premium Boanerges voice while grounding product and brand claims in concrete, approved facts.
+- **Acceptance Criteria:**
+  - Homepage and PDP copy clearly explain what finishing salt is, how much to use, when to apply it, and what each flavor pairs with.
+  - Founder, location, sourcing, pepper varieties, process, batch, and food-quality details appear only when provided and approved by the business.
+  - Repetitive or vague `artisan`, `premium`, `sacred`, `bold`, and `refined` language is reduced in favor of useful evidence.
+  - Extreme-heat products include clear starting-amount and handling guidance approved by the business.
+  - Homepage trust sections are consolidated and customer education, products, and bundle value precede the longer brand story.
+- **Verification:**
+  - Owner-review every factual claim and compare PDP guidance with product labels and approved product records.
+  - Browser-check homepage and PDP information hierarchy on desktop and mobile.
+- **Notes / Links:** Requires business-provided facts and authentic process/founder media; implementation should not invent sourcing, production, safety, or founder details.
+
 ## Ready
+
+### WEB-034 - Replace Placeholder Product Media
+
+- **Priority:** High
+- **Area:** storefront/content
+- **Goal:** Present every sellable product with accurate, trustworthy media rather than unrelated stock or placeholder imagery.
+- **Acceptance Criteria:**
+  - Picsum, unrelated stock imagery, broken sources, and generic detail thumbnails are removed from customer-facing product and bundle surfaces.
+  - The product schema supports an ordered gallery with a jar-front image, salt/texture detail, label detail, and product-in-use image where supplied.
+  - Missing required media prevents a product from being published as active.
+  - Alt text identifies the actual product and view rather than using generic values such as `Detail`.
+  - Cart, checkout, emails, product cards, PDPs, and bundles use the same approved primary image.
+- **Verification:**
+  - Search the built app and active product records for Picsum, placeholder, empty, or unrelated media.
+  - Browser-check every active SKU and bundle at desktop and mobile sizes.
+- **Notes / Links:** Real product photography is a business input and should not be replaced with AI imagery that could misrepresent the food. Implementation can establish the gallery and publish guard while final assets are prepared.
+
+### WEB-035 - Enforce Complete and Consistent Product Data
+
+- **Priority:** High
+- **Area:** storefront/checkout/admin
+- **Goal:** Make Firestore the authoritative, publish-safe source for accurate food-product information on every customer and operational surface.
+- **Acceptance Criteria:**
+  - Active products require exact net weight, ingredients in approved order, allergen/cross-contact language, storage guidance, shelf life, price, inventory, heat rating/label, and approved dietary claims.
+  - Admin validation distinguishes required facts from optional marketing copy and blocks incomplete records from becoming active.
+  - Shop, PDP, cart, checkout, Stripe line items, emails, packing slips, and order status use the same stored price, size, name, and image data.
+  - Orders retain an immutable snapshot of the facts shown at purchase even if the product is edited later.
+  - A migration/report identifies currently active products with incomplete or conflicting data.
+- **Verification:**
+  - Attempt to publish incomplete records and confirm actionable validation.
+  - Compare every active SKU across storefront, Stripe Checkout, email, order, and fulfillment documents.
+- **Notes / Links:** Extend the existing Firestore product model rather than creating a second catalog. Regulatory and dietary language requires business approval.
+
+### WEB-036 - Rebuild or Disable Bundle Commerce
+
+- **Priority:** High
+- **Area:** storefront/checkout
+- **Goal:** Ensure advertised bundles are real sellable offers with correct pricing, inventory, tax, and fulfillment behavior.
+- **Acceptance Criteria:**
+  - Bundle definitions come from managed server data rather than `src/data/products.ts` or invented client inventory.
+  - Compare-at value, selling price, savings amount/percentage, components, quantities, sizes, and images are calculated and displayed accurately.
+  - Bundle stock derives from available component inventory and unavailable bundles cannot be added or checked out.
+  - Cart and order records preserve bundle identity while fulfillment and inventory decrement the correct components exactly once.
+  - Stripe receives the intended bundle price, tax treatment, description, and fulfillment metadata; server validation prevents client price manipulation.
+  - Existing bundle purchase controls remain disabled until these requirements pass.
+- **Verification:**
+  - Test each bundle in stock, partially unavailable, sold out, price-changed, repeated-request, refund, and tax scenarios.
+  - Compare advertised, cart, Stripe, email, order, refund, and inventory totals.
+- **Notes / Links:** Advanced Build Your Own and gift options can follow after the curated bundle foundation is reliable.
+
+### WEB-038 - Publish Legal Pages and Clean Customer Trust Surfaces
+
+- **Priority:** High
+- **Area:** content/infra
+- **Goal:** Give customers working policy links and truthful ways to identify and contact the business.
+- **Acceptance Criteria:**
+  - `/terms` and `/privacy` render complete pages and survive direct Vercel navigation/refresh.
+  - Newsletter and checkout consent copy links to the applicable policy pages.
+  - Fake phone/address data is removed or replaced with approved business information and a clear response-time expectation.
+  - Placeholder social links are hidden until real profiles exist.
+  - Admin Portal is removed from customer navigation and remains available only by direct protected URL.
+  - Footer policy and support links have no broken destinations.
+- **Verification:**
+  - Run an internal-link scan and browser-check direct navigation to every footer/policy URL.
+  - Confirm policy content and business contact details have owner/legal approval before launch.
+- **Notes / Links:** Implementation can provide the route structure and a reviewable draft; legal terms and privacy disclosures are business/legal decisions.
+
+### WEB-039 - Repair Merchandising Navigation and CTA Destinations
+
+- **Priority:** High
+- **Area:** storefront
+- **Goal:** Ensure high-intent navigation and merchandising actions always lead to the promised product or collection.
+- **Acceptance Criteria:**
+  - Header and mobile navigation use consistent `Shop Salts`, `Bundles & Gifts`, `Pairing Guide`, and `Our Story` labels when their destinations are ready.
+  - Best Sellers resolves to a real curated collection and never produces an accidental empty page.
+  - Each Pairing Guide product CTA deep-links to the exact product; unused Instagram CTAs are removed or linked to a real profile.
+  - Add-to-cart produces visible and screen-reader-announced success feedback.
+  - Automated route/link checks cover customer-facing internal CTAs.
+- **Verification:**
+  - Exercise every header, footer, homepage, product, bundle, and Pairing Guide CTA on desktop and mobile.
+- **Notes / Links:** Do not promote Bundles & Gifts until WEB-036 makes bundle purchasing safe.
+
+### WEB-040 - Complete a Mobile Commerce and Accessibility Pass
+
+- **Priority:** High
+- **Area:** storefront/accessibility
+- **Goal:** Make browsing and purchasing efficient for touch, keyboard, and assistive-technology users.
+- **Acceptance Criteria:**
+  - Icon-only controls, sort/filter controls, heat scales, cart changes, and dynamic confirmations have meaningful accessible names or live text.
+  - Contact and signup labels are programmatically associated with their inputs and validation/status feedback is announced.
+  - Interactive targets meet a practical 44-by-44-pixel minimum without making compact mobile cards unusable.
+  - Product add controls remain discoverable on touch; PDP purchase actions remain accessible after the primary controls scroll away.
+  - Cart content scrolls clearly without being hidden behind its summary, and Shop shows a loading skeleton rather than a false empty state.
+  - Small low-opacity utility copy and focus indicators meet appropriate readability and contrast expectations.
+- **Verification:**
+  - Keyboard and screen-reader smoke-test the complete browse, cart, contact, and checkout path.
+  - Browser-check mobile, tablet, desktop, zoom, reduced-motion, loading, empty, and error states.
+- **Notes / Links:** Prefer responsive card behavior based on available width instead of forcing two columns on every small phone.
+
+### WEB-042 - Implement Subscribe & Save with Stripe Billing
+
+- **Priority:** High
+- **Area:** checkout/admin
+- **Goal:** Offer a trustworthy recurring-purchase option that creates, bills, fulfills, and lets customers manage subscriptions end to end.
+- **Acceptance Criteria:**
+  - Eligible products have server-owned Stripe recurring prices and supported delivery cadences; one-time and subscription items remain distinct in cart and checkout.
+  - Customers see the recurring price, cadence, shipping/tax treatment, renewal terms, cancellation policy, and consent before purchase.
+  - Stripe Billing webhooks create exactly one fulfillment order per paid renewal and do not fulfill failed, incomplete, duplicated, or replayed invoices.
+  - Renewal orders reserve/decrement inventory safely and expose out-of-stock, payment-failure, cancellation, pause, and recovery states to admins.
+  - Confirmation, upcoming-renewal where required, payment-failure, shipment, cancellation, and resumption communications are idempotent and auditable.
+  - Customers can securely manage payment method, cadence where supported, pause/cancel, and billing history through Stripe's customer portal or an equivalent authenticated flow.
+  - Refund, tax, shipping, discount, and customer-support workflows clearly distinguish subscription orders.
+- **Verification:**
+  - Stripe test clocks cover signup, trial if offered, renewal, duplicate webhook, failed/retried payment, cancellation, pause/resume, price change, inventory shortage, refund, and portal access.
+  - Complete a production-readiness review of webhook secrets, customer communication, policy copy, and recurring-payment disclosures.
+- **Notes / Links:** Depends on accurate product data from WEB-035 and consistent fulfillment promises from WEB-021. WEB-037 hides the current nonfunctional UI only until this card passes verification.
+
+### WEB-043 - Add Verified-Buyer Review Requests and Moderated Reviews
+
+- **Priority:** Medium
+- **Area:** storefront/checkout/admin
+- **Goal:** Build credible social proof by requesting and publishing reviews only from customers who purchased the reviewed product.
+- **Acceptance Criteria:**
+  - An idempotent review-request email is scheduled from a documented post-delivery delay and sent only for eligible delivered orders.
+  - Each request uses a signed, expiring, single-purpose link tied to the order and purchased product without exposing customer or order data.
+  - A verified buyer can submit one rating and review per purchased product, with clear consent for public display and safe edit/support handling.
+  - Duplicate, forged, expired, cross-product, abusive, and rate-limited submissions are handled safely.
+  - Reviews enter a moderation queue with publish/reject controls, audit history, and protection against silently changing the customer's meaning.
+  - PDP aggregates are calculated only from published verified reviews and display honest zero-review states.
+  - Review emails include unsubscribe/preferences handling appropriate to transactional review requests, and any incentive is disclosed prominently.
+- **Verification:**
+  - Test delivered/not-delivered eligibility, delayed scheduling, duplicate carrier events, token tampering/expiry, one-review enforcement, moderation, aggregate recalculation, rejection, and email replay.
+  - Submit and publish a review from a real sandbox order, then confirm the correct PDP count and content.
+- **Notes / Links:** Reuses the completed delivery lifecycle from WEB-014 and signed-link patterns from WEB-020. Do not restore hard-coded ratings while this feature is under development.
 
 ### WEB-001 - Storefront Polish Pass
 
-- **Priority:** Medium
+- **Priority:** High
 - **Area:** storefront
-- **Goal:** Review and polish the public shopping experience across the primary storefront routes.
+- **Goal:** Perform the final public-storefront visual and interaction regression after the audit remediation cards are complete.
 - **Acceptance Criteria:**
   - Home, shop, product detail, bundles, recipes, FAQ, contact, header, footer, and cart drawer are visually consistent on desktop and mobile.
   - Product cards, recipe content, bundle sections, and navigation states have no obvious broken links, clipped text, empty states, or layout overlap.
@@ -131,24 +283,7 @@ This board is the working queue for website development. Keep cards actionable e
 - **Verification:**
   - Run `npm run lint` and `npm run build`.
   - Browser-check `/`, `/shop`, `/product/:slug`, `/bundles`, `/recipes`, `/faq`, `/contact`, and cart drawer interactions.
-- **Notes / Links:** Relevant files include `src/pages/*`, `src/components/Header.tsx`, `src/components/Footer.tsx`, `src/components/CartDrawer.tsx`, and `src/components/ProductCard.tsx`.
-
-### WEB-002 - Checkout End-to-End Regression Verification
-
-- **Priority:** High
-- **Area:** checkout
-- **Goal:** Perform final end-to-end regression verification after the focused checkout implementation cards are complete; this card does not own their implementation.
-- **Acceptance Criteria:**
-  - Cart contents produce the expected checkout payload and start a Stripe Checkout session successfully in the configured environment.
-  - Newsletter opt-in behavior implemented by WEB-024 is represented correctly in the checkout request.
-  - Success page handles valid, pending, missing, and failed session verification states clearly.
-  - Checkout errors are user-facing, non-technical, and logged enough for debugging.
-  - Any Stripe configuration or webhook gaps are documented as follow-up cards.
-- **Verification:**
-  - Run `npm run lint` and `npm run build`.
-  - Browser-check add-to-cart, `/checkout`, Stripe redirect initiation, and `/checkout/success?session_id=...` states.
-  - Inspect server routes for `/api/checkout/create-session`, `/api/checkout/session-status`, and `/api/webhooks/stripe`.
-- **Notes / Links:** Run after WEB-011, WEB-015, and WEB-024. Relevant files include `src/pages/Checkout.tsx`, `src/pages/CheckoutSuccess.tsx`, `src/store.ts`, and `server.ts`.
+- **Notes / Links:** Run after WEB-034 through WEB-040 and any customer-facing portion of WEB-042/WEB-043 that is enabled for launch. Relevant files include `src/pages/*`, `src/components/Header.tsx`, `src/components/Footer.tsx`, `src/components/CartDrawer.tsx`, and `src/components/ProductCard.tsx`.
 
 ### WEB-003 - Admin Portal End-to-End Regression Verification
 
@@ -172,7 +307,7 @@ This board is the working queue for website development. Keep cards actionable e
 - **Area:** analytics
 - **Goal:** Confirm analytics events are collected and displayed consistently for the storefront and admin analytics views.
 - **Acceptance Criteria:**
-  - Product view, add-to-cart, checkout start, and newsletter signup events send the expected payload shape.
+  - Hero/merchandising CTA, collection/filter use, product view, product-detail engagement, bundle selection, add-to-cart outcome, checkout start, inventory error, subscription, review request/submission, and newsletter signup events send the expected payload shape when their features are enabled.
   - Failed analytics requests do not break the storefront experience.
   - Admin analytics summaries are clear about current data coverage and missing attribution/conversion data.
   - Daily aggregation behavior in the server matches the event types displayed in the admin portal.
@@ -189,23 +324,24 @@ No cards currently in progress.
 
 ## Review / Verify
 
-### WEB-020 - Add Secure Customer Order Tracking
+### WEB-037 - Remove Unsupported Storefront Claims
 
-- **Priority:** Medium
-- **Area:** checkout
-- **Goal:** Reduce order-status inquiries by giving customers a secure, account-free view of fulfillment and tracking progress.
+- **Priority:** High
+- **Area:** storefront/content
+- **Goal:** Prevent customers from seeing fabricated, contradictory, or not-yet-implemented promises while their full features are being built.
 - **Acceptance Criteria:**
-  - Confirmation, shipment, and carrier-update emails link to a 90-day HMAC-signed order-status URL when production signing is configured.
-  - Checkout success also links to the status page once the webhook-created order is available.
-  - The page shows purchased items, totals, fulfillment stage, tracking, estimated delivery, and support contact.
-  - A strict public response whitelist excludes customer identity, address, product ids, admin notes, Stripe fields, and internal order ids.
-  - Missing, invalid, expired, modified, cross-order, and nonexistent-order tokens do not expose order data.
-  - Address-change and cancellation contact options appear only while the order remains eligible.
+  - Hard-coded ratings/review counts and the unverified chef testimonial are removed until WEB-043 supplies genuine moderated reviews.
+  - Subscribe & Save controls and FAQ promises are hidden until WEB-042 is production-ready.
+  - `30-Day Returns` is replaced with policy-accurate final-sale and damaged-order support copy.
+  - Dietary, sourcing, production, and no-fillers claims appear only when approved and supported by product/business records.
+  - Processing and shipping promises use the shared copy established by WEB-021.
 - **Verification:**
-  - Six targeted tests cover valid, expired, modified, and cross-order tokens; response privacy; change eligibility; and unsafe tracking links.
-  - All 29 automated tests and TypeScript validation pass.
-  - Production build passes; live browser verification remains after configuring `ORDER_STATUS_SECRET` and deploying.
-- **Notes / Links:** The public route is `/order-status`; the rate-limited API is `/api/order-status`. Set a stable Production `ORDER_STATUS_SECRET` of at least 32 unpredictable characters so emailed links remain valid. See `docs/customer-order-status.md`.
+  - Source search confirms the hard-coded reviews, testimonial, subscription promises, `30-Day Returns`, 48-hour promise, `Standard artisan delivery`, and `100% Homegrown` wording are absent.
+  - TypeScript validation, all 29 automated tests, and the production build pass; the existing large-chunk warning remains.
+  - Deployed browser verification remains for the PDP, homepage, FAQ, checkout, email signup, and returns-policy copy.
+- **Notes / Links:** The owner confirmed `Homegrown peppers`, gluten-free/vegan, no fillers or anti-caking agents, natural ingredients, fresh-dried herbs, and premium sea salt are accurate. Subscription and review claims remain hidden only until WEB-042 and WEB-043 are complete.
+
+## Done
 
 ### WEB-017 - Add Packing Slips and Consolidated Pick Lists
 
@@ -220,7 +356,7 @@ No cards currently in progress.
 - **Verification:**
   - Automated tests cover canceled quantities, repeated product lines, cross-order grouping, and fulfillment eligibility.
   - TypeScript validation and the production build pass.
-  - Live browser print-preview remains for single-order packing slips, multi-order pick lists, page breaks, QR scanning, and printer margins.
+  - User verified single-order packing slips, consolidated pick lists, print layout/page breaks, QR navigation, and printer margins in the deployed workflow.
 - **Notes / Links:** Product IDs serve as internal SKUs until dedicated SKU fields are needed. The print workflow is implemented in `src/components/admin/FulfillmentPrintDocuments.tsx` and documented in `docs/fulfillment-documents.md`. WEB-016 can extend the same selection model with saved queues and broader batch actions.
 
 ### WEB-018 - Build a Coordinated Cancellation and Refund Workflow
@@ -237,8 +373,25 @@ No cards currently in progress.
 - **Verification:**
   - Seven automated planning tests pass for full, partial, repeated, pre-shipment, post-shipment, inventory, and label-void rules.
   - TypeScript validation and the production build pass.
-  - Live test-mode verification remains for Stripe, Shippo, Firestore inventory, Resend notification/retry, audit records, and deliberately induced partial failures.
+  - User verified the coordinated Stripe, Shippo, Firestore inventory, Resend notification/retry, audit, and failure-handling workflow.
 - **Notes / Links:** The authenticated workflow is implemented in `server.ts` and the admin order detail. It coordinates Stripe, Shippo, inventory, order state, email, and audit outcomes; incomplete downstream work becomes an explicit exception instead of triggering another refund. Boanerges does not accept physical food returns. The published policy lives at `/returns`. See `docs/refund-cancellation-workflow.md`.
+
+### WEB-002 - Checkout End-to-End Regression Verification
+
+- **Priority:** High
+- **Area:** checkout
+- **Goal:** Perform final end-to-end regression verification after the focused checkout implementation cards are complete; this card does not own their implementation.
+- **Acceptance Criteria:**
+  - Cart contents produce the expected checkout payload and start a Stripe Checkout session successfully in the configured environment.
+  - Newsletter opt-in behavior implemented by WEB-024 is represented correctly in the checkout request.
+  - Success page handles valid, pending, missing, and failed session verification states clearly.
+  - Checkout errors are user-facing, non-technical, and logged enough for debugging.
+  - Any Stripe configuration or webhook gaps are documented as follow-up cards.
+- **Verification:**
+  - `npm run lint` and `npm run build` passed during the underlying implementation work.
+  - User completed the deployed checkout regression covering the cart, Stripe redirect, checkout success, newsletter choice, recovery behavior, and order-status flow.
+  - Server checkout-session and Stripe webhook routes were exercised through the deployed end-to-end flow.
+- **Notes / Links:** Completed after WEB-011, WEB-015, and WEB-024. Relevant files include `src/pages/Checkout.tsx`, `src/pages/CheckoutSuccess.tsx`, `src/store.ts`, and `server.ts`.
 
 ### WEB-024 - Fix Checkout Newsletter Consent and Actionable Errors
 
@@ -254,7 +407,7 @@ No cards currently in progress.
 - **Verification:**
   - Automated consent tests cover paid opt-in, paid opt-out, pending/abandoned, failed payment, and missing-email gating.
   - TypeScript validation, all 12 checkout/lifecycle tests, and the production build pass.
-  - Live verification remains for pending-order consent fields, Firestore/Resend subscriber activation, expired/failed checkouts, inventory recovery, rate limits, and provider/server errors.
+  - User completed the deployed verification of consent persistence/activation and checkout recovery/error behavior.
 - **Notes / Links:** Checkout consent is persisted with server timestamps and activated only by paid-order effects. Customer-safe errors preserve the cart and provide targeted quantity adjustment, removal, retry, and return-to-shop actions. Cart state now survives Stripe's Back/cancel return and clears only after verified payment. Stripe phone collection is optional. See `docs/checkout-consent-and-recovery.md`.
 
 ### WEB-033 - Refine the Admin Orders Workspace Layout
@@ -271,7 +424,7 @@ No cards currently in progress.
   - Shippo-generated tracking fields are clearly read-only and refund submission requires explicit confirmation.
 - **Verification:**
   - TypeScript validation and the production build pass.
-  - Browser-check standard desktop, wide/zoomed-out desktop, tablet, and mobile layouts after deployment.
+  - User verified the deployed Orders workspace across the relevant desktop and compact layouts.
 - **Notes / Links:** Added a bounded sticky order queue, sticky detail summary/actions, explicit lifecycle badges, compact reservation health, collapsible Stripe identifiers, stronger selected-row focus, mobile list/detail navigation, and safer tracking/refund controls in the admin Orders workspace.
 
 ### WEB-012 - Separate Payment, Fulfillment, and Shipment State Machines
@@ -288,7 +441,7 @@ No cards currently in progress.
 - **Verification:**
   - Automated tests cover legacy normalization and valid/invalid payment, fulfillment, shipment, dispute recovery, return, and carrier-exception transitions.
   - TypeScript validation and the production build pass.
-  - Browser verification remains for migrated and newly created orders in the deployed dashboard and order detail views.
+  - User verified migrated and newly created order lifecycle states in the deployed admin portal.
 - **Notes / Links:** Added the versioned lifecycle model and transition guards in `src/lib/orderLifecycle.ts`, normalized legacy orders at read and server-operation boundaries, stopped mirroring fulfillment into legacy `status`, separated carrier delivery from warehouse completion, and documented the model in `docs/order-lifecycle.md`.
 
 ### WEB-014 - Add Shipment and Delivery Notifications
@@ -305,7 +458,7 @@ No cards currently in progress.
 - **Verification:**
   - Automated lifecycle tests cover delivered, delayed, exception, ordinary transit, exact-quote replay, in-flight purchase, and second-quote label protection.
   - TypeScript validation passed with `tsc --noEmit`.
-  - Production webhook delivery, email-provider failure, replay, and rendered-email checks remain.
+  - User verified production webhook delivery, shipment notifications, carrier updates, replay protection, and rendered emails.
 - **Notes / Links:** Added a secret-protected `track_updated` Shippo webhook, deterministic event claims, tracking state persistence, delivered/delayed/exception emails, notification-attempt records, and admin status/retry support. Production configuration is documented in `docs/shippo-fulfillment.md`.
 
 ### WEB-032 - Improve Admin Dropdown Contrast
@@ -320,7 +473,7 @@ No cards currently in progress.
 - **Verification:**
   - TypeScript validation passed with `tsc --noEmit` using the bundled workspace Node runtime.
   - Production build passed; the existing large-chunk warning remains.
-  - Post-deployment browser verification remains for the Edit Provision category dropdown on Windows.
+  - User verified the Edit Provision and related admin dropdown contrast after deployment.
 - **Notes / Links:** Added a dark native control color scheme and explicit option colors for `select.input-premium` in `src/index.css`.
 
 ### WEB-031 - End Admin Authentication When Leaving the Portal
@@ -336,7 +489,7 @@ No cards currently in progress.
 - **Verification:**
   - TypeScript validation passed with `tsc --noEmit` using the bundled workspace Node runtime.
   - Production build passed; the existing large-chunk warning remains.
-  - Post-deployment verification remains for login, storefront navigation, browser back, refresh, idle timeout, and explicit logout.
+  - User verified login, storefront navigation, browser back, refresh, idle timeout, and explicit logout after deployment.
 - **Notes / Links:** Added route-exit sign-out in `src/App.tsx` and secure admin-session initialization in `src/pages/Admin.tsx`.
 
 ### WEB-030 - Prevent Admin Sidebar and Orders Layout Clipping
@@ -352,7 +505,7 @@ No cards currently in progress.
 - **Verification:**
   - TypeScript validation passed with `tsc --noEmit` using the bundled workspace Node runtime.
   - Production build passed; the existing large-chunk warning remains.
-  - Post-deployment browser checks remain at compact, standard desktop, and wide desktop widths.
+  - User verified the sidebar and Orders layout at compact, standard desktop, and wide desktop widths.
 - **Notes / Links:** Added fixed flex sizing and responsive sidebar/header/content behavior in `src/pages/Admin.tsx`, plus min-width containment in `src/components/admin/OrdersView.tsx`. Discovered from the clipped Orders screenshot.
 
 ### WEB-015 - Complete Stripe Payment Event Handling
@@ -369,7 +522,7 @@ No cards currently in progress.
 - **Verification:**
   - TypeScript validation passed with `tsc --noEmit` using the bundled workspace Node runtime.
   - Production build passed; the existing large-chunk warning remains.
-  - Live Stripe CLI duplicate, out-of-order, delayed-success, delayed-failure, and stale-claim checks remain pending configured sandbox services.
+  - User completed the configured payment-event verification, including duplicate, out-of-order, delayed, and recovery behavior.
 - **Notes / Links:** Added expiring event-processing leases with ownership tokens, terminal-state guards, an explicit checkout payment-event audit trail, a transactional analytics marker, and Resend idempotency for confirmation emails. See `server.ts` and `docs/stripe-payment-events.md`.
 
 ### WEB-029 - Create and Integrate the Lightning-B Brand System
@@ -386,7 +539,7 @@ No cards currently in progress.
   - Inspected the full-color detailed crest, simplified monogram, stacked lockup, and gold-only transparent assets at full resolution; alpha edges and small-mark silhouette are clean.
   - TypeScript `--noEmit` check passed.
   - Production Vite build passed; the existing large-chunk warning remains.
-  - Browser-check favicon, mobile header/menu, desktop header, footer, and admin/email branding after deployment.
+  - User verified the favicon, mobile and desktop headers, footer, admin, and email branding after deployment.
 - **Notes / Links:** Generated from the label crest as a style reference using the built-in image-generation workflow, then normalized into a deterministic project asset suite.
 
 ### WEB-028 - Update the Boanerges Provisions Co. Logo
@@ -403,7 +556,7 @@ No cards currently in progress.
   - Inspected the 1,092 × 360 transparent asset at full resolution and against a dark background; spelling, ornament, and edge treatment are clean.
   - TypeScript `--noEmit` check passed.
   - Production Vite build passed; the existing large-chunk warning remains.
-  - Browser-check header, footer, and admin branding after deployment; inspect the next transactional email.
+  - User verified the updated logo across the deployed header, footer, admin, and transactional email surfaces.
 - **Notes / Links:** Updated from the existing raster source with the built-in image-generation workflow; the original asset remains available as a rollback reference.
 
 ### WEB-027 - Prevent Home Hero and Header Overlap
@@ -419,7 +572,7 @@ No cards currently in progress.
 - **Verification:**
   - TypeScript `--noEmit` check passed.
   - Production Vite build passed; the existing large-chunk warning remains.
-  - Browser-check the home page at mobile, standard desktop, and short desktop viewport heights after deployment.
+  - User verified the deployed home hero at mobile, standard desktop, and short desktop viewport sizes.
 - **Notes / Links:** Discovered during Stripe checkout visual verification. The home hero used a fixed `h-screen` with no explicit header safe area.
 
 ### WEB-026 - Fix Checkout Success Header Contrast
@@ -434,7 +587,7 @@ No cards currently in progress.
 - **Verification:**
   - TypeScript `--noEmit` check passed.
   - Production Vite build passed; the existing large-chunk warning remains.
-  - Browser-check the paid, verifying, and payment-review states after deployment.
+  - User verified the deployed checkout-success header in the paid, verifying, and payment-review states.
 - **Notes / Links:** Discovered during a successful Stripe Tax sandbox checkout. The route was omitted from `Header.tsx`'s dark-page classification.
 
 ### WEB-025 - Improve Confirmation Email Compatibility
@@ -450,7 +603,7 @@ No cards currently in progress.
 - **Verification:**
   - TypeScript `--noEmit` check passed.
   - Production Vite build passed; the existing large-chunk warning remains.
-  - A new sandbox order remains to be inspected with remote images enabled and disabled.
+  - User verified the confirmation email rendering through a deployed test order.
 - **Notes / Links:** Discovered during the successful Stripe Tax sandbox checkout used to verify order creation and inventory commitment.
 
 ### WEB-011 - Add Inventory Reservations for Checkout
@@ -468,7 +621,7 @@ No cards currently in progress.
   - `npm.cmd run lint` passed.
   - `npm.cmd run build` passed; the existing large-chunk warning remains.
   - A Stripe Tax sandbox checkout completed successfully; the confirmation email was delivered, the order appeared in the admin portal, and Firestore inventory decreased by the purchased quantity.
-  - Live concurrent checkout and Stripe webhook replay checks remain pending configured Firebase/Stripe test services.
+  - User completed the configured concurrent-checkout, reservation, inventory, and Stripe webhook replay verification.
 - **Notes / Links:** Added transactional product reservation counters, bounded Stripe Session expiry, idempotent commit/release events and movements, asynchronous failure release, actionable cart recovery, an admin exception/release panel, server-only reservation rules, and `docs/inventory-reservations.md`.
 
 ### WEB-009 - Route Fulfillment Changes Through Authenticated Server APIs
@@ -486,10 +639,26 @@ No cards currently in progress.
   - `npm.cmd run lint` passed.
   - `npm.cmd run build` passed; the existing large-chunk warning remains.
   - Source inspection confirms `OrdersView.tsx` no longer imports or calls Firestore write helpers.
-  - Live admin, non-admin, signed-out, repeated-request, Stripe refund, and Resend retry checks remain to be exercised with configured test credentials.
+  - User completed the configured admin, authorization, repeated-request, Stripe refund, and Resend retry verification.
 - **Notes / Links:** Added authenticated `/api/admin/orders/:orderId/:operation` commands, command idempotency records, outcome audit events, transition/refund validation, Stripe and Resend idempotency, actionable UI errors, and server-only Firestore rules for order mutations.
 
-## Done
+### WEB-020 - Add Secure Customer Order Tracking
+
+- **Priority:** Medium
+- **Area:** checkout
+- **Goal:** Reduce order-status inquiries by giving customers a secure, account-free view of fulfillment and tracking progress.
+- **Acceptance Criteria:**
+  - Confirmation, shipment, and carrier-update emails link to a 90-day HMAC-signed order-status URL when production signing is configured.
+  - Checkout success also links to the status page once the webhook-created order is available.
+  - The page shows purchased items, totals, fulfillment stage, tracking, estimated delivery, and support contact.
+  - A strict public response whitelist excludes customer identity, address, product ids, admin notes, Stripe fields, and internal order ids.
+  - Missing, invalid, expired, modified, cross-order, and nonexistent-order tokens do not expose order data.
+  - Address-change and cancellation contact options appear only while the order remains eligible.
+- **Verification:**
+  - Six targeted tests cover valid, expired, modified, and cross-order tokens; response privacy; change eligibility; and unsafe tracking links.
+  - All 29 automated tests and TypeScript validation pass.
+  - Production build passes, and the deployed signed order-status link was verified successfully in the browser.
+- **Notes / Links:** The public route is `/order-status`; the rate-limited API is `/api/order-status`. Production uses a stable `ORDER_STATUS_SECRET` of at least 32 unpredictable characters so emailed links remain valid. See `docs/customer-order-status.md`.
 
 ### WEB-013 - Build an Exception-First Fulfillment Queue
 
