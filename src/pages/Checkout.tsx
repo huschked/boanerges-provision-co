@@ -139,6 +139,9 @@ export const Checkout: React.FC = () => {
               >
                 {loading ? <Loader2 className="animate-spin" size={20} /> : 'Proceed to Secure Payment'}
               </button>
+              <p className="text-center text-xs leading-relaxed text-brand-parchment/45">
+                Food products are final sale and physical returns are not accepted. Damaged, incorrect, or missing items may qualify for a replacement or refund. <Link to="/returns" className="text-brand-gold hover:text-brand-parchment underline underline-offset-4">Read the Returns & Refunds Policy</Link>.
+              </p>
 
               {unavailableItems.length > 0 && (
                 <div className="border border-red-400/30 bg-red-400/5 p-6 space-y-4">

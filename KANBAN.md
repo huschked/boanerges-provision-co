@@ -68,13 +68,13 @@ This board is the working queue for website development. Keep cards actionable e
 - **Acceptance Criteria:**
   - Admins can issue full or partial refunds with a required reason.
   - The workflow prevents refunding more than the remaining paid amount.
-  - Admins explicitly choose whether eligible items return to inventory, with inventory movements recorded once.
+  - Inventory is restored only for eligible units canceled before shipment; physical customer returns are never added back to sellable inventory.
   - Unused labels can be voided when supported, and shipped-order refunds show an additional warning.
   - The customer receives a refund/cancellation notification and the order audit trail records the actor and outcome.
 - **Verification:**
-  - Test full, partial, repeated, pre-shipment, and post-shipment refund scenarios in Stripe test mode.
+  - Test full, partial, repeated, pre-shipment, and post-shipment refund scenarios in Stripe test mode, confirming only pre-shipment cancellations restore inventory.
   - Confirm inventory, payment, fulfillment, email, and label states remain consistent after failures and retries.
-- **Notes / Links:** Existing refund webhook handling is in `server.ts`; depends on WEB-009 and WEB-012.
+- **Notes / Links:** Existing refund webhook handling is in `server.ts`; depends on WEB-009 and WEB-012. Boanerges does not accept physical food returns. Eligible damaged, incorrect, or missing orders are resolved without a return shipment. The published policy lives at `/returns`; final wording should be reviewed for applicable consumer-protection requirements before launch.
 
 ### WEB-019 - Add Server-Side Order Search and Pagination
 

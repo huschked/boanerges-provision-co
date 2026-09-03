@@ -67,7 +67,8 @@ export const Footer: React.FC = () => {
             <ul className="space-y-4">
               <li><Link to="/about" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Our Story</Link></li>
               <li><Link to="/recipes" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Pairing Guide</Link></li>
-              <li><Link to="/faq" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Shipping & Returns</Link></li>
+              <li><Link to="/faq" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Shipping FAQ</Link></li>
+              <li><Link to="/returns" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Returns & Refunds</Link></li>
               <li><Link to="/contact" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Contact Us</Link></li>
               <li><Link to="/terms" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Terms of Service</Link></li>
               <li><Link to="/admin" className="text-sm text-brand-parchment/40 hover:text-brand-gold transition-colors">Admin Portal</Link></li>

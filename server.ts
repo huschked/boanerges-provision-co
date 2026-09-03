@@ -959,7 +959,7 @@ function buildOrderEmailHtml({
         </div>
       </div>
     `,
-    footerNote: "Need help with your order? Reply to this email and our team will take care of you.",
+    footerNote: `Need help with your order? Reply to this email and our team will take care of you. Food products are final sale and physical returns are not accepted. <a href="${getPublicAppUrl() || "https://boanerges-provision-co.vercel.app"}/returns" style="color:#c5a059;">Review our Returns &amp; Refunds Policy</a>.`,
   });
 }
 

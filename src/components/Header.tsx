@@ -33,7 +33,7 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
 
   // Pages that have a dark hero/background at the top
   const isDarkHeroPage =
-    ['/', '/about', '/shop', '/recipes', '/faq', '/contact', '/bundles'].includes(location.pathname) ||
+    ['/', '/about', '/shop', '/recipes', '/faq', '/contact', '/bundles', '/returns'].includes(location.pathname) ||
     location.pathname.startsWith('/product/') ||
     location.pathname.startsWith('/checkout');
   const showDarkText = !isScrolled && !isDarkHeroPage;

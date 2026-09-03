@@ -25,6 +25,14 @@ export const FAQ: React.FC = () => {
       a: "We offer free standard shipping on all orders over $50 within the continental USA. Orders are typically processed within 2-3 business days and shipped via USPS or UPS."
     },
     {
+      q: "Can I return a jar of salt?",
+      a: "No. Because our salts are consumable food products, all products are final sale and we do not accept physical returns, including unopened jars. If your order arrives damaged, incorrect, or missing an item, contact orders@boanergesprovisions.com within 7 calendar days after delivery so we can review a replacement or refund."
+    },
+    {
+      q: "Can I cancel an order?",
+      a: "Contact orders@boanergesprovisions.com as soon as possible. We can cancel and refund an order only if fulfillment and shipment can still be stopped. Orders that have already shipped cannot be canceled or returned."
+    },
+    {
       q: "Do you offer subscriptions?",
       a: "Yes! You can subscribe to any of our salts and save 15% on every order. You can choose your delivery frequency and cancel or pause your subscription at any time through your account portal."
     }
