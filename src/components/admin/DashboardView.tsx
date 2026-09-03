@@ -3,6 +3,8 @@ import { motion } from 'motion/react';
 import { DollarSign, ShoppingCart, Package, AlertCircle, TrendingUp, PackageCheck } from 'lucide-react';
 import { Product } from '@/src/services/productService';
 import type { FulfillmentState, PaymentState, ShipmentState } from '@/src/lib/orderLifecycle';
+import { getOrderExceptions, ORDER_EXCEPTION_LABELS, type OrderExceptionKind } from '@/src/lib/orderExceptions';
+import type { OrderQueueFilter } from './OrdersView';
 
 export interface Order {
   id: string;
@@ -44,6 +46,20 @@ export interface Order {
   latestTrackingStatus?: { status: string; details?: string; statusDate?: string };
   shipmentStatus?: ShipmentState;
   shipmentException?: { status: string; type: string; quoteId?: string; message: string };
+  shippingAddressException?: { status?: string; code?: string; message?: string; occurredAt?: any };
+  resendEmailError?: string;
+  deliveredEmailError?: string;
+  delayedEmailError?: string;
+  exceptionEmailError?: string;
+  error?: string;
+  fulfillmentError?: string;
+  inventoryConflict?: any;
+  reservationException?: any;
+  refundRequestStatus?: string;
+  refundRequestedAt?: any;
+  refundRequestReason?: string;
+  shippedAt?: any;
+  updatedAt?: any;
   adminNotes?: string;
   paidAt?: any;
   shippingAddress?: {
@@ -74,13 +90,36 @@ interface DashboardViewProps {
   stats: any;
   orders: Order[];
   products: Product[];
-  onViewOrders: () => void;
+  onViewOrders: (queue?: OrderQueueFilter) => void;
   onManageInventory: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, products, onViewOrders, onManageInventory }) => {
+  const exceptionOrders = orders.map(order => ({ order, exceptions: getOrderExceptions(order) })).filter(item => item.exceptions.length > 0);
+  const exceptionCounts = exceptionOrders.reduce((counts, item) => {
+    for (const exception of item.exceptions) counts[exception.kind] = (counts[exception.kind] || 0) + 1;
+    return counts;
+  }, {} as Partial<Record<OrderExceptionKind, number>>);
+
   return (
     <div className="space-y-16 animate-fade-in">
+      <section className="card-premium p-6 lg:p-8 flex flex-col xl:flex-row xl:items-center justify-between gap-6 border-amber-400/20">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-amber-400/10 text-amber-300"><AlertCircle size={22} /></div>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.22em] text-brand-gold/60 font-black">Fulfillment exceptions</p>
+            <p className="text-xl font-serif text-brand-parchment">{exceptionOrders.length} {exceptionOrders.length === 1 ? 'order needs' : 'orders need'} attention</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {Object.entries(exceptionCounts).map(([kind, count]) => (
+            <button key={kind} onClick={() => onViewOrders(kind as OrderExceptionKind)} className="px-3 py-2 border border-white/10 text-[9px] uppercase tracking-[0.14em] font-black text-brand-parchment/55 hover:text-brand-gold hover:border-brand-gold/30">
+              {ORDER_EXCEPTION_LABELS[kind as OrderExceptionKind]} · {count}
+            </button>
+          ))}
+          <button onClick={() => onViewOrders('attention')} className="px-5 py-2.5 bg-brand-gold text-brand-black text-[9px] uppercase tracking-[0.18em] font-black">Open queue</button>
+        </div>
+      </section>
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
           {[
@@ -132,7 +171,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, pro
               <h3 className="text-2xl font-serif text-brand-parchment">Recent Transactions</h3>
               <p className="text-[9px] uppercase tracking-[0.2em] text-brand-gold/40 font-black">Latest customer orders</p>
             </div>
-            <button onClick={onViewOrders} className="text-[10px] uppercase tracking-[0.3em] font-black text-brand-gold hover:text-brand-parchment transition-all duration-500 border border-brand-gold/20 px-6 py-2.5 rounded-sm hover:bg-brand-gold/10">View All Orders</button>
+            <button onClick={() => onViewOrders('all')} className="text-[10px] uppercase tracking-[0.3em] font-black text-brand-gold hover:text-brand-parchment transition-all duration-500 border border-brand-gold/20 px-6 py-2.5 rounded-sm hover:bg-brand-gold/10">View All Orders</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">

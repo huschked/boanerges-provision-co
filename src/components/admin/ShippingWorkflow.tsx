@@ -78,6 +78,7 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
       setAcceptedCorrection(!nextQuote.addressChanged);
       setValidationError(null);
       setEditingAddress(false);
+      await onComplete();
     } catch (error) {
       const message = errorMessage(error);
       if (error instanceof AdminOrderApiError) {
@@ -94,6 +95,7 @@ export function ShippingWorkflow({ order, onComplete }: { order: Order; onComple
         });
         if (['invalid_address', 'shipping_address_incomplete', 'validation_error'].includes(error.code || '')) {
           setEditingAddress(true);
+          await onComplete();
         }
       } else {
         toast.error(message);

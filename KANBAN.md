@@ -164,21 +164,6 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Ready
 
-### WEB-013 - Build an Exception-First Fulfillment Queue
-
-- **Priority:** High
-- **Area:** admin
-- **Goal:** Define, detect, and resolve operational problems; general order filtering, saved views, and batch controls remain owned by WEB-016.
-- **Acceptance Criteria:**
-  - The queue identifies overdue unfulfilled orders, inventory conflicts, invalid addresses, disputes, email failures, label failures, tracking gaps, carrier exceptions, and refund requests.
-  - Exceptions show age, severity, reason, and the next recommended action.
-  - Dashboard counts link to the matching filtered order queue.
-  - Resolving the underlying issue removes the exception without manual cleanup.
-- **Verification:**
-  - Seed every exception type and verify counts, ordering, filtering, and resolution behavior.
-  - Confirm normal pending orders are not incorrectly marked as exceptions before their handling deadline.
-- **Notes / Links:** Replace the narrow `Needs Attention` calculation in `src/components/admin/OrdersView.tsx`. Depends on WEB-012.
-
 ### WEB-024 - Fix Checkout Newsletter Consent and Actionable Errors
 
 - **Priority:** High
@@ -265,6 +250,22 @@ This board is the working queue for website development. Keep cards actionable e
 No cards currently in progress.
 
 ## Review / Verify
+
+### WEB-013 - Build an Exception-First Fulfillment Queue
+
+- **Priority:** High
+- **Area:** admin
+- **Goal:** Define, detect, and resolve operational problems; general order filtering, saved views, and batch controls remain owned by WEB-016.
+- **Acceptance Criteria:**
+  - The queue identifies overdue unfulfilled orders, inventory conflicts, invalid addresses, disputes, email failures, label failures, tracking gaps, carrier exceptions, and refund requests.
+  - Exceptions show age, severity, reason, and the next recommended action.
+  - Dashboard counts link to the matching filtered order queue.
+  - Resolving the underlying issue removes the exception without manual cleanup.
+- **Verification:**
+  - Automated classifier fixtures cover all nine exception types, severity ordering, normal pending deadlines, and automatic removal after resolution.
+  - TypeScript validation, 11 lifecycle/exception tests, and the production build pass.
+  - Browser verification remains for dashboard links, category filters, responsive order details, and resolution after a live refresh.
+- **Notes / Links:** Replaced the narrow `Needs Attention` calculation with the shared classifier in `src/lib/orderExceptions.ts`. Shippo address failures are recorded and cleared by validation; packing, refunds, label purchase, email retry, and tracking updates clear their corresponding underlying markers. Operational rules are documented in `docs/order-exceptions.md`.
 
 ### WEB-033 - Refine the Admin Orders Workspace Layout
 

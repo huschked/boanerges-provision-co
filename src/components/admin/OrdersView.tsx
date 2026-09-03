@@ -1,17 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ChevronDown, Search, PackageSearch, Mail, Phone, MapPin } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronDown, Search, PackageSearch, Mail, Phone, MapPin } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { AdminOrderApiError, runOrderCommand, type FulfillmentOperation } from '@/src/lib/adminOrders';
 import { Order } from './DashboardView';
 import toast from 'react-hot-toast';
 import { ShippingWorkflow } from './ShippingWorkflow';
 import { ReservationPanel } from './ReservationPanel';
+import { formatExceptionAge, getOrderExceptions, ORDER_EXCEPTION_LABELS, type OrderExceptionKind } from '@/src/lib/orderExceptions';
+
+export type OrderQueueFilter = 'all' | 'attention' | OrderExceptionKind;
 
 interface OrdersViewProps {
   orders: Order[];
   onRefresh: () => void;
   searchTerm: string;
   onSearchTermChange: (value: string) => void;
+  queueFilter: OrderQueueFilter;
+  onQueueFilterChange: (value: OrderQueueFilter) => void;
 }
 
 const formatAddress = (address: Order['shippingAddress']) => {
@@ -22,7 +27,7 @@ const formatAddress = (address: Order['shippingAddress']) => {
     .join('\n');
 };
 
-export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searchTerm, onSearchTermChange }) => {
+export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searchTerm, onSearchTermChange, queueFilter, onQueueFilterChange }) => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [notesDraft, setNotesDraft] = useState('');
   const [trackingNumberDraft, setTrackingNumberDraft] = useState('');
@@ -33,10 +38,29 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
   const [refundReason, setRefundReason] = useState('');
   const [isMobileDetailOpen, setIsMobileDetailOpen] = useState(false);
 
+  const ordersWithExceptions = useMemo(() => orders.map(order => ({ order, exceptions: getOrderExceptions(order) })), [orders]);
+  const exceptionCounts = useMemo(() => ordersWithExceptions.reduce((counts, item) => {
+    for (const exception of item.exceptions) counts[exception.kind] = (counts[exception.kind] || 0) + 1;
+    return counts;
+  }, {} as Partial<Record<OrderExceptionKind, number>>), [ordersWithExceptions]);
+  const visibleOrderEntries = useMemo(() => {
+    const filtered = ordersWithExceptions.filter(item =>
+      queueFilter === 'all' || (queueFilter === 'attention' ? item.exceptions.length > 0 : item.exceptions.some(value => value.kind === queueFilter))
+    );
+    if (queueFilter === 'all') return filtered;
+    const severityRank = { critical: 0, high: 1, medium: 2 } as const;
+    return [...filtered].sort((a, b) => {
+      const aException = queueFilter === 'attention' ? a.exceptions[0] : a.exceptions.find(value => value.kind === queueFilter)!;
+      const bException = queueFilter === 'attention' ? b.exceptions[0] : b.exceptions.find(value => value.kind === queueFilter)!;
+      return severityRank[aException.severity] - severityRank[bException.severity] || bException.ageMs - aException.ageMs;
+    });
+  }, [ordersWithExceptions, queueFilter]);
+  const visibleOrders = useMemo(() => visibleOrderEntries.map(item => item.order), [visibleOrderEntries]);
   const selectedOrder = useMemo(
-    () => orders.find((order) => order.id === selectedOrderId) || orders[0] || null,
-    [orders, selectedOrderId]
+    () => visibleOrders.find((order) => order.id === selectedOrderId) || visibleOrders[0] || null,
+    [visibleOrders, selectedOrderId]
   );
+  const selectedOrderExceptions = useMemo(() => selectedOrder ? getOrderExceptions(selectedOrder) : [], [selectedOrder]);
   const normalizedSearchTerm = searchTerm.trim();
   const selectedOrderStatus = selectedOrder?.fulfillmentStatus || 'pending';
   const canPackSelectedOrder = ['pending', 'requires_attention'].includes(selectedOrderStatus);
@@ -46,16 +70,16 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
     : selectedOrder?.shipmentEmailStatus === 'failed' ? 'shipment' : 'confirmation';
 
   useEffect(() => {
-    if (!orders.length) {
+    if (!visibleOrders.length) {
       setSelectedOrderId(null);
       return;
     }
 
-    const hasSelectedOrder = selectedOrderId && orders.some((order) => order.id === selectedOrderId);
+    const hasSelectedOrder = selectedOrderId && visibleOrders.some((order) => order.id === selectedOrderId);
     if (!hasSelectedOrder) {
-      setSelectedOrderId(orders[0].id);
+      setSelectedOrderId(visibleOrders[0].id);
     }
-  }, [orders, selectedOrderId]);
+  }, [visibleOrders, selectedOrderId]);
 
   useEffect(() => {
     setNotesDraft(selectedOrder?.adminNotes || '');
@@ -137,26 +161,36 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="card-premium p-5 space-y-2">
           <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Visible Orders</p>
-          <p className="text-2xl font-serif text-brand-parchment">{orders.length}</p>
+          <p className="text-2xl font-serif text-brand-parchment">{visibleOrders.length}</p>
         </div>
-        <div className="card-premium p-5 space-y-2">
+        <button onClick={() => onQueueFilterChange('attention')} className={cn('card-premium p-5 space-y-2 text-left hover:border-red-400/30 transition-colors', queueFilter === 'attention' && 'border-red-400/40 bg-red-400/[0.04]')}>
           <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Needs Attention</p>
           <p className="text-2xl font-serif text-brand-parchment">
-            {orders.filter((order) =>
-              order.fulfillmentStatus === 'requires_attention' || order.shipmentStatus === 'exception' || order.shipmentStatus === 'failure'
-            ).length}
+            {ordersWithExceptions.filter(item => item.exceptions.length > 0).length}
           </p>
-        </div>
+        </button>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-2" aria-label="Order exception filters">
+        {([
+          ['all', 'All', orders.length],
+          ['attention', 'Needs attention', ordersWithExceptions.filter(item => item.exceptions.length > 0).length],
+          ...Object.entries(ORDER_EXCEPTION_LABELS).map(([kind, label]) => [kind, label, exceptionCounts[kind as OrderExceptionKind] || 0]),
+        ] as Array<[OrderQueueFilter, string, number]>).filter(([kind, , count]) => kind === 'all' || kind === 'attention' || count > 0).map(([kind, label, count]) => (
+          <button key={kind} onClick={() => onQueueFilterChange(kind)} className={cn('shrink-0 px-4 py-2 border text-[9px] uppercase tracking-[0.16em] font-black transition-colors', queueFilter === kind ? 'bg-brand-gold text-brand-black border-brand-gold' : 'border-white/10 text-brand-parchment/45 hover:text-brand-gold hover:border-brand-gold/30')}>
+            {label} · {count}
+          </button>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)] items-start gap-6">
         <div className={cn('min-w-0 self-start xl:sticky xl:top-32 card-premium overflow-hidden', isMobileDetailOpen ? 'hidden xl:block' : 'block')}>
           <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between gap-3">
             <p className="text-[10px] uppercase tracking-[0.22em] text-brand-gold/60 font-black">Order Queue</p>
-            <p className="text-xs text-brand-parchment/35">{normalizedSearchTerm ? `${orders.length} matching` : `${orders.length} recent`}</p>
+            <p className="text-xs text-brand-parchment/35">{normalizedSearchTerm ? `${visibleOrders.length} matching` : `${visibleOrders.length} shown`}</p>
           </div>
           <div className="divide-y divide-white/5 xl:max-h-[calc(100vh-12rem)] xl:overflow-y-auto">
-            {orders.map((order) => {
+            {visibleOrderEntries.map(({ order, exceptions }) => {
               const orderStatus = order.fulfillmentStatus || 'pending';
               const totalAmount = order.totalAmount ?? 0;
               const isSelected = selectedOrder?.id === order.id;
@@ -180,6 +214,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                         Payment: {paymentStatus.replaceAll('_', ' ')}
                       </p>
                       <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/25 font-black">Shipment: {(order.shipmentStatus || 'not_shipped').replaceAll('_', ' ')}</p>
+                      {exceptions[0] && (
+                        <div className={cn('mt-2 border-l-2 pl-3 space-y-1', exceptions[0].severity === 'critical' ? 'border-red-400' : exceptions[0].severity === 'high' ? 'border-amber-400' : 'border-blue-400')}>
+                          <p className="text-[9px] uppercase tracking-[0.14em] text-amber-300 font-black">{exceptions[0].label} · {formatExceptionAge(exceptions[0].ageMs)}</p>
+                          <p className="text-[10px] normal-case text-brand-parchment/50 line-clamp-2">{exceptions[0].reason}</p>
+                        </div>
+                      )}
                     </div>
                     <div className="text-right space-y-2">
                       <p className="text-sm text-brand-parchment font-black">${totalAmount.toFixed(2)}</p>
@@ -196,10 +236,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                 </button>
               );
             })}
-            {orders.length === 0 && (
+            {visibleOrders.length === 0 && (
               <div className="p-20 text-center space-y-4">
                 <PackageSearch size={32} className="mx-auto text-brand-parchment/10" />
-                <p className="text-[10px] uppercase tracking-widest text-brand-parchment/20 font-black">No orders match this search</p>
+                <p className="text-[10px] uppercase tracking-widest text-brand-parchment/20 font-black">No orders match this queue</p>
               </div>
             )}
           </div>
@@ -244,6 +284,27 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                   <p className="text-xs text-brand-parchment/40">Invalid transitions are rejected by the server.</p>
                 </div>
               </div>
+
+              {selectedOrderExceptions.length > 0 && (
+                <section className="p-6 lg:p-8 border-b border-amber-400/20 bg-amber-400/[0.025] space-y-4" aria-label="Operational exceptions">
+                  <div className="flex items-center gap-3 text-amber-300">
+                    <AlertTriangle size={18} />
+                    <h4 className="text-[10px] uppercase tracking-[0.24em] font-black">Operational exceptions</h4>
+                  </div>
+                  <div className="grid grid-cols-1 2xl:grid-cols-2 gap-3">
+                    {selectedOrderExceptions.map(exception => (
+                      <div key={exception.kind} className="border border-white/10 bg-brand-black/40 p-4 space-y-2">
+                        <div className="flex justify-between gap-4">
+                          <p className="text-sm text-brand-parchment font-black">{exception.label}</p>
+                          <span className={cn('text-[8px] uppercase tracking-[0.15em] font-black', exception.severity === 'critical' ? 'text-red-400' : exception.severity === 'high' ? 'text-amber-300' : 'text-blue-300')}>{exception.severity} · {formatExceptionAge(exception.ageMs)}</span>
+                        </div>
+                        <p className="text-xs text-brand-parchment/55">{exception.reason}</p>
+                        <p className="text-xs text-brand-gold"><span className="font-black">Next:</span> {exception.recommendedAction}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               <div className="p-10 grid grid-cols-1 md:grid-cols-2 gap-10 border-b border-white/5">
                 <div className="space-y-4">

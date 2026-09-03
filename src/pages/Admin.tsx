@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 import { DashboardView, Order } from '../components/admin/DashboardView';
 import { ProductsView } from '../components/admin/ProductsView';
 import { OrdersView } from '../components/admin/OrdersView';
+import type { OrderQueueFilter } from '../components/admin/OrdersView';
 import { SubscribersView, Subscriber } from '../components/admin/SubscribersView';
 import { MessagesView, ContactMessage } from '../components/admin/MessagesView';
 import { AnalyticsView } from '../components/admin/AnalyticsView';
@@ -24,6 +25,7 @@ export const Admin: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+  const [orderQueue, setOrderQueue] = useState<OrderQueueFilter>('all');
   const [isAdmin, setIsAdmin] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -287,7 +289,7 @@ export const Admin: React.FC = () => {
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as AdminTab)}
+              onClick={() => { if (tab.id === 'orders') setOrderQueue('all'); setActiveTab(tab.id as AdminTab); }}
               title={tab.label}
               className={`w-full flex items-center justify-center lg:justify-start gap-4 px-3 lg:px-5 py-4 rounded-sm text-[10px] uppercase tracking-[0.25em] font-black transition-all duration-500 relative group overflow-hidden ${
                 activeTab === tab.id ? 'text-brand-black' : 'text-brand-parchment/30 hover:text-brand-parchment'
@@ -346,13 +348,13 @@ export const Admin: React.FC = () => {
               stats={stats}
               orders={filteredOrders}
               products={filteredProducts}
-              onViewOrders={() => setActiveTab('orders')}
+              onViewOrders={(queue = 'all') => { setOrderQueue(queue); setActiveTab('orders'); }}
               onManageInventory={() => setActiveTab('products')}
             />
           )}
           {activeTab === 'analytics' && <AnalyticsView orders={orders} products={products} subscribers={subscribers} messages={messages} />}
           {activeTab === 'products' && <ProductsView products={filteredProducts} onRefresh={fetchData} />}
-          {activeTab === 'orders' && <OrdersView orders={filteredOrders} onRefresh={fetchData} searchTerm={searchTerm} onSearchTermChange={setSearchTerm} />}
+          {activeTab === 'orders' && <OrdersView orders={filteredOrders} onRefresh={fetchData} searchTerm={searchTerm} onSearchTermChange={setSearchTerm} queueFilter={orderQueue} onQueueFilterChange={setOrderQueue} />}
           {activeTab === 'subscribers' && <SubscribersView subscribers={filteredSubscribers} />}
           {activeTab === 'contact' && <MessagesView messages={filteredMessages} onRefresh={fetchData} />}
         </div>

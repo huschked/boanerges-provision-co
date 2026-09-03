@@ -1095,6 +1095,8 @@ async function processShippoTrackingWebhook(payload: ShippoTrackingWebhook) {
       message: trackingStatus.status_details || trackingStatus.substatus?.text || "Carrier reported a shipment exception.",
       occurredAt: admin.firestore.FieldValue.serverTimestamp(),
     };
+  } else if (notificationKind !== "delayed" && order.shipmentException?.type === "carrier_exception") {
+    updates.shipmentException = admin.firestore.FieldValue.delete();
   }
   await orderDoc.ref.set(updates, { merge: true });
 
@@ -1157,7 +1159,8 @@ function carrierMessageSummary(messages: ShippoMessage[]) {
 }
 
 async function createShippoQuote(orderId: string, payload: Record<string, unknown>, actor: AdminActor, debugTrace?: ShippoDebugEntry[]) {
-  const orderSnap = await db.collection("orders").doc(orderId).get();
+  const orderRef = db.collection("orders").doc(orderId);
+  const orderSnap = await orderRef.get();
   if (!orderSnap.exists) throw new AdminCommandError(404, "Order not found.", "not_found");
   const order = orderSnap.data()!;
   const lifecycle = normalizeOrderLifecycle(order);
@@ -1183,9 +1186,29 @@ async function createShippoQuote(orderId: string, payload: Record<string, unknow
     if (!Number.isFinite(Number(value)) || Number(value) <= 0) throw new AdminCommandError(400, `Parcel ${field} must be greater than zero.`, "invalid_parcel");
   }
 
-  const originalAddress = orderShippoAddress(order);
-  const submittedAddress = shippingAddressOverride(payload.addressOverride, order) || originalAddress;
-  const validatedAddress = await validateShippoAddress(submittedAddress, "destination", debugTrace);
+  let originalAddress!: ShippoAddress;
+  let submittedAddress!: ShippoAddress;
+  let validatedAddress!: ValidatedShippoAddress;
+  try {
+    originalAddress = orderShippoAddress(order);
+    submittedAddress = shippingAddressOverride(payload.addressOverride, order) || originalAddress;
+    validatedAddress = await validateShippoAddress(submittedAddress, "destination", debugTrace);
+  } catch (error) {
+    if (error instanceof AdminCommandError && ["invalid_address", "shipping_address_incomplete", "validation_error"].includes(error.code)) {
+      await orderRef.set({
+        shippingAddressException: {
+          status: "requires_review",
+          code: error.code,
+          message: error.message,
+          submittedAddress: submittedAddress || payload.addressOverride || order.shippingAddress || null,
+          occurredAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+    throw error;
+  }
+  await orderRef.set({ shippingAddressException: admin.firestore.FieldValue.delete(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   const validatedSenderAddress = await validateShippoAddress(getShippoSenderAddress(), "origin", debugTrace);
 
   const shipment = await shippoRequest<{
@@ -1408,6 +1431,14 @@ async function executeFulfillmentCommand(
         throw new AdminCommandError(409, "Add a tracking number before marking this order shipped.", "tracking_required");
       }
       updates.fulfillmentStatus = nextStatus;
+      if (operation === "pack") {
+        updates.inventoryConflict = admin.firestore.FieldValue.delete();
+        updates.reservationException = admin.firestore.FieldValue.delete();
+        updates.fulfillmentError = admin.firestore.FieldValue.delete();
+        if (/inventory|reservation|stock|oversold|quantity/i.test(String(order.error || ""))) {
+          updates.error = admin.firestore.FieldValue.delete();
+        }
+      }
       if (operation === "ship") {
         if (!canTransitionShipment(lifecycle.shipmentStatus, "pre_transit")) {
           throw new AdminCommandError(409, `Shipment cannot move from ${lifecycle.shipmentStatus} to pre_transit.`, "invalid_shipment_transition");
@@ -1442,6 +1473,9 @@ async function executeFulfillmentCommand(
       updates.paymentStatus = nextPaymentStatus;
       updates.refundedAt = admin.firestore.FieldValue.serverTimestamp();
       updates.lastRefundReason = reason;
+      updates.refundRequestStatus = admin.firestore.FieldValue.delete();
+      updates.refundRequestedAt = admin.firestore.FieldValue.delete();
+      updates.refundRequestReason = admin.firestore.FieldValue.delete();
       result.refundId = refund.id;
       result.refundedAmount = amount;
     } else if (operation === "notification-retry") {
