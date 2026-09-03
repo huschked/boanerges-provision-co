@@ -45,21 +45,6 @@ This board is the working queue for website development. Keep cards actionable e
   - Verify a partial batch failure does not incorrectly update successful or untouched orders.
 - **Notes / Links:** Depends on WEB-009 and WEB-012; consumes exception data from WEB-013 and printable documents from WEB-017 without redefining either workflow. Relevant files include `src/components/admin/OrdersView.tsx` and `src/pages/Admin.tsx`.
 
-### WEB-017 - Add Packing Slips and Consolidated Pick Lists
-
-- **Priority:** Medium
-- **Area:** admin
-- **Goal:** Reduce packing mistakes and manual transcription by generating printable fulfillment documents.
-- **Acceptance Criteria:**
-  - Each order can produce a printable packing slip with order reference, customer, address, SKU/item, quantity, and packing instructions.
-  - Selected orders can produce a consolidated pick list grouped by SKU/product.
-  - Packing slips include a QR code or barcode that opens the matching admin order.
-  - Print layouts remain legible without the normal admin navigation or decorative styling.
-- **Verification:**
-  - Print-preview single and multi-order documents on letter-size paper.
-  - Compare generated quantities with source orders containing repeated and bundled items.
-- **Notes / Links:** Coordinate with WEB-016 and the carrier workflow in WEB-010.
-
 ### WEB-019 - Add Server-Side Order Search and Pagination
 
 - **Priority:** Medium
@@ -218,6 +203,22 @@ This board is the working queue for website development. Keep cards actionable e
 No cards currently in progress.
 
 ## Review / Verify
+
+### WEB-017 - Add Packing Slips and Consolidated Pick Lists
+
+- **Priority:** Medium
+- **Area:** admin
+- **Goal:** Reduce packing mistakes and manual transcription by generating printable fulfillment documents.
+- **Acceptance Criteria:**
+  - Each order can produce a printable packing slip with order reference, customer, validated address, product ID/item, remaining quantity, and internal packing instructions.
+  - Paid pending or packed orders can be selected for a consolidated pick list grouped by product ID and size.
+  - Packing slips include a QR code that opens the matching order behind admin authentication.
+  - Print layouts target letter-size paper and omit the admin navigation and decorative styling.
+- **Verification:**
+  - Automated tests cover canceled quantities, repeated product lines, cross-order grouping, and fulfillment eligibility.
+  - TypeScript validation and the production build pass.
+  - Live browser print-preview remains for single-order packing slips, multi-order pick lists, page breaks, QR scanning, and printer margins.
+- **Notes / Links:** Product IDs serve as internal SKUs until dedicated SKU fields are needed. The print workflow is implemented in `src/components/admin/FulfillmentPrintDocuments.tsx` and documented in `docs/fulfillment-documents.md`. WEB-016 can extend the same selection model with saved queues and broader batch actions.
 
 ### WEB-018 - Build a Coordinated Cancellation and Refund Workflow
 

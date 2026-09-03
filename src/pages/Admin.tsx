@@ -21,14 +21,16 @@ type AdminTab = 'dashboard' | 'analytics' | 'products' | 'orders' | 'subscribers
 
 export const Admin: React.FC = () => {
   const ADMIN_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+  const initialParams = typeof window === 'undefined' ? new URLSearchParams() : new URLSearchParams(window.location.search);
+  const initialOrderId = initialParams.get('order') || '';
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => initialParams.get('tab') === 'orders' || initialOrderId ? 'orders' : 'dashboard');
   const [orderQueue, setOrderQueue] = useState<OrderQueueFilter>('all');
   const [isAdmin, setIsAdmin] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(initialOrderId);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
@@ -354,7 +356,7 @@ export const Admin: React.FC = () => {
           )}
           {activeTab === 'analytics' && <AnalyticsView orders={orders} products={products} subscribers={subscribers} messages={messages} />}
           {activeTab === 'products' && <ProductsView products={filteredProducts} onRefresh={fetchData} />}
-          {activeTab === 'orders' && <OrdersView orders={filteredOrders} onRefresh={fetchData} searchTerm={searchTerm} onSearchTermChange={setSearchTerm} queueFilter={orderQueue} onQueueFilterChange={setOrderQueue} />}
+          {activeTab === 'orders' && <OrdersView orders={filteredOrders} onRefresh={fetchData} searchTerm={searchTerm} onSearchTermChange={setSearchTerm} queueFilter={orderQueue} onQueueFilterChange={setOrderQueue} initialSelectedOrderId={initialOrderId} />}
           {activeTab === 'subscribers' && <SubscribersView subscribers={filteredSubscribers} />}
           {activeTab === 'contact' && <MessagesView messages={filteredMessages} onRefresh={fetchData} />}
         </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ChevronDown, Search, PackageSearch, Mail, Phone, MapPin } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronDown, Search, PackageSearch, Mail, Phone, MapPin, Printer, ListChecks } from 'lucide-react';
+import QRCode from 'qrcode';
 import { cn } from '@/src/lib/utils';
 import { AdminOrderApiError, runOrderCommand, type FulfillmentOperation } from '@/src/lib/adminOrders';
 import { Order } from './DashboardView';
@@ -7,6 +8,8 @@ import toast from 'react-hot-toast';
 import { ShippingWorkflow } from './ShippingWorkflow';
 import { ReservationPanel } from './ReservationPanel';
 import { formatExceptionAge, getOrderExceptions, ORDER_EXCEPTION_LABELS, type OrderExceptionKind } from '@/src/lib/orderExceptions';
+import { canIncludeInPickList } from '@/src/lib/fulfillmentDocuments';
+import { FulfillmentPrintDocuments, type FulfillmentPrintJob } from './FulfillmentPrintDocuments';
 
 export type OrderQueueFilter = 'all' | 'attention' | OrderExceptionKind;
 
@@ -17,6 +20,7 @@ interface OrdersViewProps {
   onSearchTermChange: (value: string) => void;
   queueFilter: OrderQueueFilter;
   onQueueFilterChange: (value: OrderQueueFilter) => void;
+  initialSelectedOrderId?: string;
 }
 
 const formatAddress = (address: Order['shippingAddress']) => {
@@ -27,8 +31,8 @@ const formatAddress = (address: Order['shippingAddress']) => {
     .join('\n');
 };
 
-export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searchTerm, onSearchTermChange, queueFilter, onQueueFilterChange }) => {
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searchTerm, onSearchTermChange, queueFilter, onQueueFilterChange, initialSelectedOrderId }) => {
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(initialSelectedOrderId || null);
   const [notesDraft, setNotesDraft] = useState('');
   const [trackingNumberDraft, setTrackingNumberDraft] = useState('');
   const [trackingUrlDraft, setTrackingUrlDraft] = useState('');
@@ -42,6 +46,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
   const [cancelQuantities, setCancelQuantities] = useState<Record<string, string>>({});
   const [refundConfirmed, setRefundConfirmed] = useState(false);
   const [isMobileDetailOpen, setIsMobileDetailOpen] = useState(false);
+  const [selectedPrintOrderIds, setSelectedPrintOrderIds] = useState<Set<string>>(new Set());
+  const [printJob, setPrintJob] = useState<FulfillmentPrintJob | null>(null);
 
   const ordersWithExceptions = useMemo(() => orders.map(order => ({ order, exceptions: getOrderExceptions(order) })), [orders]);
   const exceptionCounts = useMemo(() => ordersWithExceptions.reduce((counts, item) => {
@@ -105,6 +111,51 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
     setRefundConfirmed(false);
   }, [selectedOrder?.id]);
 
+  useEffect(() => {
+    if (!printJob) return;
+    const clearPrintJob = () => setPrintJob(null);
+    window.addEventListener('afterprint', clearPrintJob, { once: true });
+    let cancelled = false;
+    const prepareAndPrint = async () => {
+      const images = [...document.querySelectorAll<HTMLImageElement>('.admin-print-root img')];
+      await Promise.all(images.map(image => image.complete ? Promise.resolve() : new Promise<void>(resolve => {
+        image.addEventListener('load', () => resolve(), { once: true });
+        image.addEventListener('error', () => resolve(), { once: true });
+      })));
+      await document.fonts?.ready;
+      if (!cancelled) window.print();
+    };
+    const timer = window.setTimeout(() => void prepareAndPrint(), 50);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      window.removeEventListener('afterprint', clearPrintJob);
+    };
+  }, [printJob]);
+
+  const printPackingSlip = async () => {
+    if (!selectedOrder) return;
+    try {
+      const adminUrl = new URL('/admin', window.location.origin);
+      adminUrl.searchParams.set('tab', 'orders');
+      adminUrl.searchParams.set('order', selectedOrder.id);
+      const qrDataUrl = await QRCode.toDataURL(adminUrl.toString(), { errorCorrectionLevel: 'M', margin: 1, width: 320 });
+      setPrintJob({ type: 'packing-slip', order: selectedOrder, qrDataUrl });
+    } catch (error) {
+      console.error('Unable to prepare packing slip:', error);
+      toast.error('The packing slip could not be prepared.');
+    }
+  };
+
+  const printSelectedPickList = () => {
+    const selectedOrders = orders.filter(order => selectedPrintOrderIds.has(order.id) && canIncludeInPickList(order));
+    if (!selectedOrders.length) {
+      toast.error('Select at least one order with quantities left to fulfill.');
+      return;
+    }
+    setPrintJob({ type: 'pick-list', orders: selectedOrders });
+  };
+
   const describeError = (error: unknown) => {
     if (error instanceof AdminOrderApiError) return error.message;
     return 'The operation could not be completed. Please retry.';
@@ -150,6 +201,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
 
   return (
     <div className="min-w-0 space-y-10">
+      <FulfillmentPrintDocuments job={printJob} />
       <ReservationPanel />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="space-y-1">
@@ -204,9 +256,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)] items-start gap-6">
         <div className={cn('min-w-0 self-start xl:sticky xl:top-32 card-premium overflow-hidden', isMobileDetailOpen ? 'hidden xl:block' : 'block')}>
-          <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between gap-3">
-            <p className="text-[10px] uppercase tracking-[0.22em] text-brand-gold/60 font-black">Order Queue</p>
-            <p className="text-xs text-brand-parchment/35">{normalizedSearchTerm ? `${visibleOrders.length} matching` : `${visibleOrders.length} shown`}</p>
+          <div className="px-5 py-4 border-b border-white/5 space-y-3">
+            <div className="flex items-center justify-between gap-3"><p className="text-[10px] uppercase tracking-[0.22em] text-brand-gold/60 font-black">Order Queue</p><p className="text-xs text-brand-parchment/35">{normalizedSearchTerm ? `${visibleOrders.length} matching` : `${visibleOrders.length} shown`}</p></div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => setSelectedPrintOrderIds(new Set(visibleOrders.filter(canIncludeInPickList).map(order => order.id)))} className="text-[8px] uppercase tracking-[0.16em] font-black text-brand-parchment/45 hover:text-brand-gold">Select fulfillable</button>
+              {selectedPrintOrderIds.size > 0 && <button onClick={() => setSelectedPrintOrderIds(new Set())} className="text-[8px] uppercase tracking-[0.16em] font-black text-brand-parchment/45 hover:text-brand-gold">Clear</button>}
+              <button onClick={printSelectedPickList} disabled={selectedPrintOrderIds.size === 0} className="ml-auto inline-flex items-center gap-2 px-3 py-2 border border-brand-gold/30 text-brand-gold text-[8px] uppercase tracking-[0.16em] font-black hover:bg-brand-gold/10 disabled:opacity-30"><ListChecks size={12} /> Print Pick List ({selectedPrintOrderIds.size})</button>
+            </div>
           </div>
           <div className="divide-y divide-white/5 xl:max-h-[calc(100vh-12rem)] xl:overflow-y-auto">
             {visibleOrderEntries.map(({ order, exceptions }) => {
@@ -215,12 +271,20 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
               const isSelected = selectedOrder?.id === order.id;
               const paymentStatus = order.paymentStatus || 'unknown';
 
+              const isPickListEligible = canIncludeInPickList(order);
               return (
-                <button
-                  key={order.id}
+                <div key={order.id} className="relative">
+                  <label className={cn('absolute left-5 top-7 z-10 flex items-center', !isPickListEligible && 'opacity-25')} title={isPickListEligible ? 'Include in consolidated pick list' : 'Only paid, pending or packed orders can be picked'}>
+                    <input type="checkbox" checked={selectedPrintOrderIds.has(order.id)} disabled={!isPickListEligible} onChange={event => setSelectedPrintOrderIds(current => {
+                      const next = new Set(current);
+                      if (event.target.checked) next.add(order.id); else next.delete(order.id);
+                      return next;
+                    })} aria-label={`Select order ${order.id} for pick list`} />
+                  </label>
+                  <button
                   onClick={() => { setSelectedOrderId(order.id); setIsMobileDetailOpen(true); }}
                   className={cn(
-                    'w-full text-left p-6 border-l-2 transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-gold/70 focus-visible:ring-inset',
+                    'w-full text-left py-6 pr-6 pl-14 border-l-2 transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-gold/70 focus-visible:ring-inset',
                     isSelected ? 'bg-brand-gold/[0.07] border-l-brand-gold' : 'border-l-transparent hover:bg-white/[0.02]'
                   )}
                 >
@@ -252,7 +316,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                       </span>
                     </div>
                   </div>
-                </button>
+                  </button>
+                </div>
               );
             })}
             {visibleOrders.length === 0 && (
@@ -284,6 +349,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                 <div className="space-y-3 max-w-sm">
                   <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Fulfillment Actions</p>
                   <div className="flex flex-wrap gap-2">
+                    <button onClick={printPackingSlip} className="inline-flex items-center gap-2 px-4 py-2 border border-white/15 text-[9px] uppercase tracking-[0.18em] font-black text-brand-parchment/70 hover:text-brand-gold hover:border-brand-gold/30"><Printer size={13} /> Packing Slip</button>
                     {canPackSelectedOrder && (
                       <button
                         onClick={() => executeCommand('pack')}
