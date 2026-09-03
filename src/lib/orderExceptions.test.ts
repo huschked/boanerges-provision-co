@@ -37,3 +37,16 @@ test('resolved underlying state removes exceptions without manual dismissal', ()
   const order = { shipmentEmailStatus: 'sent', disputeStatus: 'won', stripeDisputeId: 'dp_123', fulfillmentStatus: 'shipped', trackingNumber: '9400', shipmentStatus: 'delivered' };
   assert.deepEqual(getOrderExceptions(order, NOW), []);
 });
+
+test('surfaces refund email and label-refund failures', () => {
+  const exceptions = getOrderExceptions({
+    createdAt: hoursAgo(1),
+    updatedAt: hoursAgo(1),
+    refundEmailStatus: 'failed',
+    refundEmailError: 'Resend rejected the message.',
+    shipmentException: { status: 'requires_review', type: 'label_refund', message: 'Shippo could not void the label.' },
+  }, NOW);
+
+  assert.equal(exceptions.some(exception => exception.kind === 'email_failure' && exception.reason.includes('Resend')), true);
+  assert.equal(exceptions.some(exception => exception.kind === 'label_failure' && exception.recommendedAction.includes('Shippo')), true);
+});

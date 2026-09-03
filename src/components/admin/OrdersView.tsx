@@ -36,6 +36,11 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
   const [activeCommand, setActiveCommand] = useState<FulfillmentOperation | null>(null);
   const [refundAmount, setRefundAmount] = useState('');
   const [refundReason, setRefundReason] = useState('');
+  const [cancelOrder, setCancelOrder] = useState(false);
+  const [voidLabel, setVoidLabel] = useState(false);
+  const [acknowledgeShipped, setAcknowledgeShipped] = useState(false);
+  const [cancelQuantities, setCancelQuantities] = useState<Record<string, string>>({});
+  const [refundConfirmed, setRefundConfirmed] = useState(false);
   const [isMobileDetailOpen, setIsMobileDetailOpen] = useState(false);
 
   const ordersWithExceptions = useMemo(() => orders.map(order => ({ order, exceptions: getOrderExceptions(order) })), [orders]);
@@ -64,10 +69,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
   const normalizedSearchTerm = searchTerm.trim();
   const selectedOrderStatus = selectedOrder?.fulfillmentStatus || 'pending';
   const canPackSelectedOrder = ['pending', 'requires_attention'].includes(selectedOrderStatus);
-  const canCancelSelectedOrder = ['pending', 'packed', 'requires_attention'].includes(selectedOrderStatus);
+  const remainingRefundAmount = Math.max(0, Number(((selectedOrder?.totalAmount || 0) - (selectedOrder?.refundedAmount || 0)).toFixed(2)));
+  const shipmentStarted = ['in_transit', 'delayed', 'delivered', 'exception', 'returned', 'failure'].includes(selectedOrder?.shipmentStatus || 'not_shipped');
+  const hasUnusedLabel = Boolean(selectedOrder?.shippoTransactionId) && !shipmentStarted;
   const retryNotificationType = selectedOrder?.latestTransactionalEmail?.status === 'failed'
     ? selectedOrder.latestTransactionalEmail.type
-    : selectedOrder?.shipmentEmailStatus === 'failed' ? 'shipment' : 'confirmation';
+    : selectedOrder?.refundEmailStatus === 'failed' ? 'refund'
+      : selectedOrder?.shipmentEmailStatus === 'failed' ? 'shipment' : 'confirmation';
 
   useEffect(() => {
     if (!visibleOrders.length) {
@@ -87,6 +95,16 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
     setTrackingUrlDraft(selectedOrder?.trackingUrl || '');
   }, [selectedOrder?.id, selectedOrder?.adminNotes, selectedOrder?.trackingNumber, selectedOrder?.trackingUrl]);
 
+  useEffect(() => {
+    setRefundAmount('');
+    setRefundReason('');
+    setCancelOrder(false);
+    setVoidLabel(false);
+    setAcknowledgeShipped(false);
+    setCancelQuantities({});
+    setRefundConfirmed(false);
+  }, [selectedOrder?.id]);
+
   const describeError = (error: unknown) => {
     if (error instanceof AdminOrderApiError) return error.message;
     return 'The operation could not be completed. Please retry.';
@@ -96,10 +114,11 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
     if (!selectedOrder) return false;
     setActiveCommand(operation);
     try {
-      await runOrderCommand(selectedOrder.id, operation, payload);
-      toast.success(operation === 'notification-retry' ? 'Notification sent.' : 'Order updated.');
+      const result = await runOrderCommand(selectedOrder.id, operation, payload);
+      if (result.partialFailure) toast.error(String(result.partialFailure), { duration: 8000 });
+      else toast.success(operation === 'notification-retry' ? 'Notification sent.' : 'Order updated.');
       await onRefresh();
-      return true;
+      return result;
     } catch (error) {
       console.error(`Order ${operation} failed:`, error);
       toast.error(describeError(error));
@@ -275,9 +294,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                       </button>
                     )}
                     {selectedOrderStatus === 'packed' && <span className="px-4 py-2 border border-green-400/20 text-[9px] uppercase tracking-[0.18em] font-black text-green-300">Ready for Label</span>}
-                    {canCancelSelectedOrder && (
-                      <button onClick={() => executeCommand('cancel')} disabled={activeCommand !== null} className="px-4 py-2 border border-red-400/20 text-[9px] uppercase tracking-[0.18em] font-black text-red-300 hover:bg-red-400/10 disabled:opacity-40">
-                        {activeCommand === 'cancel' ? 'Working...' : 'Cancel'}
+                    {remainingRefundAmount > 0 && (
+                      <button onClick={() => document.getElementById('refund-workflow')?.scrollIntoView({ behavior: 'smooth', block: 'center' })} className="px-4 py-2 border border-red-400/20 text-[9px] uppercase tracking-[0.18em] font-black text-red-300 hover:bg-red-400/10">
+                        Refund / Cancel
                       </button>
                     )}
                   </div>
@@ -428,31 +447,68 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                 </div>
               </div>
 
-              <div className="p-10 border-b border-white/5 space-y-6">
+              <div id="refund-workflow" className="p-6 lg:p-10 border-b border-white/5 space-y-6 scroll-mt-40">
                 <div className="space-y-1">
-                    <p className="text-[10px] uppercase tracking-[0.25em] text-brand-gold/40 font-black">Notifications & Refunds</p>
-                  <p className="text-sm text-brand-parchment/40">Refunds require a reason and cannot exceed the remaining paid amount.</p>
+                  <p className="text-[10px] uppercase tracking-[0.25em] text-brand-gold/40 font-black">Refund or Cancel</p>
+                  <p className="text-sm text-brand-parchment/40">${remainingRefundAmount.toFixed(2)} remains refundable. Only quantities canceled before shipment are restored to inventory.</p>
                   <p className="text-xs text-brand-parchment/35">Order confirmation: {selectedOrder.resendEmailStatus || 'unknown'}{selectedOrder.labelUrl ? ` · Shipment email: ${selectedOrder.shipmentEmailStatus || 'unknown'}` : ''}{selectedOrder.latestTransactionalEmail ? ` · Latest ${selectedOrder.latestTransactionalEmail.type}: ${selectedOrder.latestTransactionalEmail.status}` : ''}</p>
                   {selectedOrder.latestTrackingStatus && <p className="text-xs text-brand-parchment/35">Carrier status: {selectedOrder.latestTrackingStatus.status}{selectedOrder.latestTrackingStatus.details ? ` — ${selectedOrder.latestTrackingStatus.details}` : ''}</p>}
+                  {selectedOrder.labelRefundStatus && <p className="text-xs text-brand-parchment/35">Last label void: {selectedOrder.labelRefundStatus.replaceAll('_', ' ')}{selectedOrder.labelRefundError ? ` — ${selectedOrder.labelRefundError}` : ''}</p>}
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <input value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} type="number" min="0.01" step="0.01" placeholder="Refund amount" className="input-premium py-3" />
-                  <input value={refundReason} onChange={(event) => setRefundReason(event.target.value)} placeholder="Required refund reason" className="input-premium py-3" />
-                </div>
-                <div className="flex flex-wrap gap-3">
+                {remainingRefundAmount > 0 ? <>
+                  {shipmentStarted && (
+                    <div className="border border-amber-400/30 bg-amber-400/[0.05] p-4 space-y-3">
+                      <p className="text-sm font-black text-amber-300">This order has entered the carrier network.</p>
+                      <p className="text-xs text-brand-parchment/55">You may refund the customer, but products cannot be canceled or returned to sellable inventory.</p>
+                      <label className="flex items-start gap-3 text-sm text-brand-parchment/70"><input type="checkbox" checked={acknowledgeShipped} onChange={event => setAcknowledgeShipped(event.target.checked)} className="mt-1" /> I understand this refund will not restore inventory.</label>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <label className="space-y-2"><span className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/35 font-black">Refund amount</span><input value={refundAmount} onChange={(event) => { setRefundAmount(event.target.value); setRefundConfirmed(false); }} type="number" min="0.01" max={remainingRefundAmount} step="0.01" placeholder={remainingRefundAmount.toFixed(2)} className="input-premium py-3" /></label>
+                    <label className="space-y-2"><span className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/35 font-black">Required reason</span><input value={refundReason} onChange={(event) => { setRefundReason(event.target.value); setRefundConfirmed(false); }} placeholder="Damaged, incorrect, missing, or other resolution" className="input-premium py-3" /></label>
+                  </div>
+                  {!shipmentStarted && (
+                    <div className="border border-white/10 p-5 space-y-4">
+                      <div><p className="text-sm font-black text-brand-parchment">Cancel quantities</p><p className="text-xs text-brand-parchment/40">Select only units that will not ship. These units will be returned to available inventory.</p></div>
+                      {(selectedOrder.items || []).filter((item: any) => item.productId && Number(item.quantity || 0) > Number(item.cancelledQuantity || 0)).map((item: any) => {
+                        const remaining = Number(item.quantity || 0) - Number(item.cancelledQuantity || 0);
+                        return <label key={item.productId} className="grid grid-cols-[1fr_90px] gap-4 items-center"><span className="text-sm text-brand-parchment/70">{item.name} <span className="text-brand-parchment/35">({remaining} available)</span></span><input type="number" min="0" max={remaining} step="1" value={cancelQuantities[item.productId] || '0'} onChange={event => { setCancelOrder(false); setCancelQuantities(current => ({ ...current, [item.productId]: event.target.value })); setRefundConfirmed(false); }} className="input-premium py-2" /></label>;
+                      })}
+                      <label className="flex items-start gap-3 text-sm text-brand-parchment/70"><input type="checkbox" checked={cancelOrder} onChange={event => {
+                        const checked = event.target.checked;
+                        setCancelOrder(checked);
+                        if (checked) {
+                          setRefundAmount(remainingRefundAmount.toFixed(2));
+                          setCancelQuantities(Object.fromEntries((selectedOrder.items || []).filter((item: any) => item.productId).map((item: any) => [item.productId, String(Math.max(0, Number(item.quantity || 0) - Number(item.cancelledQuantity || 0)))])));
+                          if (hasUnusedLabel) setVoidLabel(true);
+                        }
+                        setRefundConfirmed(false);
+                      }} className="mt-1" /> Cancel the entire unshipped order and refund its full remaining balance.</label>
+                      {hasUnusedLabel && <label className="flex items-start gap-3 text-sm text-brand-parchment/70"><input type="checkbox" checked={voidLabel} onChange={event => { setVoidLabel(event.target.checked); setRefundConfirmed(false); }} className="mt-1" /> Void the unused Shippo label before restoring inventory.</label>}
+                    </div>
+                  )}
+                  <label className="flex items-start gap-3 border border-red-400/20 p-4 text-sm text-brand-parchment/70"><input type="checkbox" checked={refundConfirmed} onChange={event => setRefundConfirmed(event.target.checked)} className="mt-1" /> I confirm the amount, reason, canceled quantities, and label action. Stripe refunds cannot be undone.</label>
+                  <div className="flex flex-wrap gap-3">
                   <button
                     onClick={async () => {
-                      if (!window.confirm(`Issue a $${Number(refundAmount).toFixed(2)} refund? This action cannot be undone here.`)) return;
-                      if (await executeCommand('refund', { amount: Number(refundAmount), reason: refundReason })) {
+                      if (await executeCommand('refund', { amount: Number(refundAmount), reason: refundReason, cancelOrder, voidLabel, acknowledgeShipped, cancelQuantities: Object.fromEntries(Object.entries(cancelQuantities).map(([productId, quantity]) => [productId, Number(quantity)])) })) {
                         setRefundAmount('');
                         setRefundReason('');
+                        setCancelOrder(false);
+                        setVoidLabel(false);
+                        setAcknowledgeShipped(false);
+                        setCancelQuantities({});
+                        setRefundConfirmed(false);
                       }
                     }}
-                    disabled={activeCommand !== null || !refundAmount || !refundReason.trim()}
+                    disabled={activeCommand !== null || !refundConfirmed || !refundAmount || Number(refundAmount) <= 0 || Number(refundAmount) > remainingRefundAmount || !refundReason.trim() || (shipmentStarted && !acknowledgeShipped)}
                     className="px-5 py-3 rounded-sm border border-red-400/30 text-red-300 text-[10px] uppercase tracking-[0.2em] font-black hover:bg-red-400/10 disabled:opacity-40"
                   >
                     {activeCommand === 'refund' ? 'Refunding...' : 'Issue Refund'}
                   </button>
+                  </div>
+                </> : <p className="border border-white/10 p-4 text-sm text-brand-parchment/50">This order has no refundable balance remaining.</p>}
+                <div className="flex flex-wrap gap-3 pt-2">
                   <button
                     onClick={() => executeCommand('notification-retry', { notificationType: retryNotificationType })}
                     disabled={activeCommand !== null}
@@ -471,7 +527,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                       <div className="space-y-1">
                         <p className="text-brand-parchment font-black">{item.name}</p>
                         <p className="text-[10px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">
-                          Qty {item.quantity} {item.sizeOz ? `- ${item.sizeOz}oz` : ''}
+                          Qty {item.quantity} {item.cancelledQuantity ? `· Cancelled ${item.cancelledQuantity}` : ''} {item.sizeOz ? `- ${item.sizeOz}oz` : ''}
                         </p>
                       </div>
                       <p className="text-brand-gold font-black">${((item.price || 0) * (item.quantity || 0)).toFixed(2)}</p>

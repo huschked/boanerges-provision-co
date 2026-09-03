@@ -36,9 +36,16 @@ The order detail view shows the latest order-confirmation and shipment-email sta
 
 Shipment retries require a `shipped` order with a tracking number. Each authenticated retry has an idempotency key, is audited, and records the returned Resend provider id. A shipment retry does not buy another label or alter tracking.
 
+## Cancellation and label refunds
+
+The admin **Refund / Cancel** workflow can issue a Stripe refund, cancel selected unshipped quantities, restore only those quantities to inventory, and request a Shippo refund for an unused label. A label must be voided before associated inventory can be restored. Orders already in the carrier network may be refunded only after an explicit warning is acknowledged; they cannot restore inventory.
+
+Stripe, Shippo, inventory, customer email, command state, and the audit result are recorded independently so a partial failure is visible. A failed customer message can be retried without issuing another refund. See `refund-cancellation-workflow.md` for the complete state and recovery rules.
+
 ## Actions that do not email the customer
 
 - **Pack** changes fulfillment state only.
 - **Validate & Get Rates** creates a temporary quote only.
 - **Save Details** stores manual tracking fields and internal notes only.
-- **Issue Refund** currently changes the Stripe/payment record only; the coordinated customer notification, inventory, cancellation, and label-void workflow remains tracked by WEB-018.
+
+A refund or cancellation does send a dedicated customer confirmation.

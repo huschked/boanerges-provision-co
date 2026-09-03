@@ -60,22 +60,6 @@ This board is the working queue for website development. Keep cards actionable e
   - Compare generated quantities with source orders containing repeated and bundled items.
 - **Notes / Links:** Coordinate with WEB-016 and the carrier workflow in WEB-010.
 
-### WEB-018 - Build a Coordinated Cancellation and Refund Workflow
-
-- **Priority:** Medium
-- **Area:** admin
-- **Goal:** Let an admin cancel or refund an order without separately reconciling Stripe, inventory, labels, customer communication, and order state.
-- **Acceptance Criteria:**
-  - Admins can issue full or partial refunds with a required reason.
-  - The workflow prevents refunding more than the remaining paid amount.
-  - Inventory is restored only for eligible units canceled before shipment; physical customer returns are never added back to sellable inventory.
-  - Unused labels can be voided when supported, and shipped-order refunds show an additional warning.
-  - The customer receives a refund/cancellation notification and the order audit trail records the actor and outcome.
-- **Verification:**
-  - Test full, partial, repeated, pre-shipment, and post-shipment refund scenarios in Stripe test mode, confirming only pre-shipment cancellations restore inventory.
-  - Confirm inventory, payment, fulfillment, email, and label states remain consistent after failures and retries.
-- **Notes / Links:** Existing refund webhook handling is in `server.ts`; depends on WEB-009 and WEB-012. Boanerges does not accept physical food returns. Eligible damaged, incorrect, or missing orders are resolved without a return shipment. The published policy lives at `/returns`; final wording should be reviewed for applicable consumer-protection requirements before launch.
-
 ### WEB-019 - Add Server-Side Order Search and Pagination
 
 - **Priority:** Medium
@@ -234,6 +218,23 @@ This board is the working queue for website development. Keep cards actionable e
 No cards currently in progress.
 
 ## Review / Verify
+
+### WEB-018 - Build a Coordinated Cancellation and Refund Workflow
+
+- **Priority:** Medium
+- **Area:** admin
+- **Goal:** Let an admin cancel or refund an order without separately reconciling Stripe, inventory, labels, customer communication, and order state.
+- **Acceptance Criteria:**
+  - Admins can issue full or partial refunds with a required reason.
+  - The workflow prevents refunding more than the remaining paid amount.
+  - Inventory is restored only for eligible units canceled before shipment; physical customer returns are never added back to sellable inventory.
+  - Unused labels can be voided when supported, and shipped-order refunds show an additional warning.
+  - The customer receives a refund/cancellation notification and the order audit trail records the actor and outcome.
+- **Verification:**
+  - Seven automated planning tests pass for full, partial, repeated, pre-shipment, post-shipment, inventory, and label-void rules.
+  - TypeScript validation and the production build pass.
+  - Live test-mode verification remains for Stripe, Shippo, Firestore inventory, Resend notification/retry, audit records, and deliberately induced partial failures.
+- **Notes / Links:** The authenticated workflow is implemented in `server.ts` and the admin order detail. It coordinates Stripe, Shippo, inventory, order state, email, and audit outcomes; incomplete downstream work becomes an explicit exception instead of triggering another refund. Boanerges does not accept physical food returns. The published policy lives at `/returns`. See `docs/refund-cancellation-workflow.md`.
 
 ### WEB-024 - Fix Checkout Newsletter Consent and Actionable Errors
 

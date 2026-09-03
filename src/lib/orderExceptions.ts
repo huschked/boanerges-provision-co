@@ -43,6 +43,8 @@ export interface ExceptionOrder {
   resendEmailError?: string;
   shipmentEmailStatus?: string;
   shipmentEmailError?: string;
+  refundEmailStatus?: string;
+  refundEmailError?: string;
   deliveredEmailStatus?: string;
   deliveredEmailError?: string;
   delayedEmailStatus?: string;
@@ -137,6 +139,7 @@ export function getOrderExceptions(order: ExceptionOrder, now = Date.now(), fulf
   const failedEmail = [
     ['confirmation', order.resendEmailStatus, order.resendEmailError],
     ['shipment', order.shipmentEmailStatus, order.shipmentEmailError],
+    ['refund', order.refundEmailStatus, order.refundEmailError],
     ['delivery', order.deliveredEmailStatus, order.deliveredEmailError],
     ['delay', order.delayedEmailStatus, order.delayedEmailError],
     ['carrier exception', order.exceptionEmailStatus, order.exceptionEmailError],
@@ -148,8 +151,9 @@ export function getOrderExceptions(order: ExceptionOrder, now = Date.now(), fulf
     add({ kind: 'email_failure', severity: 'medium', label: ORDER_EXCEPTION_LABELS.email_failure, reason: messageFrom(emailError, `The ${emailType} email was not delivered by the email provider.`), recommendedAction: 'Verify the customer email and use Retry Notification.', occurredAtMs: occurred(latestFailed?.occurredAt) });
   }
 
-  if (order.shipmentException?.type === 'label_purchase' && isUnresolved(order.shipmentException.status)) {
-    add({ kind: 'label_failure', severity: 'high', label: ORDER_EXCEPTION_LABELS.label_failure, reason: messageFrom(order.shipmentException, 'The shipping label purchase did not complete.'), recommendedAction: 'Check Shippo for an existing transaction before safely retrying the label.', occurredAtMs: occurred(order.shipmentException.occurredAt) });
+  if (['label_purchase', 'label_refund'].includes(order.shipmentException?.type || '') && isUnresolved(order.shipmentException?.status)) {
+    const isRefund = order.shipmentException?.type === 'label_refund';
+    add({ kind: 'label_failure', severity: 'high', label: ORDER_EXCEPTION_LABELS.label_failure, reason: messageFrom(order.shipmentException, isRefund ? 'The unused shipping label could not be voided.' : 'The shipping label purchase did not complete.'), recommendedAction: isRefund ? 'Review the refund in Shippo before restoring inventory or retrying.' : 'Check Shippo for an existing transaction before safely retrying the label.', occurredAtMs: occurred(order.shipmentException?.occurredAt) });
   }
 
   if (order.fulfillmentStatus === 'shipped' && !order.trackingNumber) {

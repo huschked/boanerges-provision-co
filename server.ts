@@ -13,6 +13,7 @@ import firebaseConfig from "./firebase-applet-config.json" with { type: "json" }
 import { classifyShippoTracking, decideLabelPurchase, normalizeShippoTrackingStatus, type TrackingNotificationKind } from "./src/lib/shippingLifecycle.js";
 import { canTransitionFulfillment, canTransitionPayment, canTransitionShipment, normalizeOrderLifecycle, type FulfillmentState, type PaymentState, type ShipmentState } from "./src/lib/orderLifecycle.js";
 import { CHECKOUT_NEWSLETTER_SOURCE, shouldActivateCheckoutNewsletter } from "./src/lib/checkoutConsent.js";
+import { buildRefundWorkflowPlan, isLabelRefundComplete, type RefundWorkflowRequest } from "./src/lib/refundWorkflow.js";
 
 dotenv.config();
 
@@ -1016,7 +1017,11 @@ async function sendOrderConfirmation(orderId: string, order: FirebaseFirestore.D
 
 async function sendShipmentNotification(orderId: string, order: FirebaseFirestore.DocumentData, idempotencyKey: string) {
   const trackingUrl = String(order.trackingUrl || "");
-  const shippedItems = Array.isArray(order.items) ? order.items as PendingOrderItem[] : [];
+  const shippedItems = Array.isArray(order.items)
+    ? (order.items as Array<PendingOrderItem & { cancelledQuantity?: number }>)
+      .map(item => ({ ...item, quantity: Math.max(0, Number(item.quantity || 0) - Number(item.cancelledQuantity || 0)) }))
+      .filter(item => item.quantity > 0)
+    : [];
   const shippedItemsMarkup = shippedItems.length
     ? `<div style="margin-top:20px;padding:20px;border:1px solid rgba(255,255,255,0.08);">
         <p style="margin:0 0 12px;color:#c5a059;font-size:11px;text-transform:uppercase;letter-spacing:.2em;">Items Shipped</p>
@@ -1039,6 +1044,26 @@ async function sendShipmentNotification(orderId: string, order: FirebaseFirestor
     }),
   }, { idempotencyKey });
   if (result.error) throw new Error(result.error.message || "Email provider rejected the request.");
+  return result.data?.id || "";
+}
+
+async function sendRefundNotification(orderId: string, order: FirebaseFirestore.DocumentData, details: { amount: number; reason: string; cancelled: boolean }, idempotencyKey: string) {
+  const result = await resend.emails.send({
+    from: ORDERS_EMAIL_FROM,
+    replyTo: ORDERS_REPLY_TO,
+    to: order.customerEmail,
+    subject: `${details.cancelled ? "Cancellation" : "Refund"} confirmation #${orderId.slice(-6).toUpperCase()}`,
+    html: buildEmailLayout({
+      eyebrow: details.cancelled ? "Order Cancelled" : "Refund Issued",
+      title: details.cancelled ? "Your order has been cancelled." : "Your refund is on the way.",
+      intro: `We issued a $${details.amount.toFixed(2)} refund to your original payment method. Your bank or card issuer controls when the credit appears.`,
+      body: `<div style="padding:20px;border:1px solid rgba(197,160,89,0.16);"><p style="margin:0;color:#c5a059;font-size:11px;text-transform:uppercase;letter-spacing:.2em;">Reason</p><p style="margin:10px 0 0;color:#f4ecd8;font-size:15px;line-height:1.6;">${escapeHtml(details.reason)}</p></div><div style="margin-top:20px;padding:20px;border:1px solid rgba(255,255,255,0.08);"><p style="margin:0;color:#f4ecd8;font-size:14px;line-height:1.7;">Boanerges food products are final sale. No physical return is required or accepted for this resolution.</p></div>`,
+      ctaLabel: "View Returns & Refunds Policy",
+      ctaHref: `${getPublicAppUrl() || "https://boanerges-provision-co.vercel.app"}/returns`,
+      footerNote: "Questions about this refund? Reply to this email and our order team will help.",
+    }),
+  }, { idempotencyKey });
+  if (result.error) throw new Error(result.error.message || "Email provider rejected the refund notification.");
   return result.data?.id || "";
 }
 
@@ -1461,6 +1486,190 @@ async function purchaseShippoLabel(orderId: string, payload: Record<string, unkn
   }
 }
 
+async function executeRefundWorkflow(orderId: string, payload: Record<string, unknown>, idempotencyKey: string, actor: AdminActor) {
+  const orderRef = db.collection("orders").doc(orderId);
+  const commandRef = db.collection("admin_order_commands").doc(idempotencyKey);
+  const auditRef = db.collection("order_audit_events").doc(idempotencyKey);
+
+  const claimed = await db.runTransaction(async transaction => {
+    const [commandSnap, orderSnap] = await Promise.all([transaction.get(commandRef), transaction.get(orderRef)]);
+    if (commandSnap.exists) return { duplicate: true, command: commandSnap.data(), order: orderSnap.data() };
+    if (!orderSnap.exists) throw new AdminCommandError(404, "Order not found.", "not_found");
+    const order = orderSnap.data()!;
+    if (order.refundOperation?.status === "processing") throw new AdminCommandError(409, "Another refund is already processing for this order.", "refund_in_progress");
+    transaction.create(commandRef, { orderId, operation: "refund", actor, status: "processing", createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    transaction.set(orderRef, { refundOperation: { status: "processing", commandId: idempotencyKey, actor, startedAt: admin.firestore.FieldValue.serverTimestamp() }, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return { duplicate: false, command: null, order };
+  });
+
+  if (claimed.duplicate) {
+    if (["completed", "completed_with_errors"].includes(claimed.command?.status)) return { duplicate: true, ...(claimed.command?.result || {}) };
+    if (claimed.command?.status === "failed") throw new AdminCommandError(409, claimed.command?.error?.message || "This refund request previously failed.", "previous_request_failed");
+    throw new AdminCommandError(409, "This refund request is already processing.", "request_in_progress");
+  }
+
+  const order = claimed.order!;
+  const reason = normalizedCommandValue(payload.reason, "Refund reason", 500, true);
+  const rawQuantities = payload.cancelQuantities && typeof payload.cancelQuantities === "object" && !Array.isArray(payload.cancelQuantities)
+    ? payload.cancelQuantities as Record<string, unknown>
+    : {};
+  const request: RefundWorkflowRequest = {
+    amount: Number(payload.amount),
+    cancelOrder: payload.cancelOrder === true,
+    voidLabel: payload.voidLabel === true,
+    acknowledgeShipped: payload.acknowledgeShipped === true,
+    cancelQuantities: Object.fromEntries(Object.entries(rawQuantities).map(([productId, quantity]) => [productId, Number(quantity)])),
+  };
+
+  let stripeRefund: Stripe.Refund | null = null;
+  try {
+    const plan = buildRefundWorkflowPlan(order, request);
+    const lifecycle = normalizeOrderLifecycle(order);
+    if (!order.stripePaymentIntentId) throw new AdminCommandError(409, "This order has no refundable payment intent.", "payment_intent_missing");
+    const nextPaymentStatus: PaymentState = request.amount === plan.remainingAmount ? "refunded" : "partially_refunded";
+    if (!canTransitionPayment(lifecycle.paymentStatus, nextPaymentStatus)) {
+      throw new AdminCommandError(409, `Payment cannot move from ${lifecycle.paymentStatus} to ${nextPaymentStatus}.`, "invalid_payment_transition");
+    }
+
+    stripeRefund = await stripe.refunds.create({
+      payment_intent: order.stripePaymentIntentId,
+      amount: Math.round(request.amount * 100),
+      metadata: { orderId, adminUid: actor.uid, reason, commandId: idempotencyKey },
+    }, { idempotencyKey: `admin-refund-${idempotencyKey}` });
+
+    let labelRefund = { status: plan.labelNeedsVoid ? "not_requested" : "not_applicable", objectId: "", error: "" };
+    if (plan.labelNeedsVoid && request.voidLabel) {
+      try {
+        const shippoRefund = await shippoRequest<{ object_id?: string; status?: string; transaction?: string }>("/refunds/", { transaction: order.shippoTransactionId, async: false });
+        labelRefund = { status: String(shippoRefund.status || "PENDING").toLowerCase(), objectId: shippoRefund.object_id || "", error: "" };
+      } catch (error) {
+        labelRefund = { status: "failed", objectId: "", error: error instanceof Error ? error.message : "Shippo label refund failed." };
+      }
+    }
+    const labelVoidComplete = !plan.labelNeedsVoid || isLabelRefundComplete(labelRefund.status);
+    const labelNeedsFollowup = plan.labelNeedsVoid && !labelVoidComplete;
+    const inventoryAdjustments = labelVoidComplete ? plan.inventoryAdjustments : [];
+    const targetRefundedAmount = Number((Number(order.refundedAmount || 0) + request.amount).toFixed(2));
+    const refundRecord = {
+      stripeRefundId: stripeRefund.id, amount: request.amount, reason, actor,
+      cancelOrder: request.cancelOrder, inventoryAdjustments, labelRefund,
+      createdAt: admin.firestore.Timestamp.now(),
+    };
+
+    await db.runTransaction(async transaction => {
+      const currentOrderSnap = await transaction.get(orderRef);
+      if (!currentOrderSnap.exists) throw new Error("Order disappeared while the refund was processing.");
+      const currentOrder = currentOrderSnap.data()!;
+      if (currentOrder.refundOperation?.commandId !== idempotencyKey) throw new Error("Refund operation lock changed unexpectedly.");
+      const productRefs = inventoryAdjustments.map(item => db.collection("products").doc(item.productId));
+      const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+      inventoryAdjustments.forEach((item, index) => {
+        const product = productSnaps[index];
+        if (!product.exists) throw new Error(`Cannot restore inventory for missing product ${item.name}.`);
+        transaction.update(productRefs[index], { currentInventory: Number(product.data()?.currentInventory || 0) + item.quantity, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        transaction.set(db.collection("inventory_movements").doc(`refund_${stripeRefund!.id}_${item.productId}`), {
+          productId: item.productId, delta: item.quantity, reason: "pre_shipment_cancellation", orderId,
+          stripeRefundId: stripeRefund!.id, commandId: idempotencyKey, createdBy: actor.uid,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      });
+
+      const restoredByProduct = Object.fromEntries(inventoryAdjustments.map(item => [item.productId, item.quantity]));
+      const nextItems = (currentOrder.items || []).map((item: PendingOrderItem & { cancelledQuantity?: number }) => ({
+        ...item,
+        ...(restoredByProduct[item.productId] ? { cancelledQuantity: Number(item.cancelledQuantity || 0) + restoredByProduct[item.productId] } : {}),
+      }));
+      const cancelled = request.cancelOrder && labelVoidComplete;
+      const labelVoided = plan.labelNeedsVoid && labelVoidComplete;
+      transaction.set(orderRef, {
+        paymentStatus: nextPaymentStatus,
+        refundedAmount: targetRefundedAmount,
+        refundedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastRefundReason: reason,
+        lastRefundAmount: request.amount,
+        lastStripeRefundId: stripeRefund!.id,
+        refundHistory: admin.firestore.FieldValue.arrayUnion(refundRecord),
+        refundRequestStatus: admin.firestore.FieldValue.delete(),
+        refundRequestedAt: admin.firestore.FieldValue.delete(),
+        refundRequestReason: admin.firestore.FieldValue.delete(),
+        refundEmailStatus: "pending",
+        labelRefundStatus: labelRefund.status,
+        labelRefundId: labelRefund.objectId,
+        labelRefundError: labelRefund.error || admin.firestore.FieldValue.delete(),
+        items: nextItems,
+        ...(cancelled ? { fulfillmentStatus: "cancelled", cancelledAt: admin.firestore.FieldValue.serverTimestamp() } : {}),
+        ...(labelNeedsFollowup ? {
+          fulfillmentStatus: "requires_attention",
+          pendingInventoryRestock: plan.inventoryAdjustments,
+          shipmentException: { status: "requires_review", type: "label_refund", message: labelRefund.error || `Shippo label refund is ${labelRefund.status.replaceAll("_", " ")} and requires review.`, occurredAt: admin.firestore.FieldValue.serverTimestamp() },
+        } : {}),
+        ...(labelVoided ? {
+          shipmentStatus: "not_shipped",
+          voidedShippoTransactionId: order.shippoTransactionId,
+          voidedLabelUrl: order.labelUrl || "",
+          shippoTransactionId: admin.firestore.FieldValue.delete(),
+          labelUrl: admin.firestore.FieldValue.delete(),
+          trackingNumber: admin.firestore.FieldValue.delete(),
+          trackingUrl: admin.firestore.FieldValue.delete(),
+          shipmentException: admin.firestore.FieldValue.delete(),
+        } : {}),
+        refundOperation: { status: labelNeedsFollowup ? "completed_with_errors" : "processing_notification", commandId: idempotencyKey },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+
+    const result: Record<string, unknown> = {
+      operation: "refund", refundId: stripeRefund.id, refundedAmount: request.amount,
+      totalRefundedAmount: targetRefundedAmount, paymentStatus: nextPaymentStatus,
+      cancelled: request.cancelOrder && labelVoidComplete, inventoryAdjustments, labelRefund,
+    };
+    let emailStatus = "sent";
+    let emailError = "";
+    try {
+      const emailId = await sendRefundNotification(orderId, order, { amount: request.amount, reason, cancelled: result.cancelled === true }, `refund-notification-${stripeRefund.id}`);
+      result.emailId = emailId;
+    } catch (error) {
+      emailStatus = "failed";
+      emailError = error instanceof Error ? error.message : "Refund notification failed.";
+    }
+    result.emailStatus = emailStatus;
+    const partialFailures = [labelNeedsFollowup ? `Label refund requires review (${labelRefund.status}): ${labelRefund.error || "check Shippo before restoring inventory"}.` : "", emailStatus === "failed" ? `Customer email failed: ${emailError}` : ""].filter(Boolean);
+    if (partialFailures.length) result.partialFailure = partialFailures.join(" ");
+
+    await Promise.all([
+      orderRef.set({
+        refundEmailStatus: emailStatus,
+        refundEmailId: result.emailId || "",
+        refundEmailError: emailError || admin.firestore.FieldValue.delete(),
+        latestTransactionalEmail: { type: "refund", status: emailStatus, ...(result.emailId ? { providerId: result.emailId } : {}), ...(emailError ? { error: emailError } : {}) },
+        refundOperation: { status: partialFailures.length ? "completed_with_errors" : "completed", commandId: idempotencyKey, completedAt: admin.firestore.FieldValue.serverTimestamp() },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true }),
+      commandRef.set({ status: partialFailures.length ? "completed_with_errors" : "completed", result, completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+      auditRef.set({ orderId, operation: "refund", actor, outcome: partialFailures.length ? "completed_with_errors" : "completed", result, occurredAt: admin.firestore.FieldValue.serverTimestamp() }),
+    ]);
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Refund workflow failed.";
+    if (stripeRefund) {
+      const result = { operation: "refund", refundId: stripeRefund.id, refundedAmount: request.amount, partialFailure: `Stripe issued the refund, but order reconciliation failed: ${message}` };
+      await Promise.all([
+        orderRef.set({ paymentStatus: "partially_refunded", lastStripeRefundId: stripeRefund.id, refundOperation: { status: "requires_review", commandId: idempotencyKey, error: message }, fulfillmentStatus: "requires_attention", updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+        commandRef.set({ status: "completed_with_errors", result, completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+        auditRef.set({ orderId, operation: "refund", actor, outcome: "requires_review", result, error: { message }, occurredAt: admin.firestore.FieldValue.serverTimestamp() }),
+      ]);
+      return result;
+    }
+    await Promise.all([
+      orderRef.set({ refundOperation: admin.firestore.FieldValue.delete(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+      commandRef.set({ status: "failed", error: { message }, completedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+      auditRef.set({ orderId, operation: "refund", actor, outcome: "failed", error: { message }, occurredAt: admin.firestore.FieldValue.serverTimestamp() }),
+    ]);
+    if (error instanceof AdminCommandError) throw error;
+    throw new AdminCommandError(400, message, "refund_workflow_failed");
+  }
+}
+
 async function executeFulfillmentCommand(
   orderId: string,
   operation: FulfillmentOperation,
@@ -1526,34 +1735,8 @@ async function executeFulfillmentCommand(
       updates.trackingUrl = normalizedCommandValue(payload.trackingUrl, "Tracking URL", 1000);
     } else if (operation === "notes") {
       updates.adminNotes = normalizedCommandValue(payload.adminNotes, "Admin notes", 5000);
-    } else if (operation === "refund") {
-      const reason = normalizedCommandValue(payload.reason, "Refund reason", 500, true);
-      const amount = Number(payload.amount);
-      const remaining = Number(order.totalAmount || 0) - Number(order.refundedAmount || 0);
-      if (!Number.isFinite(amount) || amount <= 0 || amount > remaining) {
-        throw new AdminCommandError(400, `Refund amount must be between $0.01 and $${remaining.toFixed(2)}.`, "invalid_refund_amount");
-      }
-      if (!order.stripePaymentIntentId) throw new AdminCommandError(409, "This order has no refundable payment intent.", "payment_intent_missing");
-      const refund = await stripe.refunds.create({
-        payment_intent: order.stripePaymentIntentId,
-        amount: Math.round(amount * 100),
-        metadata: { orderId, adminUid: actor.uid, reason },
-      }, { idempotencyKey: `admin-refund-${idempotencyKey}` });
-      updates.refundedAmount = Number((Number(order.refundedAmount || 0) + amount).toFixed(2));
-      const nextPaymentStatus: PaymentState = amount === remaining ? "refunded" : "partially_refunded";
-      if (!canTransitionPayment(lifecycle.paymentStatus, nextPaymentStatus)) {
-        throw new AdminCommandError(409, `Payment cannot move from ${lifecycle.paymentStatus} to ${nextPaymentStatus}.`, "invalid_payment_transition");
-      }
-      updates.paymentStatus = nextPaymentStatus;
-      updates.refundedAt = admin.firestore.FieldValue.serverTimestamp();
-      updates.lastRefundReason = reason;
-      updates.refundRequestStatus = admin.firestore.FieldValue.delete();
-      updates.refundRequestedAt = admin.firestore.FieldValue.delete();
-      updates.refundRequestReason = admin.firestore.FieldValue.delete();
-      result.refundId = refund.id;
-      result.refundedAmount = amount;
     } else if (operation === "notification-retry") {
-      const validNotificationTypes = ["confirmation", "shipment", "delivered", "delayed", "exception"];
+      const validNotificationTypes = ["confirmation", "shipment", "refund", "delivered", "delayed", "exception"];
       if (payload.notificationType != null && !validNotificationTypes.includes(String(payload.notificationType))) {
         throw new AdminCommandError(400, "Notification type is not supported.", "invalid_notification_type");
       }
@@ -1574,6 +1757,21 @@ async function executeFulfillmentCommand(
         updates.resendEmailId = emailId;
         updates.resendEmailError = admin.firestore.FieldValue.delete();
         updates.resendEmailRetriedAt = admin.firestore.FieldValue.serverTimestamp();
+        result.emailId = emailId;
+      } else if (notificationType === "refund") {
+        if (!Number(order.lastRefundAmount || 0) || !String(order.lastRefundReason || "").trim()) {
+          throw new AdminCommandError(409, "No completed refund is available to notify the customer about.", "refund_notification_unavailable");
+        }
+        const emailId = await sendRefundNotification(orderId, order, {
+          amount: Number(order.lastRefundAmount),
+          reason: String(order.lastRefundReason),
+          cancelled: order.fulfillmentStatus === "cancelled",
+        }, `refund-notification-retry-${idempotencyKey}`);
+        updates.refundEmailStatus = "sent";
+        updates.refundEmailId = emailId;
+        updates.refundEmailError = admin.firestore.FieldValue.delete();
+        updates.refundEmailRetriedAt = admin.firestore.FieldValue.serverTimestamp();
+        updates.latestTransactionalEmail = { type: "refund", status: "sent", providerId: emailId, retried: true };
         result.emailId = emailId;
       } else {
         const kind = notificationType as Exclude<TrackingNotificationKind, null>;
@@ -1945,7 +2143,9 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       if (!/^[A-Za-z0-9_-]{12,200}$/.test(idempotencyKey)) {
         throw new AdminCommandError(400, "Idempotency-Key has an invalid format.", "invalid_idempotency_key");
       }
-      const result = await executeFulfillmentCommand(req.params.orderId, operation, req.body || {}, idempotencyKey, actor);
+      const result = operation === "refund"
+        ? await executeRefundWorkflow(req.params.orderId, req.body || {}, idempotencyKey, actor)
+        : await executeFulfillmentCommand(req.params.orderId, operation, req.body || {}, idempotencyKey, actor);
       res.json({ success: true, ...result });
     } catch (error) {
       const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "The operation could not be completed.", "operation_failed");
