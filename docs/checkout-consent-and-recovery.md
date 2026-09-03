@@ -18,6 +18,7 @@ The storefront newsletter forms use the same subscriber activation helper, but r
 - Invalid email and cart payloads return safe `4xx` messages and stable error codes.
 - Inventory conflicts return each affected product, requested quantity, and available quantity. The checkout page can lower only that quantity or remove only that item without changing unrelated cart lines.
 - Stripe/provider and unexpected server failures return customer-safe messages without exposing provider internals. The cart remains intact and the page offers retry and return-to-shop actions.
+- Cart lines are persisted in browser storage across the full-page Stripe redirect. Returning with Stripe's Back link restores the cart; `CheckoutSuccess` clears it only after the session-status API confirms both `complete` and `paid`.
 - Stripe Checkout collects billing and shipping addresses and the email. Phone collection is disabled because the current domestic USPS workflow has no documented requirement for it.
 
 ## Live verification matrix
@@ -28,3 +29,4 @@ The storefront newsletter forms use the same subscriber activation helper, but r
 4. Fail or expire one opted-in checkout: reservation releases; subscriber does not exist because of the checkout.
 5. Request an inactive or over-quantity product: affected items and recovery controls appear, while other cart lines remain.
 6. Submit an invalid optional email: the inline validation message appears and the cart remains.
+7. Start Stripe Checkout and use Stripe's Back link: the same items and quantities remain on `/checkout`; then complete a paid checkout and confirm the cart clears.

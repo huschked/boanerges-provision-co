@@ -250,7 +250,7 @@ No cards currently in progress.
   - Automated consent tests cover paid opt-in, paid opt-out, pending/abandoned, failed payment, and missing-email gating.
   - TypeScript validation, all 12 checkout/lifecycle tests, and the production build pass.
   - Live verification remains for pending-order consent fields, Firestore/Resend subscriber activation, expired/failed checkouts, inventory recovery, rate limits, and provider/server errors.
-- **Notes / Links:** Checkout consent is persisted with server timestamps and activated only by paid-order effects. Customer-safe errors preserve the cart and provide targeted quantity adjustment, removal, retry, and return-to-shop actions. Stripe phone collection is optional. See `docs/checkout-consent-and-recovery.md`.
+- **Notes / Links:** Checkout consent is persisted with server timestamps and activated only by paid-order effects. Customer-safe errors preserve the cart and provide targeted quantity adjustment, removal, retry, and return-to-shop actions. Cart state now survives Stripe's Back/cancel return and clears only after verified payment. Stripe phone collection is optional. See `docs/checkout-consent-and-recovery.md`.
 
 ### WEB-033 - Refine the Admin Orders Workspace Layout
 

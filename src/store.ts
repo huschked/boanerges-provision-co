@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { Product } from './services/productService';
 
 interface CartItem {
@@ -16,7 +17,7 @@ interface CartStore {
   itemCount: () => number;
 }
 
-export const useCart = create<CartStore>((set, get) => ({
+export const useCart = create<CartStore>()(persist((set, get) => ({
   items: [],
   addItem: (product, quantity = 1) => {
     const items = get().items;
@@ -57,4 +58,9 @@ export const useCart = create<CartStore>((set, get) => ({
   itemCount: () => {
     return get().items.reduce((acc, item) => acc + item.quantity, 0);
   },
+}), {
+  name: 'boanerges-cart',
+  version: 1,
+  storage: createJSONStorage(() => localStorage),
+  partialize: (state) => ({ items: state.items }),
 }));
