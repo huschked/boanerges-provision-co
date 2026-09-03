@@ -185,22 +185,21 @@ This board is the working queue for website development. Keep cards actionable e
   - Compare advertised, cart, Stripe, email, order, refund, and inventory totals.
 - **Notes / Links:** Advanced Build Your Own and gift options can follow after the curated bundle foundation is reliable.
 
-### WEB-038 - Publish Legal Pages and Clean Customer Trust Surfaces
+### WEB-044 - Add Compliant Marketing Email Preferences
 
 - **Priority:** High
-- **Area:** content/infra
-- **Goal:** Give customers working policy links and truthful ways to identify and contact the business.
+- **Area:** checkout/content/infra
+- **Goal:** Give newsletter recipients a reliable opt-out and ensure marketing messages contain the required sender information.
 - **Acceptance Criteria:**
-  - `/terms` and `/privacy` render complete pages and survive direct Vercel navigation/refresh.
-  - Newsletter and checkout consent copy links to the applicable policy pages.
-  - Fake phone/address data is removed or replaced with approved business information and a clear response-time expectation.
-  - Placeholder social links are hidden until real profiles exist.
-  - Admin Portal is removed from customer navigation and remains available only by direct protected URL.
-  - Footer policy and support links have no broken destinations.
+  - Every marketing email has an accurate sender identity, non-deceptive subject, working unsubscribe action, and a configured valid physical postal address.
+  - Unsubscribe requests update the Firestore subscriber and Resend audience/suppression state without requiring login or information beyond the email/link token.
+  - Opt-out requests are honored within the applicable deadline and cannot be reversed by a replayed signup or checkout event without fresh consent.
+  - Transactional order messages remain distinct from marketing messages and do not silently add promotional content that changes their primary purpose.
+  - Preference changes are idempotent, auditable, rate-limited, and covered by the Privacy Policy.
 - **Verification:**
-  - Run an internal-link scan and browser-check direct navigation to every footer/policy URL.
-  - Confirm policy content and business contact details have owner/legal approval before launch.
-- **Notes / Links:** Implementation can provide the route structure and a reviewable draft; legal terms and privacy disclosures are business/legal decisions.
+  - Send marketing and transactional test messages, exercise unsubscribe/re-subscribe/replay cases, and confirm provider and Firestore state.
+  - Confirm the configured postal address and final email templates with the business owner before launch.
+- **Notes / Links:** Added after reviewing FTC CAN-SPAM guidance during WEB-038. A street address, registered USPS post office box, or qualifying registered private mailbox may be used; do not publish a private address without owner approval.
 
 ### WEB-039 - Repair Merchandising Navigation and CTA Destinations
 
@@ -324,6 +323,27 @@ No cards currently in progress.
 
 ## Review / Verify
 
+### WEB-038 - Publish Legal Pages and Clean Customer Trust Surfaces
+
+- **Priority:** High
+- **Area:** content/infra
+- **Goal:** Give customers working policy links and truthful ways to identify and contact the business.
+- **Acceptance Criteria:**
+  - `/terms` and `/privacy` render complete pages and survive direct Vercel navigation/refresh.
+  - Newsletter and checkout consent copy links to the applicable policy pages.
+  - Fake phone/address data is removed or replaced with approved business information and a clear response-time expectation.
+  - Placeholder social links are hidden until real profiles exist.
+  - Admin Portal is removed from customer navigation and remains available only by direct protected URL.
+  - Footer policy and support links have no broken destinations.
+- **Verification:**
+  - Source checks confirm both React routes, both Vercel direct-navigation rewrites, and policy links from the footer and consent surfaces.
+  - Source checks confirm fake contact details, placeholder social links, and the customer-facing Admin link are absent.
+  - TypeScript validation, all 29 automated tests, and the production build pass; the existing large-chunk warning remains.
+  - Deployed direct-route checks and owner/legal approval of the policy content remain.
+- **Notes / Links:** Draft policy assumptions, owner-review items, and authoritative references are documented in `docs/legal-policy-review.md`. WEB-044 tracks the separate marketing-email unsubscribe and postal-address workflow discovered during review.
+
+## Done
+
 ### WEB-037 - Remove Unsupported Storefront Claims
 
 - **Priority:** High
@@ -338,10 +358,8 @@ No cards currently in progress.
 - **Verification:**
   - Source search confirms the hard-coded reviews, testimonial, subscription promises, `30-Day Returns`, 48-hour promise, `Standard artisan delivery`, and `100% Homegrown` wording are absent.
   - TypeScript validation, all 29 automated tests, and the production build pass; the existing large-chunk warning remains.
-  - Deployed browser verification remains for the PDP, homepage, FAQ, checkout, email signup, and returns-policy copy.
+  - User verified the deployed PDP, homepage, FAQ, checkout, email signup, and returns-policy copy.
 - **Notes / Links:** The owner confirmed `Homegrown peppers`, gluten-free/vegan, no fillers or anti-caking agents, natural ingredients, fresh-dried herbs, and premium sea salt are accurate. Subscription and review claims remain hidden only until WEB-042 and WEB-043 are complete.
-
-## Done
 
 ### WEB-017 - Add Packing Slips and Consolidated Pick Lists
 

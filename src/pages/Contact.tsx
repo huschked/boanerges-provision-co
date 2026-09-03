@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Mail, Phone, MapPin, Send, Loader2, CheckCircle2 } from 'lucide-react';
+import { Mail, Send, Loader2, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export const Contact: React.FC = () => {
@@ -75,32 +75,18 @@ export const Contact: React.FC = () => {
 
               <div className="flex items-start gap-6 group">
                 <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-brand-gold group-hover:bg-brand-gold group-hover:text-brand-black transition-all">
-                  <Phone size={20} />
+                  <Mail size={20} />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-[10px] uppercase tracking-widest font-black text-brand-parchment/40">Call Us</p>
-                  <p className="text-lg font-serif text-brand-parchment">(555) 123-4567</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-6 group">
-                <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-brand-gold group-hover:bg-brand-gold group-hover:text-brand-black transition-all">
-                  <MapPin size={20} />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] uppercase tracking-widest font-black text-brand-parchment/40">Visit Our Kitchen</p>
-                  <p className="text-lg font-serif text-brand-parchment">123 Artisan Way, Flavor City, SC 29401</p>
+                  <p className="text-[10px] uppercase tracking-widest font-black text-brand-parchment/40">Order Support</p>
+                  <a href="mailto:orders@boanergesprovisions.com" className="text-lg font-serif text-brand-parchment hover:text-brand-gold transition-colors">orders@boanergesprovisions.com</a>
                 </div>
               </div>
             </div>
 
             <div className="pt-8 border-t border-white/10">
-              <p className="text-brand-gold text-[10px] uppercase tracking-widest font-black mb-4">Follow the Journey</p>
-              <div className="flex gap-8 text-brand-parchment/60 font-black text-xs uppercase tracking-widest">
-                <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="hover:text-brand-gold transition-colors">Instagram</a>
-                <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="hover:text-brand-gold transition-colors">Facebook</a>
-                <a href="https://pinterest.com" target="_blank" rel="noopener noreferrer" className="hover:text-brand-gold transition-colors">Pinterest</a>
-              </div>
+              <p className="text-brand-gold text-[10px] uppercase tracking-widest font-black mb-3">Response Time</p>
+              <p className="text-sm text-brand-parchment/60 leading-6">We typically respond within 1–2 business days. Include your order reference when contacting order support.</p>
             </div>
           </div>
 
@@ -120,7 +106,7 @@ export const Contact: React.FC = () => {
                 <div className="space-y-2">
                   <h2 className="text-3xl font-serif text-brand-parchment">Message Received</h2>
                   <p className="text-brand-parchment/60 font-light">
-                    Thank you for reaching out. We've received your message and will get back to you within 24-48 hours.
+                    Thank you for reaching out. We've received your message and will get back to you within 1–2 business days.
                   </p>
                 </div>
                 <button 

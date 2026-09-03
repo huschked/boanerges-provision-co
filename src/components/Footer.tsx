@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Instagram, Facebook, Twitter, MapPin, Mail, Phone } from 'lucide-react';
+import { MapPin, Mail } from 'lucide-react';
 import logo from '@/src/assets/brand/boanerges-stacked-lockup.png';
 import toast from 'react-hot-toast';
 import { subscribeToNewsletter } from '@/src/lib/newsletter';
@@ -42,11 +42,6 @@ export const Footer: React.FC = () => {
             <p className="text-sm text-brand-parchment/80 leading-relaxed max-w-xs">
               Handcrafted finishing salts inspired by old-world traditions and bold, modern flavors. Small-batch excellence from our kitchen to yours.
             </p>
-            <div className="flex gap-6 pt-6">
-              <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="text-brand-parchment/60 hover:text-brand-gold transition-colors"><Instagram size={20} /></a>
-              <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="text-brand-parchment/60 hover:text-brand-gold transition-colors"><Facebook size={20} /></a>
-              <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="text-brand-parchment/60 hover:text-brand-gold transition-colors"><Twitter size={20} /></a>
-            </div>
           </div>
 
           {/* Navigation */}
@@ -70,8 +65,8 @@ export const Footer: React.FC = () => {
               <li><Link to="/faq" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Shipping FAQ</Link></li>
               <li><Link to="/returns" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Returns & Refunds</Link></li>
               <li><Link to="/contact" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Contact Us</Link></li>
+              <li><Link to="/privacy" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Privacy Policy</Link></li>
               <li><Link to="/terms" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Terms of Service</Link></li>
-              <li><Link to="/admin" className="text-sm text-brand-parchment/40 hover:text-brand-gold transition-colors">Admin Portal</Link></li>
             </ul>
           </div>
 
@@ -94,6 +89,9 @@ export const Footer: React.FC = () => {
                 {submitting ? 'Saving...' : 'Sign Up'}
               </button>
             </form>
+            <p className="text-xs leading-5 text-brand-parchment/50">
+              By signing up, you agree to receive marketing email. Unsubscribe anytime. See our <Link to="/privacy" className="text-brand-gold hover:text-brand-parchment underline underline-offset-4">Privacy Policy</Link>.
+            </p>
           </div>
         </div>
 

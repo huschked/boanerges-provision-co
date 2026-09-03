@@ -119,6 +119,9 @@ export const Checkout: React.FC = () => {
                     Email me with news and limited flavor drops
                   </label>
                 </div>
+                <p className="text-xs text-brand-parchment/45 leading-5 pl-7">
+                  Optional marketing email. Unsubscribe anytime. See our <Link to="/privacy" className="text-brand-gold hover:text-brand-parchment underline underline-offset-4">Privacy Policy</Link>.
+                </p>
               </section>
 
               <div className="p-8 border border-brand-gold/30 bg-brand-gold/5 rounded-sm space-y-6">

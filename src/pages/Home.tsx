@@ -326,8 +326,8 @@ export const Home: React.FC = () => {
                       {submitting ? <Loader2 className="animate-spin" size={16} /> : 'Subscribe'}
                     </button>
                   </div>
-                  <p className="text-[10px] text-brand-parchment/30 uppercase tracking-widest text-center">
-                    By subscribing, you agree to our Privacy Policy.
+                  <p className="text-xs text-brand-parchment/50 text-center leading-5">
+                    By subscribing, you agree to receive marketing email. Unsubscribe anytime. See our <Link to="/privacy" className="text-brand-gold hover:text-brand-parchment underline underline-offset-4">Privacy Policy</Link>.
                   </p>
                 </form>
               )}
