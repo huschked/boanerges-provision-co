@@ -615,13 +615,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
                   </div>
                 </div>
 
-                <div className="border-t border-white/10 pt-6 space-y-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
+                <div className="col-span-full border-t border-white/10 pt-8 space-y-5 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5">
+                    <div className="max-w-xl">
                       <p className="text-[10px] uppercase tracking-[0.2em] font-black text-brand-gold">Additional gallery images</p>
                       <p className="mt-1 text-[10px] leading-relaxed text-brand-parchment/35">Shown after the primary image in this exact order. Each image needs a specific description and view type.</p>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-5 shrink-0">
                       <label className="cursor-pointer text-[9px] uppercase tracking-widest font-black text-brand-gold/60 hover:text-brand-gold flex items-center gap-2">
                         <input type="file" className="hidden" accept={ALLOWED_PRODUCT_IMAGE_TYPES.join(',')} onChange={handleGalleryUpload} disabled={isUploading || formData.galleryItems.length >= MAX_PRODUCT_GALLERY_IMAGES - 1} />
                         {isUploading ? <Loader2 size={12} className="animate-spin" /> : <ImagePlus size={12} />}
@@ -634,7 +634,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
                   </div>
 
                   {formData.galleryItems.length === 0 ? (
-                    <p className="border border-dashed border-white/10 p-4 text-[10px] text-brand-parchment/30">No additional views yet. Add jar, salt-texture, label, or product-in-use photography when available.</p>
+                    <div className="border border-dashed border-white/10 px-6 py-8 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5 text-brand-parchment/30">
+                      <ImagePlus size={24} strokeWidth={1.5} className="shrink-0" />
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.18em] font-black text-brand-parchment/45">No additional views yet</p>
+                        <p className="mt-1 text-[11px] leading-relaxed">Add jar, salt-texture, label, or product-in-use photography when available.</p>
+                      </div>
+                    </div>
                   ) : (
                     <div className="space-y-4">
                       {formData.galleryItems.map((item, index) => (
