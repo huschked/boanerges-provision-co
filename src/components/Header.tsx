@@ -25,6 +25,7 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
 
   const navLinks = [
     { name: 'Shop All', path: '/shop' },
+    { name: 'Bundles', path: '/bundles' },
     { name: 'Our Story', path: '/about' },
     { name: 'Recipes', path: '/recipes' },
     { name: 'Contact', path: '/contact' },
@@ -64,13 +65,13 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
           </button>
 
           {/* Navigation */}
-          <nav className="hidden md:flex items-center gap-12">
-            {navLinks.slice(0, 2).map((link) => (
+          <nav className="hidden md:flex items-center gap-6 xl:gap-12">
+            {navLinks.slice(0, 3).map((link) => (
               <Link
                 key={link.name}
                 to={link.path}
                 className={cn(
-                  "text-[14px] uppercase tracking-[0.2em] transition-all duration-300 font-black",
+                  "text-[12px] xl:text-[14px] uppercase tracking-[0.18em] xl:tracking-[0.2em] transition-all duration-300 font-black",
                   showDarkText 
                     ? "text-brand-black hover:text-brand-gold" 
                     : "text-brand-parchment hover:text-brand-gold"
@@ -103,14 +104,14 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
           </Link>
 
           {/* Right Actions */}
-          <div className="flex items-center gap-8 md:gap-12">
-            <nav className="hidden md:flex items-center gap-12">
-              {navLinks.slice(2).map((link) => (
+          <div className="flex items-center gap-8 md:gap-6 xl:gap-12">
+            <nav className="hidden md:flex items-center gap-6 xl:gap-12">
+              {navLinks.slice(3).map((link) => (
                 <Link
                   key={link.name}
                   to={link.path}
                   className={cn(
-                    "text-[14px] uppercase tracking-[0.2em] transition-all duration-300 font-black",
+                    "text-[12px] xl:text-[14px] uppercase tracking-[0.18em] xl:tracking-[0.2em] transition-all duration-300 font-black",
                     showDarkText 
                       ? "text-brand-black hover:text-brand-gold" 
                       : "text-brand-parchment hover:text-brand-gold"
