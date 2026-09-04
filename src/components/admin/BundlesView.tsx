@@ -12,6 +12,17 @@ type BundleRecord = BundleDefinition & { id: string; components: Array<{ product
 const emptyForm: BundleRecord = { id: '', name: '', slug: '', description: '', sellingPrice: '', imageUrl: '', imageAlt: '', imageType: 'illustrative', stripeTaxCode: '', active: false, components: [] };
 const text = (value: unknown) => typeof value === 'string' ? value : '';
 const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const firestoreWriteError = (error: unknown, action: string) => {
+  const code = typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code?: unknown }).code)
+    : '';
+
+  if (code === 'permission-denied' || code === 'firestore/permission-denied') {
+    return `Firestore denied ${action}. Deploy firestore.rules to the boanerges-provision-co Firebase project, then try again.`;
+  }
+
+  return `${action} failed${code ? ` (${code})` : ''}. Check the browser console for details.`;
+};
 
 export const BundlesView: React.FC<{ products: Product[] }> = ({ products }) => {
   const [bundles, setBundles] = useState<BundleRecord[]>([]);
@@ -42,7 +53,7 @@ export const BundlesView: React.FC<{ products: Product[] }> = ({ products }) => 
     try {
       await setDoc(doc(db, 'bundles', id), { name: text(form.name).trim(), slug: slugify(text(form.slug) || id), description: text(form.description).trim(), sellingPrice: Number(form.sellingPrice), imageUrl: text(form.imageUrl).trim(), imageAlt: text(form.imageAlt).trim(), imageType: form.imageType === 'photograph' ? 'photograph' : 'illustrative', stripeTaxCode: text(form.stripeTaxCode).trim(), active: form.active === true, components: form.components, updatedAt: Timestamp.now() }, { merge: true });
       toast.success('Bundle definition saved.'); setEditing(false); setForm(emptyForm); await load();
-    } catch (error) { console.error(error); toast.error('Unable to save this bundle.'); }
+    } catch (error) { console.error(error); toast.error(firestoreWriteError(error, 'Saving the bundle')); }
   };
 
   const remove = async (bundle: BundleRecord) => {
@@ -61,7 +72,7 @@ export const BundlesView: React.FC<{ products: Product[] }> = ({ products }) => 
       }
       toast.success(created ? `${created} inactive bundle template${created === 1 ? '' : 's'} created.` : 'All starter templates already exist.');
       await load();
-    } catch (error) { console.error(error); toast.error('Unable to create bundle templates. Deploy the latest Firestore rules and try again.'); }
+    } catch (error) { console.error(error); toast.error(firestoreWriteError(error, 'Creating bundle templates')); }
   };
 
   if (loading) return <div className="py-24 flex justify-center"><Loader2 className="animate-spin text-brand-gold" /></div>;
