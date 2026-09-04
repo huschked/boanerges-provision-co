@@ -26,6 +26,10 @@ export interface Order {
   paymentStatus?: PaymentState;
   stripeSessionId?: string;
   stripePaymentIntentId?: string;
+  orderType?: 'one_time' | 'subscription_initial' | 'subscription_renewal';
+  stripeSubscriptionId?: string;
+  stripeInvoiceId?: string;
+  subscriptionCadence?: string;
   trackingNumber?: string;
   trackingUrl?: string;
   labelUrl?: string;

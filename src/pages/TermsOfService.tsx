@@ -35,6 +35,12 @@ export const TermsOfService: React.FC = () => (
           <p>You are responsible for providing a complete and accurate shipping address. Contact <a className="text-brand-gold hover:text-brand-parchment underline underline-offset-4" href="mailto:orders@boanergesprovisions.com">orders@boanergesprovisions.com</a> immediately if an address needs correction; changes are not guaranteed after fulfillment begins.</p>
         </Section>
 
+        <Section title="Subscribe & Save">
+          <p>When you select Subscribe &amp; Save, you authorize Stripe to charge the displayed recurring product price, shipping, and applicable tax on the cadence selected at checkout until you cancel. The first order is created after the initial payment succeeds, and each later paid invoice creates a separate fulfillment order.</p>
+          <p>You may manage payment details, review billing history, or cancel through the secure Stripe customer portal linked from your order-status page. Changes should be completed before the next invoice. Cancellation stops future renewals but does not automatically cancel or refund an order that has already been paid or entered fulfillment.</p>
+          <p>If payment fails, that renewal is not fulfilled until payment succeeds. If an item is unavailable after a successful recurring charge, we will hold fulfillment and contact you regarding resolution or refund rather than substitute another product without approval.</p>
+        </Section>
+
         <Section title="Final sale, damaged orders, and cancellation">
           <p>Because our products are consumable food products, physical returns are not accepted and purchases are final sale. Damaged, incorrect, or missing orders may qualify for a replacement or refund when reported within the timeframe and with the information described in our <Link className="text-brand-gold hover:text-brand-parchment underline underline-offset-4" to="/returns">Returns & Refunds Policy</Link>.</p>
           <p>Cancellation requests are reviewed only while fulfillment and shipment can still be stopped. Submitting a request does not guarantee cancellation.</p>

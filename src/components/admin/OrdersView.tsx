@@ -415,6 +415,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                 </div>
               </div>
 
+              {selectedOrder.orderType?.startsWith('subscription') && <div className="px-10 py-5 border-b border-brand-gold/20 bg-brand-gold/[0.04] flex flex-wrap items-center justify-between gap-4"><div><p className="text-[10px] uppercase tracking-[0.22em] text-brand-gold font-black">Subscribe &amp; Save</p><p className="mt-1 text-sm text-brand-parchment/60">{selectedOrder.orderType === 'subscription_renewal' ? 'Recurring renewal order' : 'Initial subscription order'}{selectedOrder.subscriptionCadence ? ` · ${selectedOrder.subscriptionCadence.replaceAll('_', ' ')}` : ''}</p></div><span className="text-xs font-mono text-brand-parchment/35">{selectedOrder.stripeSubscriptionId || 'Subscription ID pending'}</span></div>}
+
               <ShippingWorkflow order={selectedOrder} onComplete={onRefresh} />
 
               <div className="p-6 lg:p-8 border-b border-white/5">

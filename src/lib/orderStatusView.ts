@@ -77,6 +77,11 @@ export function buildPublicOrderStatus(
       latestDetails: String(order.latestTrackingStatus?.details || ''),
       latestStatusDate: String(order.latestTrackingStatus?.statusDate || ''),
     },
+    subscription: {
+      managed: Boolean(order.stripeSubscriptionId && order.stripeCustomerId),
+      cadence: String(order.subscriptionCadence || ''),
+      renewalOrder: order.orderType === 'subscription_renewal',
+    },
     actions: { canRequestAddressChange, canRequestCancellation },
     supportEmail: 'support@boanergesprovisions.com',
   };

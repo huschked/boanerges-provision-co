@@ -184,24 +184,6 @@ This board is the working queue for website development. Keep cards actionable e
   - Browser-check mobile, tablet, desktop, zoom, reduced-motion, loading, empty, and error states.
 - **Notes / Links:** Prefer responsive card behavior based on available width instead of forcing two columns on every small phone.
 
-### WEB-042 - Implement Subscribe & Save with Stripe Billing
-
-- **Priority:** High
-- **Area:** checkout/admin
-- **Goal:** Offer a trustworthy recurring-purchase option that creates, bills, fulfills, and lets customers manage subscriptions end to end.
-- **Acceptance Criteria:**
-  - Eligible products have server-owned Stripe recurring prices and supported delivery cadences; one-time and subscription items remain distinct in cart and checkout.
-  - Customers see the recurring price, cadence, shipping/tax treatment, renewal terms, cancellation policy, and consent before purchase.
-  - Stripe Billing webhooks create exactly one fulfillment order per paid renewal and do not fulfill failed, incomplete, duplicated, or replayed invoices.
-  - Renewal orders reserve/decrement inventory safely and expose out-of-stock, payment-failure, cancellation, pause, and recovery states to admins.
-  - Confirmation, upcoming-renewal where required, payment-failure, shipment, cancellation, and resumption communications are idempotent and auditable.
-  - Customers can securely manage payment method, cadence where supported, pause/cancel, and billing history through Stripe's customer portal or an equivalent authenticated flow.
-  - Refund, tax, shipping, discount, and customer-support workflows clearly distinguish subscription orders.
-- **Verification:**
-  - Stripe test clocks cover signup, trial if offered, renewal, duplicate webhook, failed/retried payment, cancellation, pause/resume, price change, inventory shortage, refund, and portal access.
-  - Complete a production-readiness review of webhook secrets, customer communication, policy copy, and recurring-payment disclosures.
-- **Notes / Links:** Depends on accurate product data from WEB-035 and consistent fulfillment promises from WEB-021. WEB-037 hides the current nonfunctional UI only until this card passes verification.
-
 ### WEB-043 - Add Verified-Buyer Review Requests and Moderated Reviews
 
 - **Priority:** Medium
@@ -272,23 +254,25 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
-### WEB-036 - Rebuild or Disable Bundle Commerce
+### WEB-042 - Implement Subscribe & Save with Stripe Billing
 
 - **Priority:** High
-- **Area:** storefront/checkout
-- **Goal:** Ensure advertised bundles are real sellable offers with correct pricing, inventory, tax, and fulfillment behavior.
+- **Area:** checkout/admin
+- **Goal:** Offer a trustworthy recurring-purchase option that creates, bills, fulfills, and lets customers manage subscriptions end to end.
 - **Acceptance Criteria:**
-  - Bundle definitions come from managed server data rather than `src/data/products.ts` or invented client inventory.
-  - Compare-at value, selling price, savings amount/percentage, components, quantities, sizes, and images are calculated and displayed accurately.
-  - Bundle stock derives from available component inventory and unavailable bundles cannot be added or checked out.
-  - Cart and order records preserve bundle identity while fulfillment and inventory decrement the correct components exactly once.
-  - Stripe receives the intended bundle price, tax treatment, description, and fulfillment metadata; server validation prevents client price manipulation.
-  - Existing bundle purchase controls remain disabled until these requirements pass.
+  - Eligible products have server-owned Stripe recurring prices and supported delivery cadences; one-time and subscription items remain distinct in cart and checkout.
+  - Customers see the recurring price, cadence, shipping/tax treatment, renewal terms, cancellation policy, and consent before purchase.
+  - Stripe Billing webhooks create exactly one fulfillment order per paid renewal and do not fulfill failed, incomplete, duplicated, or replayed invoices.
+  - Renewal orders reserve/decrement inventory safely and expose out-of-stock, payment-failure, cancellation, pause, and recovery states to admins.
+  - Confirmation, upcoming-renewal where required, payment-failure, shipment, cancellation, and resumption communications are idempotent and auditable.
+  - Customers can securely manage payment method, cadence where supported, pause/cancel, and billing history through Stripe's customer portal or an equivalent authenticated flow.
+  - Refund, tax, shipping, discount, and customer-support workflows clearly distinguish subscription orders.
 - **Verification:**
-  - Automated coverage validates bundle value, savings, component-limited stock, invalid definitions, component-expanded pick lists, component-expanded refunds, and the existing repeated-webhook protections.
-  - Deploy the code and Firestore rules, create the inactive starter templates from Admin, approve bundle facts, and test the scenarios in `docs/bundle-commerce.md` against Stripe test mode and live Firestore records.
-- **Progress:** Firestore-managed definitions, Admin bundle management, server-resolved storefront offers, component-derived availability, server-owned Stripe pricing/tax metadata, preserved order identity, component reservations/decrements, pick-list expansion, and component-aware cancellation restocking are implemented. Hard-coded client bundle definitions and invented client inventory are removed.
-- **Notes / Links:** Operational and owner verification is documented in `docs/bundle-commerce.md`. Template prices remain inactive until owner-approved. Advanced Build Your Own and gift options can follow after the curated bundle foundation is verified.
+  - Stripe test clocks cover signup, trial if offered, renewal, duplicate webhook, failed/retried payment, cancellation, pause/resume, price change, inventory shortage, refund, and portal access.
+  - Complete a production-readiness review of webhook secrets, customer communication, policy copy, and recurring-payment disclosures.
+- **Progress:** Stripe-owned recurring cadence prices, separate subscription Checkout, initial inventory reservation, idempotent paid-renewal orders, failed-payment and inventory-attention handling, lifecycle email hooks, signed customer-portal access, Admin subscription state, product configuration, consent copy, and recurring terms are implemented.
+- **Verification results:** TypeScript validation, all 39 existing automated tests, and the production build pass; the existing large-chunk warning remains. Stripe test clocks and production configuration remain owner verification steps.
+- **Notes / Links:** Setup and the test matrix are documented in `docs/subscribe-and-save.md`. Depends on accurate product data from WEB-035 and consistent fulfillment promises from WEB-021.
 
 ### WEB-035 - Enforce Complete and Consistent Product Data
 
@@ -308,6 +292,24 @@ This board is the working queue for website development. Keep cards actionable e
 - **Notes / Links:** Migration and verification instructions are in `docs/product-catalog-readiness.md`. No ingredient, allergen, cross-contact, storage, shelf-life, or dietary values were invented.
 
 ## Done
+
+### WEB-036 - Rebuild or Disable Bundle Commerce
+
+- **Priority:** High
+- **Area:** storefront/checkout
+- **Goal:** Ensure advertised bundles are real sellable offers with correct pricing, inventory, tax, and fulfillment behavior.
+- **Acceptance Criteria:**
+  - Bundle definitions come from managed server data rather than `src/data/products.ts` or invented client inventory.
+  - Compare-at value, selling price, savings amount/percentage, components, quantities, sizes, and images are calculated and displayed accurately.
+  - Bundle stock derives from available component inventory and unavailable bundles cannot be added or checked out.
+  - Cart and order records preserve bundle identity while fulfillment and inventory decrement the correct components exactly once.
+  - Stripe receives the intended bundle price, tax treatment, description, and fulfillment metadata; server validation prevents client price manipulation.
+  - Existing bundle purchase controls remain disabled until these requirements pass.
+- **Verification:**
+  - Automated coverage validates bundle value, savings, component-limited stock, invalid definitions, component-expanded pick lists, component-expanded refunds, and the existing repeated-webhook protections.
+  - Deploy the code and Firestore rules, create the inactive starter templates from Admin, approve bundle facts, and test the scenarios in `docs/bundle-commerce.md` against Stripe test mode and live Firestore records.
+- **Progress:** Firestore-managed definitions, Admin bundle management, server-resolved storefront offers, component-derived availability, server-owned Stripe pricing/tax metadata, preserved order identity, component reservations/decrements, pick-list expansion, and component-aware cancellation restocking are implemented. Hard-coded client bundle definitions and invented client inventory are removed.
+- **Notes / Links:** Operational verification is documented in `docs/bundle-commerce.md`. Owner verified WEB-036 on 2026-09-03. Advanced Build Your Own and gift options can follow after the curated bundle foundation.
 
 ### WEB-034 - Replace Placeholder Product Media
 

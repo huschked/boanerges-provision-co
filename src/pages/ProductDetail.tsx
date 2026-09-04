@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Plus, Minus, ShieldCheck, Truck, RotateCcw, ChevronRight, Heart, ShoppingBag, Flame, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { getProductBySlug, getProducts, Product } from '@/src/services/productService';
+import { getProductBySlug, getProducts, Product, type SubscriptionCadence } from '@/src/services/productService';
+import { createSubscriptionCheckout, getSubscriptionOptions, type SubscriptionOption } from '@/src/services/subscriptionService';
 import { HeatScale } from '@/src/components/HeatScale';
 import { ProductCard } from '@/src/components/ProductCard';
 import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
+import toast from 'react-hot-toast';
 
 export const ProductDetail: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -17,6 +19,10 @@ export const ProductDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [subscriptionOptions, setSubscriptionOptions] = useState<SubscriptionOption[]>([]);
+  const [selectedCadence, setSelectedCadence] = useState<SubscriptionCadence>('monthly');
+  const [subscriptionConsent, setSubscriptionConsent] = useState(false);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const addItem = useCart((state) => state.addItem);
 
   useEffect(() => {
@@ -28,6 +34,14 @@ export const ProductDetail: React.FC = () => {
         const data = await getProductBySlug(slug);
         if (data) {
           setProduct(data);
+          if (data.subscriptionEligible) {
+            getSubscriptionOptions(data.id).then(options => {
+              setSubscriptionOptions(options);
+              if (options[0]) setSelectedCadence(options[0].cadence);
+            }).catch(error => console.error('Unable to load subscription options:', error));
+          } else {
+            setSubscriptionOptions([]);
+          }
           setSelectedImageIndex(0);
           trackAnalyticsEvent({
             type: 'product_view',
@@ -138,6 +152,13 @@ export const ProductDetail: React.FC = () => {
                     <span className="font-serif text-xl text-brand-parchment">${product.price.toFixed(2)}</span>
                   </div>
                 </div>
+                {subscriptionOptions.length > 0 && <div className="p-6 border border-white/15 bg-white/[0.03] rounded-sm space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"><div><p className="text-[11px] font-black uppercase tracking-widest text-brand-parchment">Subscribe &amp; Save</p><p className="text-xs text-brand-parchment/45">Recurring delivery in a separate secure checkout</p></div><select aria-label="Delivery cadence" value={selectedCadence} onChange={event => setSelectedCadence(event.target.value as SubscriptionCadence)} className="input-premium"><option value="" disabled>Select cadence</option>{subscriptionOptions.map(option => <option key={option.cadence} value={option.cadence}>{option.label} · ${option.amount.toFixed(2)}{option.savingsPercent > 0 ? ` · Save ${option.savingsPercent}%` : ''}</option>)}</select></div>
+                  <p className="text-xs leading-relaxed text-brand-parchment/55">Your selected quantity ships and bills automatically on this cadence. Shipping and applicable tax are calculated in Stripe at signup and on renewals. Cancel or update payment details anytime through the secure customer portal; changes must be made before the next invoice to avoid that renewal.</p>
+                  <label className="flex items-start gap-3 text-xs text-brand-parchment/70 leading-relaxed"><input type="checkbox" checked={subscriptionConsent} onChange={event => setSubscriptionConsent(event.target.checked)} className="mt-1 accent-brand-gold" /><span>I authorize recurring charges for this product and cadence until I cancel. I understand food orders are final sale once fulfilled.</span></label>
+                  <button type="button" disabled={!subscriptionConsent || subscriptionLoading || product.currentInventory < quantity} onClick={async () => { setSubscriptionLoading(true); try { const result = await createSubscriptionCheckout({ productId: product.id, quantity, cadence: selectedCadence, origin: window.location.origin }); window.location.href = result.url; } catch (error) { console.error(error); toast.error(error instanceof Error ? error.message : 'Subscription checkout is unavailable.'); } finally { setSubscriptionLoading(false); } }} className="w-full py-4 border border-brand-gold text-brand-gold hover:bg-brand-gold hover:text-brand-black disabled:opacity-35 disabled:cursor-not-allowed text-[10px] uppercase tracking-[0.25em] font-black transition-colors">{subscriptionLoading ? 'Opening secure checkout…' : 'Subscribe in Stripe'}</button>
+                  <p className="text-[10px] text-brand-parchment/35">This subscription checkout is separate; items already in your cart will remain there.</p>
+                </div>}
               </div>
 
               <div className="flex gap-4">

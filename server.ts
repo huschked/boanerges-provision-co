@@ -124,6 +124,13 @@ type NormalizedCartItem = {
   kind: "product" | "bundle";
 };
 
+type SubscriptionCadence = "monthly" | "every_two_months" | "every_three_months";
+const SUBSCRIPTION_CADENCES: Record<SubscriptionCadence, { label: string; intervalCount: number }> = {
+  monthly: { label: "Every month", intervalCount: 1 },
+  every_two_months: { label: "Every 2 months", intervalCount: 2 },
+  every_three_months: { label: "Every 3 months", intervalCount: 3 },
+};
+
 type AnalyticsEventType =
   | "product_view"
   | "add_to_cart"
@@ -630,6 +637,22 @@ async function claimStripeEvent(event: Stripe.Event) {
   return claim;
 }
 
+function normalizeSubscriptionCadence(value: unknown): SubscriptionCadence | null {
+  return typeof value === "string" && value in SUBSCRIPTION_CADENCES ? value as SubscriptionCadence : null;
+}
+
+async function getValidatedSubscriptionPrice(product: FirebaseFirestore.DocumentData, cadence: SubscriptionCadence) {
+  if (product.subscriptionEligible !== true) throw new CheckoutProviderError("This product is not available for subscription.", "subscription_unavailable");
+  const priceId = typeof product.subscriptionPriceIds?.[cadence] === "string" ? product.subscriptionPriceIds[cadence].trim() : "";
+  if (!priceId.startsWith("price_")) throw new CheckoutProviderError("This delivery cadence is not configured.", "subscription_unavailable");
+  const price = await stripe.prices.retrieve(priceId);
+  const expected = SUBSCRIPTION_CADENCES[cadence];
+  if (!price.active || price.currency !== CURRENCY || price.unit_amount == null || price.recurring?.interval !== "month" || price.recurring.interval_count !== expected.intervalCount) {
+    throw new CheckoutProviderError("The recurring Stripe price does not match the selected cadence.", "subscription_configuration_error");
+  }
+  return { price, amount: toMoneyFromCents(price.unit_amount), label: expected.label };
+}
+
 async function markStripeEventProcessed(event: Stripe.Event, processingToken: string) {
   const eventRef = db.collection("stripe_events").doc(event.id);
   return db.runTransaction(async transaction => {
@@ -1049,7 +1072,7 @@ async function sendOrderConfirmation(orderId: string, order: FirebaseFirestore.D
     from: ORDERS_EMAIL_FROM,
     replyTo: ORDERS_REPLY_TO,
     to: order.customerEmail,
-    subject: `Order Confirmation #${orderId.slice(-6).toUpperCase()}`,
+    subject: `${String(order.orderType || "").startsWith("subscription") ? "Subscription Order" : "Order"} Confirmation #${orderId.slice(-6).toUpperCase()}`,
     html: buildOrderEmailHtml({
       shippingAddress: order.shippingAddress || null,
       customerName: order.customerName || "",
@@ -2139,6 +2162,22 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
         await handleExpiredCheckout(session);
       }
 
+      if (event.type === "invoice.paid") {
+        await handlePaidSubscriptionInvoice(event.data.object as Stripe.Invoice);
+      }
+
+      if (event.type === "invoice.payment_failed") {
+        await handleFailedSubscriptionInvoice(event.data.object as Stripe.Invoice);
+      }
+
+      if (event.type === "invoice.upcoming") {
+        await handleUpcomingSubscriptionInvoice(event.data.object as Stripe.Invoice);
+      }
+
+      if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+        await syncStripeSubscription(event.data.object as Stripe.Subscription, event);
+      }
+
       if (event.type === "charge.refunded") {
         const charge = event.data.object as Stripe.Charge;
         await recordRefundedCharge(charge);
@@ -2190,6 +2229,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
           failedAt: admin.firestore.FieldValue.serverTimestamp(),
         }, { merge: true }).catch(() => undefined);
       }
+
       return res.status(500).json({ error: "Webhook processing failed." });
     }
   });
@@ -2221,6 +2261,30 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
     }
   });
 
+  app.get("/api/subscriptions/options/:productId", orderStatusLimiter, async (req, res) => {
+    try {
+      const productId = String(req.params.productId || "").trim();
+      const productSnap = await db.collection("products").doc(productId).get();
+      if (!productSnap.exists || productSnap.data()?.active !== true || productSnap.data()?.subscriptionEligible !== true) {
+        return res.json({ options: [] });
+      }
+      const product = productSnap.data()!;
+      const options = (await Promise.all(Object.keys(SUBSCRIPTION_CADENCES).map(async rawCadence => {
+        const cadence = rawCadence as SubscriptionCadence;
+        try {
+          const validated = await getValidatedSubscriptionPrice(product, cadence);
+          const savingsAmount = Number(Math.max(0, Number(product.price || 0) - validated.amount).toFixed(2));
+          return { cadence, label: validated.label, amount: validated.amount, currency: validated.price.currency, savingsAmount, savingsPercent: Number(product.price) > 0 ? Math.round((savingsAmount / Number(product.price)) * 100) : 0 };
+        } catch { return null; }
+      }))).filter(Boolean);
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
+      return res.json({ options });
+    } catch (error) {
+      console.error("Subscription options error:", error);
+      return res.status(500).json({ error: "Subscription options are temporarily unavailable." });
+    }
+  });
+
   app.get("/api/order-status", orderStatusLimiter, async (req, res) => {
     res.set("Cache-Control", "private, no-store, max-age=0");
     if (ORDER_STATUS_SECRET.length < 32) {
@@ -2242,6 +2306,24 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
     } catch (error) {
       console.error("Order status lookup error:", error);
       return res.status(500).json({ error: "Order tracking is temporarily unavailable.", code: "order_status_unavailable" });
+    }
+  });
+
+  app.post("/api/subscriptions/portal", orderStatusLimiter, async (req, res) => {
+    try {
+      if (ORDER_STATUS_SECRET.length < 32) return res.status(503).json({ error: "Subscription management is temporarily unavailable." });
+      const token = typeof req.body?.token === "string" ? req.body.token : "";
+      const verified = verifyOrderStatusToken(token, ORDER_STATUS_SECRET);
+      if (!verified.valid) return res.status(404).json({ error: "This secure management link is invalid or expired." });
+      const orderSnap = await db.collection("orders").doc(verified.orderId).get();
+      const order = orderSnap.data();
+      if (!orderSnap.exists || !order?.stripeCustomerId || !order?.stripeSubscriptionId) return res.status(404).json({ error: "No subscription is associated with this order." });
+      const appUrl = getPublicAppUrl(`${req.protocol}://${req.get("host")}`);
+      const portal = await stripe.billingPortal.sessions.create({ customer: order.stripeCustomerId, return_url: `${appUrl}/order-status?token=${encodeURIComponent(token)}` });
+      return res.json({ url: portal.url });
+    } catch (error) {
+      console.error("Subscription portal error:", error);
+      return res.status(500).json({ error: "The Stripe customer portal could not be opened. Please try again." });
     }
   });
 
@@ -2505,6 +2587,52 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
     } catch (error: any) {
       console.error("Subscriber Error:", error);
       res.status(500).json({ error: "Unable to complete newsletter signup right now.", code: "newsletter_unavailable" });
+    }
+  });
+
+  app.post("/api/subscriptions/create-session", async (req, res) => {
+    let reservationId = "";
+    try {
+      const productId = typeof req.body?.productId === "string" ? req.body.productId.trim() : "";
+      const quantity = Number(req.body?.quantity);
+      const cadence = normalizeSubscriptionCadence(req.body?.cadence);
+      if (!productId || !cadence || !Number.isInteger(quantity) || quantity < 1 || quantity > MAX_ITEM_QUANTITY) {
+        return res.status(400).json({ error: "Choose a valid product, quantity, and delivery cadence.", code: "validation_error" });
+      }
+      const productSnap = await db.collection("products").doc(productId).get();
+      if (!productSnap.exists || productSnap.data()?.active !== true || !isProductPublishReady(productSnap.data()!)) {
+        return res.status(409).json({ error: "This product is not currently available.", code: "inventory_unavailable" });
+      }
+      const product = productSnap.data()!;
+      const validated = await getValidatedSubscriptionPrice(product, cadence);
+      const requestOrigin = typeof req.body?.origin === "string" ? req.body.origin : req.get("origin") || `${req.protocol}://${req.get("host")}`;
+      const appUrl = (process.env.APP_URL || requestOrigin || process.env.SHARED_APP_URL || `http://localhost:${PORT}`).replace(/\/$/, "");
+      const pendingOrderId = db.collection("pending_orders").doc().id;
+      const reservation = await createInventoryReservation({ pendingOrderId, cartItems: [{ id: productId, quantity, kind: "product" }], customerEmail: "", appUrl, newsletterOptIn: false });
+      reservationId = reservation.reservationRef.id;
+      const subtotal = Number((validated.amount * quantity).toFixed(2));
+      const shippingCost = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : STANDARD_SHIPPING_AMOUNT;
+      const subscriptionItems = reservation.orderItems.map(item => ({ ...item, price: validated.amount, purchaseType: "subscription", subscriptionCadence: cadence }));
+      await reservation.pendingOrderRef.set({ orderType: "subscription_initial", subscriptionCadence: cadence, subscriptionPriceId: validated.price.id, items: subscriptionItems, subtotalAmount: subtotal, shippingAmount: shippingCost, totalAmount: subtotal + shippingCost, pricingSource: "stripe_recurring_price", updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      const shippingOptions: Stripe.Checkout.SessionCreateParams.ShippingOption[] = [{ shipping_rate_data: { type: "fixed_amount", fixed_amount: { amount: toStripeAmount(shippingCost), currency: CURRENCY }, display_name: shippingCost ? "Recurring Standard Shipping" : "Recurring Free Shipping", delivery_estimate: { minimum: { unit: "business_day", value: 3 }, maximum: { unit: "business_day", value: 7 } }, tax_behavior: "exclusive" } }];
+      const metadata = { pendingOrderId, reservationId, orderType: "subscription_initial", subscriptionCadence: cadence, productId, quantity: String(quantity) };
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription", line_items: [{ price: validated.price.id, quantity }], billing_address_collection: "required",
+        shipping_address_collection: { allowed_countries: ["US"] }, shipping_options: shippingOptions, automatic_tax: { enabled: true },
+        subscription_data: { metadata }, metadata, expires_at: Math.floor(reservation.expiresAt.toMillis() / 1000),
+        success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${appUrl}/product/${encodeURIComponent(String(product.slug || productId))}`,
+      }, { idempotencyKey: `subscription-checkout-${pendingOrderId}` });
+      await Promise.all([
+        reservation.pendingOrderRef.set({ stripeSessionId: session.id, checkoutUrl: session.url || "", updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+        reservation.reservationRef.set({ stripeSessionId: session.id, orderType: "subscription_initial", updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }),
+      ]);
+      return res.json({ id: session.id, url: session.url });
+    } catch (error) {
+      if (reservationId) await releaseInventoryReservation(reservationId, "session_creation_failed").catch(() => undefined);
+      console.error("Subscription Checkout Error:", error);
+      if (error instanceof CheckoutAvailabilityError) return res.status(409).json({ error: error.message, code: "inventory_unavailable", unavailableItems: error.unavailableItems });
+      if (error instanceof CheckoutProviderError) return res.status(409).json({ error: error.message, code: error.code });
+      return res.status(500).json({ error: "Subscription checkout could not be started. Please try again.", code: "subscription_checkout_error" });
     }
   });
 
@@ -2910,6 +3038,10 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session, event:
     shippingMethod: selectedShipping.displayName,
     automaticTaxStatus: session.automatic_tax?.status || "",
     pricingSource: "firestore",
+    orderType: pendingOrderData.orderType || "one_time",
+    subscriptionCadence: pendingOrderData.subscriptionCadence || "",
+    subscriptionPriceId: pendingOrderData.subscriptionPriceId || "",
+    stripeSubscriptionId: typeof session.subscription === "string" ? session.subscription : session.subscription?.id || "",
     newsletterOptIn: pendingOrderData.newsletterOptIn === true,
     newsletterConsentSource: pendingOrderData.newsletterConsentSource || CHECKOUT_NEWSLETTER_SOURCE,
     newsletterConsentAt: pendingOrderData.newsletterConsentAt || null,
@@ -2980,7 +3112,125 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session, event:
     subtotalAmount, shippingAmount, taxAmount, totalAmount: total, shippingRateId: selectedShipping.shippingRate,
     shippingMethod: selectedShipping.displayName, completedAt: admin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
+  const stripeSubscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id || "";
+  if (pendingOrderData.orderType === "subscription_initial" && stripeSubscriptionId) {
+    await db.collection("subscriptions").doc(stripeSubscriptionId).set({
+      stripeSubscriptionId,
+      stripeCustomerId: typeof session.customer === "string" ? session.customer : session.customer?.id || "",
+      initialOrderId: orderId,
+      status: "active",
+      cadence: pendingOrderData.subscriptionCadence || "",
+      priceId: pendingOrderData.subscriptionPriceId || "",
+      customerEmail,
+      customerName,
+      customerPhone,
+      shippingAddress,
+      items: orderItems,
+      appUrl: pendingOrderData.appUrl || getPublicAppUrl(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
   await completePaidOrderEffects(orderId);
+}
+
+function invoiceSubscriptionId(invoice: Stripe.Invoice) {
+  const value = (invoice as any).subscription || (invoice as any).parent?.subscription_details?.subscription;
+  return typeof value === "string" ? value : value?.id || "";
+}
+
+async function sendSubscriptionLifecycleEmail(to: string, subject: string, title: string, message: string, idempotencyKey: string) {
+  if (!to) return "";
+  const result = await resend.emails.send({
+    from: ORDERS_EMAIL_FROM, replyTo: ORDERS_REPLY_TO, to, subject,
+    html: `<div style="background:#0b0b0b;color:#eee7dc;padding:36px;font-family:Arial,sans-serif"><p style="color:#cda85a;text-transform:uppercase;letter-spacing:.18em;font-size:11px">Subscribe &amp; Save</p><h1 style="font-family:Georgia,serif">${title}</h1><p style="line-height:1.7;color:#c9c1b5">${message}</p><p style="margin-top:28px;color:#8f887d;font-size:12px">Questions? Reply to this email and our support team will help.</p></div>`,
+  }, { idempotencyKey });
+  if (result.error) throw new Error(result.error.message || "Subscription email failed.");
+  return result.data?.id || "";
+}
+
+async function handlePaidSubscriptionInvoice(invoice: Stripe.Invoice) {
+  if ((invoice as any).billing_reason === "subscription_create") return;
+  const subscriptionId = invoiceSubscriptionId(invoice);
+  if (!subscriptionId) return;
+  const subscriptionRef = db.collection("subscriptions").doc(subscriptionId);
+  const subscriptionSnap = await subscriptionRef.get();
+  if (!subscriptionSnap.exists) throw new Error(`Subscription record ${subscriptionId} is missing.`);
+  const subscription = subscriptionSnap.data()!;
+  const orderId = invoice.id;
+  const orderRef = db.collection("orders").doc(orderId);
+  const items = (subscription.items || []) as PendingOrderItem[];
+  let inventoryConflict = "";
+  await db.runTransaction(async transaction => {
+    const existingOrder = await transaction.get(orderRef);
+    if (existingOrder.exists) return;
+    const demands = new Map<string, { name: string; quantity: number }>();
+    items.forEach(item => demands.set(item.productId, { name: item.name, quantity: (demands.get(item.productId)?.quantity || 0) + Number(item.quantity || 0) }));
+    const refs = Array.from(demands.keys()).map(id => db.collection("products").doc(id));
+    const snaps = await Promise.all(refs.map(ref => transaction.get(ref)));
+    snaps.forEach((snap, index) => {
+      const demand = demands.get(refs[index].id)!;
+      if (!snap.exists || Number(snap.data()?.currentInventory || 0) < demand.quantity) inventoryConflict = `${demand.name} does not have enough inventory for this renewal.`;
+    });
+    const subtotalAmount = toMoneyFromCents((invoice as any).subtotal);
+    const totalAmount = toMoneyFromCents((invoice as any).total);
+    const taxAmount = Array.isArray((invoice as any).total_taxes) ? toMoneyFromCents((invoice as any).total_taxes.reduce((sum: number, tax: any) => sum + Number(tax.amount || 0), 0)) : Math.max(0, totalAmount - subtotalAmount);
+    const order = {
+      orderType: "subscription_renewal", stripeSubscriptionId: subscriptionId, stripeInvoiceId: invoice.id,
+      stripeCustomerId: typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id || subscription.stripeCustomerId || "",
+      stripePaymentIntentId: typeof (invoice as any).payment_intent === "string" ? (invoice as any).payment_intent : (invoice as any).payment_intent?.id || "",
+      paymentStatus: "paid", fulfillmentStatus: inventoryConflict ? "requires_attention" : "pending", shipmentStatus: "not_shipped", lifecycleVersion: 2,
+      customerEmail: normalizeCustomerEmail((invoice as any).customer_email || subscription.customerEmail), customerName: subscription.customerName || "", customerPhone: subscription.customerPhone || "", shippingAddress: subscription.shippingAddress || null,
+      currency: invoice.currency || CURRENCY, subtotalAmount, shippingAmount: Math.max(0, totalAmount - subtotalAmount - taxAmount), taxAmount, totalAmount,
+      items, subscriptionCadence: subscription.cadence || "", pricingSource: "stripe_recurring_price", ...(inventoryConflict ? { inventoryConflict } : {}),
+      paidAt: admin.firestore.FieldValue.serverTimestamp(), createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    if (!inventoryConflict) snaps.forEach((snap, index) => {
+      const demand = demands.get(refs[index].id)!;
+      transaction.update(refs[index], { currentInventory: Number(snap.data()?.currentInventory || 0) - demand.quantity, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      transaction.create(db.collection("inventory_movements").doc(`renewal_${invoice.id}_${refs[index].id}`), { productId: refs[index].id, delta: -demand.quantity, reason: "subscription_renewal", orderId, subscriptionId, createdAt: admin.firestore.FieldValue.serverTimestamp(), createdBy: "system" });
+    });
+    transaction.create(orderRef, order);
+    transaction.set(subscriptionRef, { status: inventoryConflict ? "inventory_attention" : "active", lastInvoiceId: invoice.id, lastOrderId: orderId, inventoryError: inventoryConflict || admin.firestore.FieldValue.delete(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
+  if (!inventoryConflict) await completePaidOrderEffects(orderId);
+  else await sendSubscriptionLifecycleEmail(subscription.customerEmail, "Action needed for your Boanerges subscription", "Your renewal needs attention.", "Your payment succeeded, but an item is temporarily unavailable. We will contact you before fulfillment and will not substitute products without your approval.", `subscription-inventory-${invoice.id}`);
+}
+
+async function handleFailedSubscriptionInvoice(invoice: Stripe.Invoice) {
+  const subscriptionId = invoiceSubscriptionId(invoice);
+  if (!subscriptionId) return;
+  const ref = db.collection("subscriptions").doc(subscriptionId);
+  const snap = await ref.get();
+  const data = snap.data() || {};
+  await ref.set({ status: "payment_failed", lastFailedInvoiceId: invoice.id, paymentFailedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await sendSubscriptionLifecycleEmail(normalizeCustomerEmail((invoice as any).customer_email || data.customerEmail), "Payment failed for your Boanerges subscription", "We could not process your renewal.", "No renewal order will be fulfilled until Stripe successfully collects payment. Use your customer portal to update your payment method or manage the subscription.", `subscription-payment-failed-${invoice.id}`);
+}
+
+async function handleUpcomingSubscriptionInvoice(invoice: Stripe.Invoice) {
+  const subscriptionId = invoiceSubscriptionId(invoice);
+  if (!subscriptionId) return;
+  const snap = await db.collection("subscriptions").doc(subscriptionId).get();
+  if (!snap.exists) return;
+  const data = snap.data()!;
+  const dueAt = (invoice as any).next_payment_attempt || (invoice as any).period_end;
+  const dueText = dueAt ? new Date(dueAt * 1000).toLocaleDateString("en-US", { dateStyle: "long", timeZone: "America/Chicago" }) : "your next billing date";
+  await sendSubscriptionLifecycleEmail(normalizeCustomerEmail((invoice as any).customer_email || data.customerEmail), "Upcoming Boanerges subscription renewal", "Your next delivery is coming up.", `Stripe expects to process your recurring payment on ${dueText}. Update payment details or cancel before that charge using the secure customer portal linked from your original order status page.`, `subscription-upcoming-${invoice.id}`);
+  await snap.ref.set({ lastUpcomingInvoiceId: invoice.id, upcomingEmailSentAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+}
+
+async function syncStripeSubscription(subscription: Stripe.Subscription, event: Stripe.Event) {
+  const ref = db.collection("subscriptions").doc(subscription.id);
+  const before = await ref.get();
+  const previousStatus = String(before.data()?.status || "");
+  const wasCanceling = before.data()?.cancelAtPeriodEnd === true;
+  const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
+  const customer = await stripe.customers.retrieve(customerId) as any;
+  const email = !customer.deleted ? normalizeCustomerEmail(customer.email || before.data()?.customerEmail) : normalizeCustomerEmail(before.data()?.customerEmail);
+  const paused = Boolean((subscription as any).pause_collection);
+  await ref.set({ stripeSubscriptionId: subscription.id, stripeCustomerId: customerId, status: paused ? "paused" : subscription.status, stripeStatus: subscription.status, paused, cancelAtPeriodEnd: subscription.cancel_at_period_end, currentPeriodEnd: (subscription as any).current_period_end ? admin.firestore.Timestamp.fromMillis((subscription as any).current_period_end * 1000) : null, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  if ((subscription.status === "canceled" && previousStatus !== "canceled") || (subscription.cancel_at_period_end && !wasCanceling)) await sendSubscriptionLifecycleEmail(email, "Your Boanerges subscription was canceled", "Subscription cancellation confirmed.", "Future renewals have been stopped. Any order already paid and in fulfillment is unaffected.", `subscription-canceled-${event.id}`);
+  if (previousStatus && ["canceled", "paused", "past_due", "unpaid", "payment_failed"].includes(previousStatus) && subscription.status === "active" && !paused) await sendSubscriptionLifecycleEmail(email, "Your Boanerges subscription is active", "Your subscription has resumed.", "Future recurring deliveries and charges will continue on the cadence shown in your Stripe customer portal.", `subscription-resumed-${event.id}`);
 }
 
 if (!process.env.VERCEL) {

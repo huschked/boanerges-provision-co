@@ -39,6 +39,10 @@ type ProductFormState = {
   flavorNotesText: string;
   pairingsText: string;
   stripePriceId: string;
+  subscriptionEligible: boolean;
+  subscriptionPriceMonthly: string;
+  subscriptionPriceEveryTwoMonths: string;
+  subscriptionPriceEveryThreeMonths: string;
   featured: boolean;
   active: boolean;
 };
@@ -70,6 +74,10 @@ const defaultFormState: ProductFormState = {
   flavorNotesText: '',
   pairingsText: '',
   stripePriceId: '',
+  subscriptionEligible: false,
+  subscriptionPriceMonthly: '',
+  subscriptionPriceEveryTwoMonths: '',
+  subscriptionPriceEveryThreeMonths: '',
   featured: false,
   active: false,
 };
@@ -117,6 +125,10 @@ const hydrateForm = (product: Product): ProductFormState => {
   flavorNotesText: (product.flavorNotes || []).join(', '),
   pairingsText: (product.pairings || []).join(', '),
   stripePriceId: product.stripePriceId || '',
+  subscriptionEligible: product.subscriptionEligible === true,
+  subscriptionPriceMonthly: product.subscriptionPriceIds?.monthly || '',
+  subscriptionPriceEveryTwoMonths: product.subscriptionPriceIds?.every_two_months || '',
+  subscriptionPriceEveryThreeMonths: product.subscriptionPriceIds?.every_three_months || '',
   featured: Boolean(product.featured),
   active: product.active !== false,
   });
@@ -155,6 +167,12 @@ const buildProductPayload = (formData: ProductFormState) => {
     flavorNotes: splitList(formData.flavorNotesText),
     pairings: splitList(formData.pairingsText),
     stripePriceId: formData.stripePriceId.trim(),
+    subscriptionEligible: formData.subscriptionEligible,
+    subscriptionPriceIds: {
+      monthly: formData.subscriptionPriceMonthly.trim(),
+      every_two_months: formData.subscriptionPriceEveryTwoMonths.trim(),
+      every_three_months: formData.subscriptionPriceEveryThreeMonths.trim(),
+    },
     featured: formData.featured,
     active: formData.active,
   };
@@ -319,6 +337,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
 
     if (!formData.name.trim()) return toast.error('Product name is required.');
     if (!slug) return toast.error('A valid slug is required.');
+    if (formData.subscriptionEligible && ![formData.subscriptionPriceMonthly, formData.subscriptionPriceEveryTwoMonths, formData.subscriptionPriceEveryThreeMonths].some(value => value.trim().startsWith('price_'))) return toast.error('Add at least one recurring Stripe Price ID before enabling Subscribe & Save.');
     const productPayload = { ...buildProductPayload(formData), slug, updatedAt: Timestamp.now() };
     const issues = validateProductForPublication(productPayload);
     if (formData.active && issues.length > 0) {
@@ -448,6 +467,20 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
                   <div className="space-y-3">
                     <label className="block text-[10px] uppercase tracking-[0.2em] font-black text-brand-parchment/30">Slug</label>
                     <input value={formData.slug} onChange={(e) => handleFieldChange('slug', slugify(e.target.value))} className="input-premium block w-full" />
+                  </div>
+                </div>
+
+                <div className="border border-brand-gold/20 bg-brand-gold/[0.03] p-6 space-y-5">
+                  <label className="flex items-start gap-3 text-sm text-brand-parchment/75">
+                    <input type="checkbox" checked={formData.subscriptionEligible} onChange={(e) => handleFieldChange('subscriptionEligible', e.target.checked)} className="mt-1 accent-brand-gold" />
+                    <span><strong className="block text-brand-parchment">Eligible for Subscribe &amp; Save</strong><small className="text-brand-parchment/40">Only enable after at least one active recurring Stripe Price ID is configured.</small></span>
+                  </label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {[
+                      ['Every month', 'subscriptionPriceMonthly'],
+                      ['Every 2 months', 'subscriptionPriceEveryTwoMonths'],
+                      ['Every 3 months', 'subscriptionPriceEveryThreeMonths'],
+                    ].map(([label, field]) => <label key={field} className="space-y-2"><span className="block text-[10px] uppercase tracking-widest text-brand-parchment/40 font-black">{label} Stripe Price ID</span><input value={formData[field as keyof ProductFormState] as string} onChange={(e) => handleFieldChange(field as keyof ProductFormState, e.target.value)} placeholder="price_..." className="input-premium block w-full" /></label>)}
                   </div>
                 </div>
 

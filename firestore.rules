@@ -110,6 +110,11 @@ service cloud.firestore {
       allow read, create, update, delete: if isAdmin();
     }
 
+    match /subscriptions/{subscriptionId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /inventory_movements/{movementId} {
       allow read: if isAdmin();
       allow write: if isAdmin();

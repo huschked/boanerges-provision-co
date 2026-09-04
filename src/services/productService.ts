@@ -3,6 +3,7 @@ import { isProductPublishReady } from '../lib/productCatalog';
 
 export type ProductImageType = 'photograph' | 'illustrative';
 export type ProductMediaRole = 'jar-front' | 'salt-detail' | 'label-detail' | 'in-use' | 'ingredient-art' | 'other';
+export type SubscriptionCadence = 'monthly' | 'every_two_months' | 'every_three_months';
 
 export interface ProductMedia {
   url: string;
@@ -39,6 +40,8 @@ export interface Product {
   reorderThreshold: number;
   stripePriceId?: string;
   stripeTaxCode?: string;
+  subscriptionEligible?: boolean;
+  subscriptionPriceIds?: Partial<Record<SubscriptionCadence, string>>;
   imageUrl: string;
   imageAlt?: string;
   imageType?: ProductImageType;
