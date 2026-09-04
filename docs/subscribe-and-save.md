@@ -5,7 +5,8 @@
 1. Create a recurring Stripe Price for every product/cadence offered. Use monthly recurrence with interval counts of 1, 2, or 3 and USD pricing.
 2. In Admin > Inventory, edit the product, enter each recurring `price_...` ID, and enable Subscribe & Save.
 3. Enable and configure Stripe Customer Portal cancellation, payment-method updates, and invoice history.
-4. The production Stripe webhook must send `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `invoice.paid`, `invoice.payment_failed`, `invoice.upcoming`, `customer.subscription.updated`, and `customer.subscription.deleted` to `/api/webhooks/stripe`.
+4. The production Stripe webhook must send `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `invoice.paid`, `invoice.payment_failed`, `invoice.upcoming`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, and `customer.subscription.resumed` to `/api/webhooks/stripe`.
+5. Initially enable payment-method updates, invoice history, and cancellation in Customer Portal. Leave plan switching off until portal cadence changes are synchronized into the local subscription record.
 
 ## Operational behavior
 

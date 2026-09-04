@@ -653,6 +653,23 @@ async function getValidatedSubscriptionPrice(product: FirebaseFirestore.Document
   return { price, amount: toMoneyFromCents(price.unit_amount), label: expected.label };
 }
 
+function subscriptionStripeError(error: Stripe.errors.StripeError) {
+  const providerMessage = String(error.message || "Stripe rejected the subscription Checkout request.");
+  if (error instanceof Stripe.errors.StripeAuthenticationError) {
+    return { message: "Stripe authentication failed. Verify the deployed STRIPE_SECRET_KEY.", code: "stripe_authentication_error" };
+  }
+  if (error.code === "resource_missing" || /no such price/i.test(providerMessage)) {
+    return { message: "Stripe could not find the recurring Price. Confirm that the Price ID and deployed secret key are both from the same Stripe sandbox or live mode.", code: "stripe_price_not_found" };
+  }
+  if (/tax_behavior|automatic tax|tax code/i.test(providerMessage)) {
+    return { message: `Stripe rejected the subscription tax configuration: ${providerMessage}`, code: "stripe_tax_configuration_error" };
+  }
+  if (/shipping|shipping_rate/i.test(providerMessage)) {
+    return { message: `Stripe rejected the recurring shipping configuration: ${providerMessage}`, code: "stripe_shipping_configuration_error" };
+  }
+  return { message: `Stripe rejected subscription Checkout: ${providerMessage}`, code: error.code || "stripe_subscription_checkout_error" };
+}
+
 async function markStripeEventProcessed(event: Stripe.Event, processingToken: string) {
   const eventRef = db.collection("stripe_events").doc(event.id);
   return db.runTransaction(async transaction => {
@@ -2174,7 +2191,12 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
         await handleUpcomingSubscriptionInvoice(event.data.object as Stripe.Invoice);
       }
 
-      if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+      if (
+        event.type === "customer.subscription.updated" ||
+        event.type === "customer.subscription.deleted" ||
+        event.type === "customer.subscription.paused" ||
+        event.type === "customer.subscription.resumed"
+      ) {
         await syncStripeSubscription(event.data.object as Stripe.Subscription, event);
       }
 
@@ -2632,6 +2654,11 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       console.error("Subscription Checkout Error:", error);
       if (error instanceof CheckoutAvailabilityError) return res.status(409).json({ error: error.message, code: "inventory_unavailable", unavailableItems: error.unavailableItems });
       if (error instanceof CheckoutProviderError) return res.status(409).json({ error: error.message, code: error.code });
+      if (error instanceof Stripe.errors.StripeError) {
+        const diagnostic = subscriptionStripeError(error);
+        if (reservationId) await db.collection("pending_orders").doc(reservationId).set({ providerError: { code: diagnostic.code, message: diagnostic.message, stripeRequestId: error.requestId || "" }, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(() => undefined);
+        return res.status(502).json({ error: diagnostic.message, code: diagnostic.code, requestId: error.requestId || undefined });
+      }
       return res.status(500).json({ error: "Subscription checkout could not be started. Please try again.", code: "subscription_checkout_error" });
     }
   });
