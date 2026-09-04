@@ -47,9 +47,17 @@ service cloud.firestore {
       return value == null || (value is string && value.size() <= maxLength);
     }
 
+    function isValidProductMedia(media) {
+      return media is map &&
+        isShortText(media.url, 2000) &&
+        isShortText(media.alt, 300) &&
+        media.type in ["photograph", "illustrative"] &&
+        media.role in ["jar-front", "salt-detail", "label-detail", "in-use", "ingredient-art", "other"];
+    }
+
     function hasApprovedProductFacts(data) {
       return data.keys().hasAll([
-          "name", "slug", "category", "shortDescription", "imageUrl", "price", "sizeOz",
+          "name", "slug", "category", "shortDescription", "imageUrl", "imageAlt", "imageType", "gallery", "price", "sizeOz",
           "currentInventory", "reorderThreshold", "heatLevel", "heatLabel", "ingredients",
           "allergenStatement", "crossContactStatement", "storageInstructions", "shelfLife",
           "dietaryClaims", "dietaryClaimsApproved", "productFactsApproved", "productDataVersion"
@@ -59,6 +67,16 @@ service cloud.firestore {
         isShortText(data.category, 80) &&
         isShortText(data.shortDescription, 1000) &&
         isShortText(data.imageUrl, 2000) &&
+        isShortText(data.imageAlt, 300) &&
+        data.imageType in ["photograph", "illustrative"] &&
+        data.gallery is list && data.gallery.size() > 0 && data.gallery.size() <= 4 &&
+        isValidProductMedia(data.gallery[0]) &&
+        (data.gallery.size() < 2 || isValidProductMedia(data.gallery[1])) &&
+        (data.gallery.size() < 3 || isValidProductMedia(data.gallery[2])) &&
+        (data.gallery.size() < 4 || isValidProductMedia(data.gallery[3])) &&
+        data.gallery[0].url == data.imageUrl &&
+        data.gallery[0].alt == data.imageAlt &&
+        data.gallery[0].type == data.imageType &&
         data.price is number && data.price > 0 &&
         data.sizeOz is number && data.sizeOz > 0 &&
         data.currentInventory is int && data.currentInventory >= 0 &&

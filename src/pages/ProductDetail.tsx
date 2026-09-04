@@ -16,6 +16,7 @@ export const ProductDetail: React.FC = () => {
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const addItem = useCart((state) => state.addItem);
 
   useEffect(() => {
@@ -27,6 +28,7 @@ export const ProductDetail: React.FC = () => {
         const data = await getProductBySlug(slug);
         if (data) {
           setProduct(data);
+          setSelectedImageIndex(0);
           trackAnalyticsEvent({
             type: 'product_view',
             productId: data.id,
@@ -66,6 +68,10 @@ export const ProductDetail: React.FC = () => {
   const pairings = product.pairings ?? [];
   const ingredients = product.ingredients ?? [];
   const dietaryClaims = product.dietaryClaims ?? [];
+  const media = product.gallery?.length
+    ? product.gallery.filter((item) => item?.url && item?.alt)
+    : [{ url: product.imageUrl, alt: product.imageAlt || product.name, type: product.imageType || 'photograph' }];
+  const selectedMedia = media[selectedImageIndex] || media[0];
 
   return (
     <div className="pt-40 pb-32 animate-fade-in editorial-surface-dark relative overflow-hidden">
@@ -86,15 +92,17 @@ export const ProductDetail: React.FC = () => {
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="aspect-square bg-white rounded-sm overflow-hidden border border-white/10"
+              className="aspect-square bg-white rounded-sm overflow-hidden border border-white/10 relative"
             >
               <img 
-                src={product.imageUrl} 
-                alt={product.name} 
+                src={selectedMedia.url}
+                alt={selectedMedia.alt}
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />
+              {selectedMedia.type === 'illustrative' && <span className="absolute bottom-4 right-4 bg-brand-black/85 text-brand-parchment px-4 py-2 text-[9px] uppercase tracking-widest font-black">Illustrative image</span>}
             </motion.div>
+            {media.length > 1 && <div className="grid grid-cols-4 gap-4">{media.map((item, index) => <button key={`${item.url}-${index}`} type="button" onClick={() => setSelectedImageIndex(index)} className={cn('aspect-square overflow-hidden border bg-white', selectedImageIndex === index ? 'border-brand-gold' : 'border-white/10')}><img src={item.url} alt={item.alt} className="w-full h-full object-cover" /></button>)}</div>}
           </div>
 
           {/* Product Info */}

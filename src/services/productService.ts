@@ -1,6 +1,16 @@
 import { db, collection, getDocs, query, where, doc, getDoc } from '../lib/firebase';
 import { isProductPublishReady } from '../lib/productCatalog';
 
+export type ProductImageType = 'photograph' | 'illustrative';
+export type ProductMediaRole = 'jar-front' | 'salt-detail' | 'label-detail' | 'in-use' | 'ingredient-art' | 'other';
+
+export interface ProductMedia {
+  url: string;
+  alt: string;
+  type: ProductImageType;
+  role: ProductMediaRole;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -29,6 +39,9 @@ export interface Product {
   stripePriceId?: string;
   stripeTaxCode?: string;
   imageUrl: string;
+  imageAlt?: string;
+  imageType?: ProductImageType;
+  gallery?: ProductMedia[];
   category?: string;
   createdAt?: unknown;
   updatedAt?: unknown;

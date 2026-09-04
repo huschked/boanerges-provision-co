@@ -136,22 +136,6 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Ready
 
-### WEB-034 - Replace Placeholder Product Media
-
-- **Priority:** High
-- **Area:** storefront/content
-- **Goal:** Present every sellable product with accurate, trustworthy media rather than unrelated stock or placeholder imagery.
-- **Acceptance Criteria:**
-  - Picsum, unrelated stock imagery, broken sources, and generic detail thumbnails are removed from customer-facing product and bundle surfaces.
-  - The product schema supports an ordered gallery with a jar-front image, salt/texture detail, label detail, and product-in-use image where supplied.
-  - Missing required media prevents a product from being published as active.
-  - Alt text identifies the actual product and view rather than using generic values such as `Detail`.
-  - Cart, checkout, emails, product cards, PDPs, and bundles use the same approved primary image.
-- **Verification:**
-  - Search the built app and active product records for Picsum, placeholder, empty, or unrelated media.
-  - Browser-check every active SKU and bundle at desktop and mobile sizes.
-- **Notes / Links:** Real product photography is a business input and should not be replaced with AI imagery that could misrepresent the food. Implementation can establish the gallery and publish guard while final assets are prepared.
-
 ### WEB-036 - Rebuild or Disable Bundle Commerce
 
 - **Priority:** High
@@ -303,9 +287,24 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## In Progress
 
-No cards currently in progress.
-
 ## Review / Verify
+
+### WEB-034 - Replace Placeholder Product Media
+
+- **Priority:** High
+- **Area:** storefront/content
+- **Goal:** Present every sellable product with accurate, trustworthy media rather than unrelated stock or placeholder imagery.
+- **Acceptance Criteria:**
+  - Picsum, unrelated stock imagery, broken sources, and generic detail thumbnails are removed from customer-facing product and bundle surfaces.
+  - The product schema supports an ordered gallery with a jar-front image, salt/texture detail, label detail, and product-in-use image where supplied.
+  - Missing required media prevents a product from being published as active.
+  - Alt text identifies the actual product and view rather than using generic values such as `Detail`.
+  - Cart, checkout, emails, product cards, PDPs, and bundles use the same approved primary image.
+- **Verification:**
+  - Search the built app and active product records for Picsum, placeholder, empty, or unrelated media.
+  - Browser-check every active SKU and bundle at desktop and mobile sizes.
+- **Progress:** Eight optimized temporary ingredient artworks replace the Picsum and Unsplash references in source and seed data. The Admin editor now supports ordered upload/URL gallery entries, per-image alt text, media classification, view roles, reordering, and removal. Shared validation blocks incomplete, duplicate, or primary-conflicting galleries; Firestore enforces the required primary gallery record. Visible illustrative-image disclosure and a safe media-only migration are implemented. TypeScript, automated tests, the production build, source scans, and direct HTTP checks for all eight WebP assets pass. Deployment, the media migration, browser verification against live product records, and eventual real photography remain.
+- **Notes / Links:** On 2026-09-03 the owner approved clearly disclosed AI-generated ingredient artwork as temporary media. Replace it with real jar, label, texture, and in-use photography when available; do not treat the illustrative assets as exact depictions of the finished products.
 
 ### WEB-035 - Enforce Complete and Consistent Product Data
 

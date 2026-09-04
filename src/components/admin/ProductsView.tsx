@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Filter, Plus, Edit, Trash2, X, Upload, Loader2, Package, Search, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Filter, Plus, Edit, Trash2, X, Upload, Loader2, Package, Search, AlertTriangle, CheckCircle2, ArrowUp, ArrowDown, ImagePlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, storage, doc, getDoc, setDoc, deleteDoc, Timestamp, ref, uploadBytes, getDownloadURL, deleteObject } from '@/src/lib/firebase';
 import { cn } from '@/src/lib/utils';
-import { Product } from '@/src/services/productService';
+import { Product, ProductMedia, ProductMediaRole } from '@/src/services/productService';
 import { PRODUCT_DATA_VERSION, auditProductCatalog, getHeatLabel, validateProductForPublication } from '@/src/lib/productCatalog';
 import toast from 'react-hot-toast';
 
@@ -23,6 +23,10 @@ type ProductFormState = {
   heatLevel: string;
   shortDescription: string;
   imageUrl: string;
+  imageAlt: string;
+  imageType: 'photograph' | 'illustrative';
+  imageRole: ProductMediaRole;
+  galleryItems: ProductMedia[];
   tagsText: string;
   ingredientsText: string;
   allergenStatement: string;
@@ -50,6 +54,10 @@ const defaultFormState: ProductFormState = {
   heatLevel: '0',
   shortDescription: '',
   imageUrl: '',
+  imageAlt: '',
+  imageType: 'photograph',
+  imageRole: 'jar-front',
+  galleryItems: [],
   tagsText: 'Spicy',
   ingredientsText: '',
   allergenStatement: '',
@@ -67,6 +75,7 @@ const defaultFormState: ProductFormState = {
 };
 
 const MAX_PRODUCT_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const MAX_PRODUCT_GALLERY_IMAGES = 4;
 const ALLOWED_PRODUCT_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
 const splitList = (value: string) => value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
@@ -74,7 +83,14 @@ const splitList = (value: string) => value.split(/[\n,]/).map((item) => item.tri
 const slugify = (value: string) =>
   value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
-const hydrateForm = (product: Product): ProductFormState => ({
+const hydrateForm = (product: Product): ProductFormState => {
+  const gallery = Array.isArray(product.gallery) ? product.gallery : [];
+  const primary = gallery[0];
+  const galleryItems = primary?.url === product.imageUrl
+    ? gallery.slice(1)
+    : gallery.filter((item) => item.url !== product.imageUrl);
+
+  return ({
   name: product.name,
   slug: product.slug || product.id,
   category: product.category || 'Spicy',
@@ -85,6 +101,10 @@ const hydrateForm = (product: Product): ProductFormState => ({
   heatLevel: String(product.heatLevel ?? 0),
   shortDescription: product.shortDescription || '',
   imageUrl: product.imageUrl || '',
+  imageAlt: product.imageAlt || '',
+  imageType: product.imageType || 'photograph',
+  imageRole: primary?.role || (product.imageType === 'illustrative' ? 'ingredient-art' : 'jar-front'),
+  galleryItems,
   tagsText: (product.tags || []).join(', '),
   ingredientsText: (product.ingredients || []).join(', '),
   allergenStatement: product.allergenStatement || '',
@@ -99,7 +119,8 @@ const hydrateForm = (product: Product): ProductFormState => ({
   stripePriceId: product.stripePriceId || '',
   featured: Boolean(product.featured),
   active: product.active !== false,
-});
+  });
+};
 
 const buildProductPayload = (formData: ProductFormState) => {
   const heatLevel = Number(formData.heatLevel);
@@ -115,6 +136,12 @@ const buildProductPayload = (formData: ProductFormState) => {
     heatLabel: getHeatLabel(heatLevel),
     shortDescription: formData.shortDescription.trim(),
     imageUrl: formData.imageUrl.trim(),
+    imageAlt: formData.imageAlt.trim(),
+    imageType: formData.imageType,
+    gallery: formData.imageUrl.trim() ? [
+      { url: formData.imageUrl.trim(), alt: formData.imageAlt.trim(), type: formData.imageType, role: formData.imageRole },
+      ...formData.galleryItems.map((item) => ({ ...item, url: item.url.trim(), alt: item.alt.trim() })),
+    ] : [],
     tags: Array.from(new Set([...splitList(formData.tagsText), formData.category])),
     ingredients: splitList(formData.ingredientsText),
     allergenStatement: formData.allergenStatement.trim(),
@@ -202,6 +229,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
       await uploadBytes(storageRef, file);
       const downloadURL = await getDownloadURL(storageRef);
       handleFieldChange('imageUrl', downloadURL);
+      handleFieldChange('imageType', 'photograph');
       toast.success('Image uploaded.');
     } catch (error) {
       console.error('Error uploading image:', error);
@@ -209,6 +237,81 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (formData.galleryItems.length >= MAX_PRODUCT_GALLERY_IMAGES - 1) {
+      toast.error(`A product gallery can contain up to ${MAX_PRODUCT_GALLERY_IMAGES} images including the primary image.`);
+      e.target.value = '';
+      return;
+    }
+
+    if (!ALLOWED_PRODUCT_IMAGE_TYPES.includes(file.type)) {
+      toast.error('Upload a PNG, JPEG, or WebP image.');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > MAX_PRODUCT_IMAGE_SIZE_BYTES) {
+      toast.error('Product images must be 5 MB or smaller.');
+      e.target.value = '';
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const storageRef = ref(storage, `products/gallery/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(storageRef);
+      setFormData((current) => ({
+        ...current,
+        galleryItems: [...current.galleryItems, { url: downloadURL, alt: '', type: 'photograph', role: 'other' }],
+      }));
+      toast.success('Gallery image uploaded. Add its description and view type.');
+    } catch (error) {
+      console.error('Error uploading gallery image:', error);
+      toast.error('Unable to upload gallery image.');
+    } finally {
+      e.target.value = '';
+      setIsUploading(false);
+    }
+  };
+
+  const addGalleryUrl = () => {
+    if (formData.galleryItems.length >= MAX_PRODUCT_GALLERY_IMAGES - 1) {
+      toast.error(`A product gallery can contain up to ${MAX_PRODUCT_GALLERY_IMAGES} images including the primary image.`);
+      return;
+    }
+    setFormData((current) => ({
+      ...current,
+      galleryItems: [...current.galleryItems, { url: '', alt: '', type: 'photograph', role: 'other' }],
+    }));
+  };
+
+  const updateGalleryItem = (index: number, field: keyof ProductMedia, value: string) => {
+    setFormData((current) => ({
+      ...current,
+      galleryItems: current.galleryItems.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } as ProductMedia : item),
+    }));
+  };
+
+  const moveGalleryItem = (index: number, direction: -1 | 1) => {
+    setFormData((current) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.galleryItems.length) return current;
+      const galleryItems = [...current.galleryItems];
+      [galleryItems[index], galleryItems[nextIndex]] = [galleryItems[nextIndex], galleryItems[index]];
+      return { ...current, galleryItems };
+    });
+  };
+
+  const removeGalleryItem = (index: number) => {
+    setFormData((current) => ({
+      ...current,
+      galleryItems: current.galleryItems.filter((_, itemIndex) => itemIndex !== index),
+    }));
   };
 
   const handleSave = async () => {
@@ -463,9 +566,24 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
                     </label>
                   </div>
                   <input value={formData.imageUrl} onChange={(e) => handleFieldChange('imageUrl', e.target.value)} className="input-premium block w-full text-[11px]" placeholder="https://..." />
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_150px_150px] gap-4">
+                    <input value={formData.imageAlt} onChange={(e) => handleFieldChange('imageAlt', e.target.value)} className="input-premium block w-full text-[11px]" placeholder="Describe the exact product and view" />
+                    <select value={formData.imageType} onChange={(e) => handleFieldChange('imageType', e.target.value as ProductFormState['imageType'])} className="input-premium block w-full appearance-none">
+                      <option value="photograph">Photograph</option>
+                      <option value="illustrative">Illustrative</option>
+                    </select>
+                    <select value={formData.imageRole} onChange={(e) => handleFieldChange('imageRole', e.target.value as ProductMediaRole)} className="input-premium block w-full appearance-none" aria-label="Primary image view">
+                      <option value="jar-front">Jar front</option>
+                      <option value="salt-detail">Salt detail</option>
+                      <option value="label-detail">Label detail</option>
+                      <option value="in-use">Product in use</option>
+                      <option value="ingredient-art">Ingredient art</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
                   <div className="aspect-square rounded-sm border border-white/10 overflow-hidden bg-white/5 relative">
                     {formData.imageUrl ? (
-                      <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                      <><img src={formData.imageUrl} alt={formData.imageAlt || 'Product media preview'} className="w-full h-full object-cover" />{formData.imageType === 'illustrative' && <span className="absolute bottom-3 left-3 bg-brand-black/80 text-brand-parchment px-3 py-1 text-[8px] uppercase tracking-widest font-black">Illustrative image</span>}</>
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center text-brand-parchment/10 space-y-4">
                         <Package size={48} strokeWidth={1} />
@@ -494,9 +612,65 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
                 <div className={cn('p-6 border text-xs leading-relaxed', publicationIssues.length ? 'border-amber-400/25 bg-amber-400/[0.05] text-amber-100/70' : 'border-green-400/20 bg-green-400/[0.04] text-green-100/70')}>
                   <p className="font-black text-brand-parchment mb-2">{publicationIssues.length ? `${publicationIssues.length} required item${publicationIssues.length === 1 ? '' : 's'} remaining` : 'Ready to activate'}</p>
                   {publicationIssues.length > 0 && <ul className="list-disc pl-4 space-y-1">{publicationIssues.map((issue) => <li key={issue.field}>{issue.label}: {issue.message}</li>)}</ul>}
+                  </div>
+                </div>
+
+                <div className="border-t border-white/10 pt-6 space-y-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.2em] font-black text-brand-gold">Additional gallery images</p>
+                      <p className="mt-1 text-[10px] leading-relaxed text-brand-parchment/35">Shown after the primary image in this exact order. Each image needs a specific description and view type.</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <label className="cursor-pointer text-[9px] uppercase tracking-widest font-black text-brand-gold/60 hover:text-brand-gold flex items-center gap-2">
+                        <input type="file" className="hidden" accept={ALLOWED_PRODUCT_IMAGE_TYPES.join(',')} onChange={handleGalleryUpload} disabled={isUploading || formData.galleryItems.length >= MAX_PRODUCT_GALLERY_IMAGES - 1} />
+                        {isUploading ? <Loader2 size={12} className="animate-spin" /> : <ImagePlus size={12} />}
+                        Upload
+                      </label>
+                      <button type="button" onClick={addGalleryUrl} className="text-[9px] uppercase tracking-widest font-black text-brand-gold/60 hover:text-brand-gold flex items-center gap-2">
+                        <Plus size={12} /> Add URL
+                      </button>
+                    </div>
+                  </div>
+
+                  {formData.galleryItems.length === 0 ? (
+                    <p className="border border-dashed border-white/10 p-4 text-[10px] text-brand-parchment/30">No additional views yet. Add jar, salt-texture, label, or product-in-use photography when available.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {formData.galleryItems.map((item, index) => (
+                        <div key={`${item.url}-${index}`} className="border border-white/10 bg-white/[0.02] p-4 space-y-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-16 h-16 shrink-0 border border-white/10 bg-white/5 overflow-hidden">
+                              {item.url ? <img src={item.url} alt="" className="w-full h-full object-cover" /> : <ImagePlus className="m-5 text-brand-parchment/15" size={24} />}
+                            </div>
+                            <input value={item.url} onChange={(e) => updateGalleryItem(index, 'url', e.target.value)} className="input-premium min-w-0 flex-1 text-[10px]" placeholder="https://..." />
+                            <div className="flex gap-1">
+                              <button type="button" onClick={() => moveGalleryItem(index, -1)} disabled={index === 0} className="p-2 text-brand-parchment/40 hover:text-brand-gold disabled:opacity-20" aria-label="Move image earlier"><ArrowUp size={15} /></button>
+                              <button type="button" onClick={() => moveGalleryItem(index, 1)} disabled={index === formData.galleryItems.length - 1} className="p-2 text-brand-parchment/40 hover:text-brand-gold disabled:opacity-20" aria-label="Move image later"><ArrowDown size={15} /></button>
+                              <button type="button" onClick={() => removeGalleryItem(index)} className="p-2 text-red-300/50 hover:text-red-300" aria-label="Remove image"><Trash2 size={15} /></button>
+                            </div>
+                          </div>
+                          <input value={item.alt} onChange={(e) => updateGalleryItem(index, 'alt', e.target.value)} className="input-premium block w-full text-[10px]" placeholder="Specific image description, such as jar back label with ingredient panel" />
+                          <div className="grid grid-cols-2 gap-3">
+                            <select value={item.type} onChange={(e) => updateGalleryItem(index, 'type', e.target.value)} className="input-premium block w-full appearance-none text-[10px]">
+                              <option value="photograph">Photograph</option>
+                              <option value="illustrative">Illustrative</option>
+                            </select>
+                            <select value={item.role} onChange={(e) => updateGalleryItem(index, 'role', e.target.value)} className="input-premium block w-full appearance-none text-[10px]">
+                              <option value="jar-front">Jar front</option>
+                              <option value="salt-detail">Salt detail</option>
+                              <option value="label-detail">Label detail</option>
+                              <option value="in-use">Product in use</option>
+                              <option value="ingredient-art">Ingredient art</option>
+                              <option value="other">Other</option>
+                            </select>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
 
             <div className="flex justify-end gap-6 mt-12 pt-10 border-t border-white/5">
               <button onClick={closeEditor} className="px-8 py-3 text-[10px] uppercase tracking-[0.3em] font-black text-brand-parchment/40 hover:text-brand-parchment transition-colors">

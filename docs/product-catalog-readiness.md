@@ -4,7 +4,7 @@ WEB-035 makes an active Firestore product a publishable food-product record, not
 
 ## Required before activation
 
-- Exact customer-facing name, category, description, and approved primary image
+- Exact customer-facing name, category, description, primary image, descriptive image alt text, and photograph/illustration classification
 - Current price and exact net weight in ounces
 - Whole-number inventory and reorder threshold
 - Heat rating from 0–5; the application derives the matching heat label

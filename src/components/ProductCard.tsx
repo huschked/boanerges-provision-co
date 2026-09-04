@@ -25,11 +25,16 @@ export const ProductCard: React.FC<{ product: Product; className?: string; dark?
       )}>
         <img 
           src={product.imageUrl} 
-          alt={product.name} 
+          alt={product.imageAlt || product.name}
           className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
           referrerPolicy="no-referrer"
         />
         <div className="absolute inset-0 bg-brand-black/0 group-hover:bg-brand-black/20 transition-colors duration-700" />
+        {product.imageType === 'illustrative' && (
+          <div className="absolute bottom-3 right-3 px-3 py-1 bg-brand-black/80 text-brand-parchment text-[8px] font-black uppercase tracking-[0.16em] rounded-full">
+            Illustrative image
+          </div>
+        )}
         
         {/* Quick Add Overlay */}
         <div className="absolute bottom-0 left-0 right-0 p-8 translate-y-6 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-700 ease-out">

@@ -36,7 +36,7 @@ const productSeeds = [
     featured: true,
     currentInventory: 100,
     reorderThreshold: 20,
-    imageUrl: "https://picsum.photos/seed/jalapeno/800/800",
+    imageUrl: "/products/smoked-jalapeno-garlic-illustrative.webp",
   },
   {
     name: "Habanero Lime Garlic",
@@ -52,7 +52,7 @@ const productSeeds = [
     featured: true,
     currentInventory: 85,
     reorderThreshold: 15,
-    imageUrl: "/products/habanero-lime-garlic.png",
+    imageUrl: "/products/habanero-lime-garlic-illustrative.webp",
   },
   {
     name: "Hot Lemon Pepper",
@@ -68,7 +68,7 @@ const productSeeds = [
     featured: false,
     currentInventory: 120,
     reorderThreshold: 25,
-    imageUrl: "https://picsum.photos/seed/lemonpepper/800/800",
+    imageUrl: "/products/hot-lemon-pepper-illustrative.webp",
   },
   {
     name: "Smoky Habanero Paprika",
@@ -84,7 +84,7 @@ const productSeeds = [
     featured: true,
     currentInventory: 60,
     reorderThreshold: 15,
-    imageUrl: "https://picsum.photos/seed/paprika/800/800",
+    imageUrl: "/products/smoky-habanero-paprika-illustrative.webp",
   },
   {
     name: "Roasted Garlic Ghost Pepper",
@@ -100,7 +100,7 @@ const productSeeds = [
     featured: true,
     currentInventory: 40,
     reorderThreshold: 10,
-    imageUrl: "https://picsum.photos/seed/ghost/800/800",
+    imageUrl: "/products/roasted-garlic-ghost-pepper-illustrative.webp",
   },
   {
     name: "Smoked Garlic Onion",
@@ -116,7 +116,7 @@ const productSeeds = [
     featured: false,
     currentInventory: 150,
     reorderThreshold: 30,
-    imageUrl: "https://picsum.photos/seed/garliconion/800/800",
+    imageUrl: "/products/smoked-garlic-onion-illustrative.webp",
   },
   {
     name: "Lemon Rosemary",
@@ -132,7 +132,7 @@ const productSeeds = [
     featured: false,
     currentInventory: 90,
     reorderThreshold: 20,
-    imageUrl: "https://picsum.photos/seed/rosemary/800/800",
+    imageUrl: "/products/lemon-rosemary-illustrative.webp",
   },
   {
     name: "Porcini Garlic Umami",
@@ -148,7 +148,7 @@ const productSeeds = [
     featured: true,
     currentInventory: 50,
     reorderThreshold: 10,
-    imageUrl: "https://picsum.photos/seed/porcini/800/800",
+    imageUrl: "/products/porcini-garlic-umami-illustrative.webp",
   },
 ];
 
@@ -166,6 +166,14 @@ const products = productSeeds.map((product) => ({
   dietaryClaimsApproved: false,
   productFactsApproved: false,
   productDataVersion: 1,
+  imageType: "illustrative",
+  imageAlt: `Illustrative view of ${product.name} finishing salt with ingredient cues`,
+  gallery: [{
+    url: product.imageUrl,
+    alt: `Illustrative view of ${product.name} finishing salt with ingredient cues`,
+    type: "illustrative",
+    role: "ingredient-art",
+  }],
 }));
 
 async function seed() {

@@ -96,6 +96,9 @@ export const Bundles: React.FC = () => {
                             currentInventory: 100,
                             reorderThreshold: 10,
                             imageUrl: p.image,
+                            imageAlt: `Illustrative view of ${p.name} finishing salt with ingredient cues`,
+                            imageType: 'illustrative',
+                            gallery: [{ url: p.image, alt: `Illustrative view of ${p.name} finishing salt with ingredient cues`, type: 'illustrative', role: 'ingredient-art' }],
                             category: p.category,
                             heatLevel: p.heatLevel
                           };

@@ -205,7 +205,7 @@ export const Checkout: React.FC = () => {
               {items.map((item) => (
                 <div key={item.product.id} className="flex gap-6">
                   <div className="w-20 h-20 bg-white rounded-sm overflow-hidden flex-shrink-0 border border-white/10 relative">
-                    <img src={item.product.imageUrl} alt={item.product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={item.product.imageUrl} alt={item.product.imageAlt || item.product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     <span className="absolute -top-2 -right-2 bg-brand-gold text-brand-black text-[10px] w-6 h-6 rounded-full flex items-center justify-center font-black shadow-lg">
                       {item.quantity}
                     </span>

@@ -75,7 +75,7 @@ export const CartDrawer: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
                     <div className="w-24 h-24 bg-white rounded-sm overflow-hidden flex-shrink-0 border border-white/10">
                       <img 
                         src={item.product.imageUrl} 
-                        alt={item.product.name} 
+                        alt={item.product.imageAlt || item.product.name}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                         referrerPolicy="no-referrer"
                       />

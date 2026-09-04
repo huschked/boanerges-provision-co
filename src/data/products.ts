@@ -28,7 +28,7 @@ export const products: Product[] = [
     flavorNotes: ['Smoky', 'Garlic-forward', 'Mild Heat'],
     pairings: ['Grilled Chicken', 'Roasted Potatoes', 'Corn on the Cob', 'Popcorn'],
     ingredients: ['Sea Salt', 'Smoked Jalapeño', 'Roasted Garlic'],
-    image: 'https://images.unsplash.com/photo-1594489428504-5c0c480a15fd?q=80&w=800&auto=format&fit=crop',
+    image: '/products/smoked-jalapeno-garlic-illustrative.webp',
     category: 'Spicy',
     tags: ['Smoky', 'Savory']
   },
@@ -44,7 +44,7 @@ export const products: Product[] = [
     flavorNotes: ['Citrusy', 'Fruity Heat', 'Zesty'],
     pairings: ['Fish Tacos', 'Margarita Rims', 'Grilled Shrimp', 'Fresh Mango'],
     ingredients: ['Sea Salt', 'Habanero Pepper', 'Lime Zest', 'Garlic'],
-    image: 'https://images.unsplash.com/photo-1591871937573-74dbba515c4c?q=80&w=800&auto=format&fit=crop',
+    image: '/products/habanero-lime-garlic-illustrative.webp',
     category: 'Spicy',
     tags: ['Citrus', 'Bold Heat']
   },
@@ -60,7 +60,7 @@ export const products: Product[] = [
     flavorNotes: ['Bright Citrus', 'Peppery', 'Clean Heat'],
     pairings: ['Roasted Salmon', 'Asparagus', 'Grilled Wings', 'Pasta Primavera'],
     ingredients: ['Sea Salt', 'Black Pepper', 'Lemon Peel', 'Chili Flakes'],
-    image: 'https://images.unsplash.com/photo-1585059895524-72359e061381?q=80&w=800&auto=format&fit=crop',
+    image: '/products/hot-lemon-pepper-illustrative.webp',
     category: 'Citrus',
     tags: ['Citrus', 'Herbal']
   },
@@ -76,7 +76,7 @@ export const products: Product[] = [
     flavorNotes: ['Deep Smoke', 'Earthy', 'Warm Heat'],
     pairings: ['Beef Brisket', 'Pork Chops', 'Deviled Eggs', 'Roasted Nuts'],
     ingredients: ['Sea Salt', 'Smoked Paprika', 'Habanero Pepper'],
-    image: 'https://images.unsplash.com/photo-1509358271058-acd22cc93898?q=80&w=800&auto=format&fit=crop',
+    image: '/products/smoky-habanero-paprika-illustrative.webp',
     category: 'Spicy',
     tags: ['Smoky', 'Savory']
   },
@@ -92,7 +92,7 @@ export const products: Product[] = [
     flavorNotes: ['Intense Heat', 'Caramelized Garlic', 'Lingering'],
     pairings: ['Chili', 'Steak', 'Spicy Noodles', 'Bloody Marys'],
     ingredients: ['Sea Salt', 'Roasted Garlic', 'Ghost Pepper'],
-    image: 'https://images.unsplash.com/photo-1588166524941-3bf61a9c41db?q=80&w=800&auto=format&fit=crop',
+    image: '/products/roasted-garlic-ghost-pepper-illustrative.webp',
     category: 'Spicy',
     tags: ['Extreme Heat', 'Savory']
   },
@@ -108,7 +108,7 @@ export const products: Product[] = [
     flavorNotes: ['Savory', 'Sweet Onion', 'Rich Smoke'],
     pairings: ['Burgers', 'Everything Bagels', 'Roasted Veggies', 'Steak'],
     ingredients: ['Sea Salt', 'Smoked Garlic', 'Toasted Onion'],
-    image: 'https://images.unsplash.com/photo-1540148426945-6cf22a6b2383?q=80&w=800&auto=format&fit=crop',
+    image: '/products/smoked-garlic-onion-illustrative.webp',
     category: 'Savory',
     tags: ['Savory', 'Smoky']
   },
@@ -124,7 +124,7 @@ export const products: Product[] = [
     flavorNotes: ['Aromatic', 'Piney', 'Bright'],
     pairings: ['Focaccia', 'Roasted Lamb', 'White Fish', 'Potatoes'],
     ingredients: ['Sea Salt', 'Rosemary', 'Lemon Zest'],
-    image: 'https://images.unsplash.com/photo-1608500218890-c5f149f1348e?q=80&w=800&auto=format&fit=crop',
+    image: '/products/lemon-rosemary-illustrative.webp',
     category: 'Herbal',
     tags: ['Herbal', 'Citrus']
   },
@@ -140,7 +140,7 @@ export const products: Product[] = [
     flavorNotes: ['Earthy', 'Mushroom', 'Deep Umami'],
     pairings: ['Risotto', 'Truffle Fries', 'Steak', 'Mushroom Pasta'],
     ingredients: ['Sea Salt', 'Porcini Mushroom', 'Garlic'],
-    image: 'https://images.unsplash.com/photo-1569460275615-7dc3dfc40389?q=80&w=800&auto=format&fit=crop',
+    image: '/products/porcini-garlic-umami-illustrative.webp',
     category: 'Savory',
     tags: ['Savory', 'Earthy']
   }

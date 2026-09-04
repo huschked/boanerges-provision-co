@@ -48,6 +48,8 @@ export function buildPublicOrderStatus(
     items: (Array.isArray(order.items) ? order.items : []).map((item: Record<string, unknown>) => ({
       name: String(item.name || 'Item'),
       imageUrl: safePublicUrl(item.imageUrl),
+      imageAlt: String(item.imageAlt || item.name || 'Purchased item'),
+      imageType: item.imageType === 'illustrative' ? 'illustrative' : 'photograph',
       sizeOz: Number(item.sizeOz || 0),
       unitPrice: Number(item.price || 0),
       quantity: Number(item.quantity || 0),

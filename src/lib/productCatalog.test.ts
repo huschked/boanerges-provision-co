@@ -4,7 +4,8 @@ import { createProductSnapshot, getHeatLabel, isProductPublishReady, validatePro
 
 const validProduct = {
   name: 'Approved Salt', slug: 'approved-salt', category: 'Savory', shortDescription: 'Approved description',
-  imageUrl: '/products/approved.webp', price: 12, sizeOz: 3, currentInventory: 10, reorderThreshold: 3,
+  imageUrl: '/products/approved.webp', imageAlt: 'Approved Salt jar front', imageType: 'photograph', price: 12, sizeOz: 3, currentInventory: 10, reorderThreshold: 3,
+  gallery: [{ url: '/products/approved.webp', alt: 'Approved Salt jar front', type: 'photograph', role: 'jar-front' }],
   heatLevel: 2, heatLabel: 'Medium', ingredients: ['Sea salt', 'Pepper'],
   allergenStatement: 'Approved allergen statement', crossContactStatement: 'Approved cross-contact statement',
   storageInstructions: 'Approved storage instructions', shelfLife: 'Approved shelf-life guidance',
@@ -25,6 +26,17 @@ test('heat labels are deterministic and validated', () => {
   assert.equal(getHeatLabel(5), 'Extreme');
   assert.equal(getHeatLabel(6), '');
   assert.equal(isProductPublishReady({ ...validProduct, heatLabel: 'Hot' }), false);
+});
+
+test('publication validation rejects incomplete, conflicting, and duplicate gallery media', () => {
+  const incomplete = validateProductForPublication({ ...validProduct, gallery: [{ url: '/products/approved.webp', alt: '', type: 'photograph', role: 'jar-front' }] });
+  assert.equal(incomplete.some((issue) => issue.field === 'galleryMedia'), true);
+
+  const conflicting = validateProductForPublication({ ...validProduct, gallery: [{ url: '/products/different.webp', alt: 'Different', type: 'photograph', role: 'jar-front' }] });
+  assert.equal(conflicting.some((issue) => issue.field === 'galleryPrimary'), true);
+
+  const duplicate = validateProductForPublication({ ...validProduct, gallery: [validProduct.gallery[0], validProduct.gallery[0]] });
+  assert.equal(duplicate.some((issue) => issue.field === 'galleryDuplicates'), true);
 });
 
 test('order snapshots copy product facts and cannot drift with later edits', () => {

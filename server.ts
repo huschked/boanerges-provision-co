@@ -99,6 +99,8 @@ type PendingOrderItem = {
   quantity: number;
   heatLevel: number;
   imageUrl?: string;
+  imageAlt?: string;
+  imageType?: string;
   sizeOz?: number;
   heatLabel?: string;
   ingredients?: string[];
@@ -940,7 +942,7 @@ function buildOrderEmailHtml({
       const productImageUrl = getProductEmailImageUrl(item.imageUrl);
       return `
           <tr>
-            <td style="padding:12px 8px 12px 0;color:#f4ecd8;font-size:15px;font-weight:600;">${productImageUrl ? `<img src="${escapeHtml(productImageUrl)}" alt="" width="44" height="44" style="display:inline-block;width:44px;height:44px;object-fit:cover;vertical-align:middle;margin-right:10px;border:1px solid rgba(255,255,255,0.08);" />` : ""}<span style="display:inline-block;vertical-align:middle;">${escapeHtml(item.name)}${item.sizeOz ? `<br><span style="color:#8e8576;font-size:12px;font-weight:400;">${item.sizeOz} oz</span>` : ""}</span></td>
+            <td style="padding:12px 8px 12px 0;color:#f4ecd8;font-size:15px;font-weight:600;">${productImageUrl ? `<img src="${escapeHtml(productImageUrl)}" alt="${escapeHtml(item.imageAlt || item.name)}" width="44" height="44" style="display:inline-block;width:44px;height:44px;object-fit:cover;vertical-align:middle;margin-right:10px;border:1px solid rgba(255,255,255,0.08);" />` : ""}<span style="display:inline-block;vertical-align:middle;">${escapeHtml(item.name)}${item.sizeOz ? `<br><span style="color:#8e8576;font-size:12px;font-weight:400;">${item.sizeOz} oz</span>` : ""}</span></td>
             <td style="padding:12px 8px;color:#b7ae9c;font-size:14px;text-align:right;white-space:nowrap;">$${item.price.toFixed(2)}</td>
             <td style="padding:12px 8px;color:#b7ae9c;font-size:14px;text-align:center;">${item.quantity}</td>
             <td style="padding:12px 0;color:#c5a059;font-size:14px;text-align:right;font-weight:700;">$${(item.price * item.quantity).toFixed(2)}</td>
