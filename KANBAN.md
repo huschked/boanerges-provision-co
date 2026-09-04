@@ -286,7 +286,7 @@ This board is the working queue for website development. Keep cards actionable e
   - Existing bundle purchase controls remain disabled until these requirements pass.
 - **Verification:**
   - Automated coverage validates bundle value, savings, component-limited stock, invalid definitions, component-expanded pick lists, component-expanded refunds, and the existing repeated-webhook protections.
-  - Deploy the code and Firestore rules, run `npm run seed:bundles`, approve bundle facts in Admin, and test the scenarios in `docs/bundle-commerce.md` against Stripe test mode and live Firestore records.
+  - Deploy the code and Firestore rules, create the inactive starter templates from Admin, approve bundle facts, and test the scenarios in `docs/bundle-commerce.md` against Stripe test mode and live Firestore records.
 - **Progress:** Firestore-managed definitions, Admin bundle management, server-resolved storefront offers, component-derived availability, server-owned Stripe pricing/tax metadata, preserved order identity, component reservations/decrements, pick-list expansion, and component-aware cancellation restocking are implemented. Hard-coded client bundle definitions and invented client inventory are removed.
 - **Notes / Links:** Operational and owner verification is documented in `docs/bundle-commerce.md`. Template prices remain inactive until owner-approved. Advanced Build Your Own and gift options can follow after the curated bundle foundation is verified.
 

@@ -18,7 +18,9 @@ Malformed bundles are omitted from the storefront. Sold-out bundles remain visib
 
 ## Initial setup
 
-Run `npm run seed:bundles` once after deployment. It creates three **inactive** templates only when those document ids do not already exist. Existing bundle documents are never overwritten.
+After deploying the site and Firestore rules, sign in and select **Admin → Bundles → Create Starter Templates**. It creates three **inactive** templates only when those document ids do not already exist. Existing bundle documents are never overwritten, and no local Firebase service-account credentials are required.
+
+The optional `npm run seed:bundles` command performs the same operation for development or automation environments that already provide `FIREBASE_SERVICE_ACCOUNT_JSON` or Google Application Default Credentials.
 
 In Admin, review every template's:
 

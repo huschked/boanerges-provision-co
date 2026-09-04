@@ -6,6 +6,7 @@ import { db } from '@/src/lib/firebase';
 import { resolveBundle, type BundleDefinition } from '@/src/lib/bundleCommerce';
 import { isProductPublishReady } from '@/src/lib/productCatalog';
 import type { Product } from '@/src/services/productService';
+import { bundleTemplates } from '@/src/data/bundleTemplates';
 
 type BundleRecord = BundleDefinition & { id: string; components: Array<{ productId: string; quantity: number }> };
 const emptyForm: BundleRecord = { id: '', name: '', slug: '', description: '', sellingPrice: '', imageUrl: '', imageAlt: '', imageType: 'illustrative', stripeTaxCode: '', active: false, components: [] };
@@ -49,9 +50,23 @@ export const BundlesView: React.FC<{ products: Product[] }> = ({ products }) => 
     await deleteDoc(doc(db, 'bundles', bundle.id)); await load();
   };
 
+  const createTemplates = async () => {
+    try {
+      let created = 0;
+      const existingIds = new Set(bundles.map(bundle => bundle.id));
+      for (const template of bundleTemplates) {
+        if (existingIds.has(template.id)) continue;
+        await setDoc(doc(db, 'bundles', template.id), { ...template, components: template.components.map(component => ({ ...component })), active: false, imageType: 'illustrative', stripeTaxCode: '', createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
+        created += 1;
+      }
+      toast.success(created ? `${created} inactive bundle template${created === 1 ? '' : 's'} created.` : 'All starter templates already exist.');
+      await load();
+    } catch (error) { console.error(error); toast.error('Unable to create bundle templates. Deploy the latest Firestore rules and try again.'); }
+  };
+
   if (loading) return <div className="py-24 flex justify-center"><Loader2 className="animate-spin text-brand-gold" /></div>;
   return <div className="space-y-8">
-    <div className="flex items-start justify-between gap-6"><div><h3 className="text-3xl font-serif text-brand-parchment">Bundle Commerce</h3><p className="mt-2 text-sm text-brand-parchment/45">Selling value, savings, and stock are recalculated from live component records.</p></div><button onClick={() => { setForm(emptyForm); setEditing(true); }} className="btn-primary flex items-center gap-2"><Plus size={16} /> New Bundle</button></div>
+    <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6"><div><h3 className="text-3xl font-serif text-brand-parchment">Bundle Commerce</h3><p className="mt-2 text-sm text-brand-parchment/45">Selling value, savings, and stock are recalculated from live component records.</p></div><div className="flex flex-wrap gap-3"><button onClick={() => void createTemplates()} className="px-5 py-3 border border-brand-gold/30 text-brand-gold text-[10px] uppercase tracking-widest font-black">Create Starter Templates</button><button onClick={() => { setForm(emptyForm); setEditing(true); }} className="btn-primary flex items-center gap-2"><Plus size={16} /> New Bundle</button></div></div>
     {editing && <section className="card-premium p-6 lg:p-10 space-y-8 border-brand-gold/20">
       <div className="flex justify-between"><h4 className="text-2xl font-serif text-brand-parchment">{form.id ? 'Edit Bundle' : 'New Bundle'}</h4><button onClick={() => setEditing(false)}><X className="text-brand-parchment/40" /></button></div>
       <div className="grid md:grid-cols-2 gap-5"><input className="input-premium" placeholder="Bundle name" value={text(form.name)} onChange={event => { update('name', event.target.value); if (!form.id) update('slug', slugify(event.target.value)); }} /><input className="input-premium" placeholder="URL slug" value={text(form.slug)} onChange={event => update('slug', slugify(event.target.value))} /><textarea className="input-premium md:col-span-2" placeholder="Customer-facing description" value={text(form.description)} onChange={event => update('description', event.target.value)} /><input type="number" min="0.01" step="0.01" className="input-premium" placeholder="Selling price" value={String(form.sellingPrice || '')} onChange={event => update('sellingPrice', event.target.value)} /><input className="input-premium" placeholder="Stripe tax code (optional default override)" value={text(form.stripeTaxCode)} onChange={event => update('stripeTaxCode', event.target.value)} /><input className="input-premium md:col-span-2" placeholder="Bundle image URL" value={text(form.imageUrl)} onChange={event => update('imageUrl', event.target.value)} /><input className="input-premium" placeholder="Specific image description" value={text(form.imageAlt)} onChange={event => update('imageAlt', event.target.value)} /><select className="input-premium" value={text(form.imageType) || 'illustrative'} onChange={event => update('imageType', event.target.value)}><option value="illustrative">Illustrative</option><option value="photograph">Photograph</option></select></div>
