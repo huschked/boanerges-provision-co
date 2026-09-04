@@ -37,3 +37,11 @@ test('pick-list selection allows only paid orders still awaiting fulfillment', (
   assert.equal(canIncludeInPickList({ id: 'shipped', paymentStatus: 'paid', fulfillmentStatus: 'shipped', items: [item] }), false);
   assert.equal(canIncludeInPickList({ id: 'unpaid', paymentStatus: 'unpaid', fulfillmentStatus: 'pending', items: [item] }), false);
 });
+
+test('pick lists expand bundle lines into exact component quantities', () => {
+  const list = buildConsolidatedPickList([{ id: 'bundle-order', paymentStatus: 'paid', fulfillmentStatus: 'pending', items: [{ productId: 'starter', name: 'Starter Bundle', itemType: 'bundle', quantity: 2, components: [{ productId: 'a', name: 'Salt A', quantity: 2, sizeOz: 3 }, { productId: 'b', name: 'Salt B', quantity: 1, sizeOz: 3 }] }] }]);
+  assert.deepEqual(list, [
+    { productId: 'a', name: 'Salt A', sizeOz: 3, quantity: 4, orderCount: 1 },
+    { productId: 'b', name: 'Salt B', sizeOz: 3, quantity: 2, orderCount: 1 },
+  ]);
+});

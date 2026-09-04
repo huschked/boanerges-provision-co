@@ -136,23 +136,6 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Ready
 
-### WEB-036 - Rebuild or Disable Bundle Commerce
-
-- **Priority:** High
-- **Area:** storefront/checkout
-- **Goal:** Ensure advertised bundles are real sellable offers with correct pricing, inventory, tax, and fulfillment behavior.
-- **Acceptance Criteria:**
-  - Bundle definitions come from managed server data rather than `src/data/products.ts` or invented client inventory.
-  - Compare-at value, selling price, savings amount/percentage, components, quantities, sizes, and images are calculated and displayed accurately.
-  - Bundle stock derives from available component inventory and unavailable bundles cannot be added or checked out.
-  - Cart and order records preserve bundle identity while fulfillment and inventory decrement the correct components exactly once.
-  - Stripe receives the intended bundle price, tax treatment, description, and fulfillment metadata; server validation prevents client price manipulation.
-  - Existing bundle purchase controls remain disabled until these requirements pass.
-- **Verification:**
-  - Test each bundle in stock, partially unavailable, sold out, price-changed, repeated-request, refund, and tax scenarios.
-  - Compare advertised, cart, Stripe, email, order, refund, and inventory totals.
-- **Notes / Links:** Advanced Build Your Own and gift options can follow after the curated bundle foundation is reliable.
-
 ### WEB-044 - Add Compliant Marketing Email Preferences
 
 - **Priority:** High
@@ -289,22 +272,23 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
-### WEB-034 - Replace Placeholder Product Media
+### WEB-036 - Rebuild or Disable Bundle Commerce
 
 - **Priority:** High
-- **Area:** storefront/content
-- **Goal:** Present every sellable product with accurate, trustworthy media rather than unrelated stock or placeholder imagery.
+- **Area:** storefront/checkout
+- **Goal:** Ensure advertised bundles are real sellable offers with correct pricing, inventory, tax, and fulfillment behavior.
 - **Acceptance Criteria:**
-  - Picsum, unrelated stock imagery, broken sources, and generic detail thumbnails are removed from customer-facing product and bundle surfaces.
-  - The product schema supports an ordered gallery with a jar-front image, salt/texture detail, label detail, and product-in-use image where supplied.
-  - Missing required media prevents a product from being published as active.
-  - Alt text identifies the actual product and view rather than using generic values such as `Detail`.
-  - Cart, checkout, emails, product cards, PDPs, and bundles use the same approved primary image.
+  - Bundle definitions come from managed server data rather than `src/data/products.ts` or invented client inventory.
+  - Compare-at value, selling price, savings amount/percentage, components, quantities, sizes, and images are calculated and displayed accurately.
+  - Bundle stock derives from available component inventory and unavailable bundles cannot be added or checked out.
+  - Cart and order records preserve bundle identity while fulfillment and inventory decrement the correct components exactly once.
+  - Stripe receives the intended bundle price, tax treatment, description, and fulfillment metadata; server validation prevents client price manipulation.
+  - Existing bundle purchase controls remain disabled until these requirements pass.
 - **Verification:**
-  - Search the built app and active product records for Picsum, placeholder, empty, or unrelated media.
-  - Browser-check every active SKU and bundle at desktop and mobile sizes.
-- **Progress:** Eight optimized temporary ingredient artworks replace the Picsum and Unsplash references in source and seed data. The Admin editor now supports ordered upload/URL gallery entries, per-image alt text, media classification, view roles, reordering, and removal. Shared validation blocks incomplete, duplicate, or primary-conflicting galleries; Firestore enforces the required primary gallery record. Visible illustrative-image disclosure and a safe media-only migration are implemented. TypeScript, automated tests, the production build, source scans, and direct HTTP checks for all eight WebP assets pass. Deployment, the media migration, browser verification against live product records, and eventual real photography remain.
-- **Notes / Links:** On 2026-09-03 the owner approved clearly disclosed AI-generated ingredient artwork as temporary media. Replace it with real jar, label, texture, and in-use photography when available; do not treat the illustrative assets as exact depictions of the finished products.
+  - Automated coverage validates bundle value, savings, component-limited stock, invalid definitions, component-expanded pick lists, component-expanded refunds, and the existing repeated-webhook protections.
+  - Deploy the code and Firestore rules, run `npm run seed:bundles`, approve bundle facts in Admin, and test the scenarios in `docs/bundle-commerce.md` against Stripe test mode and live Firestore records.
+- **Progress:** Firestore-managed definitions, Admin bundle management, server-resolved storefront offers, component-derived availability, server-owned Stripe pricing/tax metadata, preserved order identity, component reservations/decrements, pick-list expansion, and component-aware cancellation restocking are implemented. Hard-coded client bundle definitions and invented client inventory are removed.
+- **Notes / Links:** Operational and owner verification is documented in `docs/bundle-commerce.md`. Template prices remain inactive until owner-approved. Advanced Build Your Own and gift options can follow after the curated bundle foundation is verified.
 
 ### WEB-035 - Enforce Complete and Consistent Product Data
 
@@ -324,6 +308,20 @@ This board is the working queue for website development. Keep cards actionable e
 - **Notes / Links:** Migration and verification instructions are in `docs/product-catalog-readiness.md`. No ingredient, allergen, cross-contact, storage, shelf-life, or dietary values were invented.
 
 ## Done
+
+### WEB-034 - Replace Placeholder Product Media
+
+- **Priority:** High
+- **Area:** storefront/content
+- **Goal:** Present every sellable product with accurate, trustworthy media rather than unrelated stock or placeholder imagery.
+- **Acceptance Criteria:**
+  - Picsum, unrelated stock imagery, broken sources, and generic detail thumbnails are removed from customer-facing product and bundle surfaces.
+  - The product schema supports an ordered gallery with a jar-front image, salt/texture detail, label detail, and product-in-use image where supplied.
+  - Missing required media prevents a product from being published as active.
+  - Alt text identifies the actual product and view rather than using generic values such as `Detail`.
+  - Cart, checkout, emails, product cards, PDPs, and bundles use the same approved primary image.
+- **Verification:** TypeScript, automated tests, production build, source scans, direct asset checks, and owner browser verification pass. Owner confirmed WEB-034 on 2026-09-03.
+- **Notes / Links:** The owner approved clearly disclosed AI-generated ingredient artwork as temporary media. Replace it with real jar, label, texture, and in-use photography when available; do not treat the illustrative assets as exact depictions of the finished products.
 
 ### WEB-038 - Publish Legal Pages and Clean Customer Trust Surfaces
 

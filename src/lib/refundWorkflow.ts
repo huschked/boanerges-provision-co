@@ -3,6 +3,8 @@ export type RefundLineItem = {
   name?: string;
   quantity?: number;
   cancelledQuantity?: number;
+  itemType?: 'product' | 'bundle';
+  components?: Array<{ productId: string; name?: string; quantity: number }>;
 };
 
 export type RefundWorkflowOrder = {
@@ -28,6 +30,7 @@ export type RefundWorkflowPlan = {
   shipmentStarted: boolean;
   labelNeedsVoid: boolean;
   inventoryAdjustments: Array<{ productId: string; name: string; quantity: number }>;
+  lineCancellations: Array<{ lineId: string; quantity: number }>;
 };
 
 const money = (value: number) => Number(value.toFixed(2));
@@ -51,6 +54,8 @@ export function buildRefundWorkflowPlan(order: RefundWorkflowOrder, request: Ref
   if (request.cancelOrder && labelNeedsVoid && !request.voidLabel) throw new Error('Void the unused shipping label before canceling this order.');
 
   const inventoryAdjustments: RefundWorkflowPlan['inventoryAdjustments'] = [];
+  const lineCancellations: RefundWorkflowPlan['lineCancellations'] = [];
+  const inventoryByProduct = new Map<string, { productId: string; name: string; quantity: number }>();
   for (const item of order.items || []) {
     if (!item.productId) continue;
     const purchased = Math.max(0, Number(item.quantity || 0));
@@ -58,17 +63,32 @@ export function buildRefundWorkflowPlan(order: RefundWorkflowOrder, request: Ref
     const availableToCancel = Math.max(0, purchased - alreadyCancelled);
     const requested = Math.max(0, Number(request.cancelQuantities[item.productId] || 0));
     if (!Number.isInteger(requested) || requested > availableToCancel) throw new Error(`${item.name || 'Item'} cancellation quantity must be between 0 and ${availableToCancel}.`);
-    if (requested > 0) inventoryAdjustments.push({ productId: item.productId, name: item.name || item.productId, quantity: requested });
+    if (requested > 0) {
+      lineCancellations.push({ lineId: item.productId, quantity: requested });
+      const components = item.itemType === 'bundle' && Array.isArray(item.components)
+        ? item.components
+        : [{ productId: item.productId, name: item.name, quantity: 1 }];
+      components.forEach(component => {
+        const quantity = Number(component.quantity) * requested;
+        const existing = inventoryByProduct.get(component.productId);
+        inventoryByProduct.set(component.productId, {
+          productId: component.productId,
+          name: component.name || component.productId,
+          quantity: (existing?.quantity || 0) + quantity,
+        });
+      });
+    }
   }
+  inventoryAdjustments.push(...inventoryByProduct.values());
 
   if (request.cancelOrder) {
     const expected = (order.items || []).filter(item => item.productId).reduce((sum, item) => sum + Math.max(0, Number(item.quantity || 0) - Number(item.cancelledQuantity || 0)), 0);
-    const selected = inventoryAdjustments.reduce((sum, item) => sum + item.quantity, 0);
+    const selected = lineCancellations.reduce((sum, item) => sum + item.quantity, 0);
     if (selected !== expected) throw new Error('Canceling the order requires canceling every remaining item quantity.');
   }
   if (inventoryAdjustments.length > 0 && labelNeedsVoid && !request.voidLabel) {
     throw new Error('Void the unused shipping label before restoring canceled items to inventory.');
   }
 
-  return { remainingAmount, fullRemainingRefund, shipmentStarted, labelNeedsVoid, inventoryAdjustments };
+  return { remainingAmount, fullRemainingRefund, shipmentStarted, labelNeedsVoid, inventoryAdjustments, lineCancellations };
 }

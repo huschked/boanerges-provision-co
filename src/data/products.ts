@@ -145,27 +145,3 @@ export const products: Product[] = [
     tags: ['Savory', 'Earthy']
   }
 ];
-
-export const bundles = [
-  {
-    id: 'b1',
-    name: 'The Starter Pack',
-    price: 24.99,
-    products: ['1', '3', '6'],
-    description: 'Our three most versatile salts to kickstart your flavor journey.'
-  },
-  {
-    id: 'b2',
-    name: 'Heat Lovers Pack',
-    price: 27.99,
-    products: ['2', '4', '5'],
-    description: 'For those who crave the burn. From zesty habanero to intense ghost pepper.'
-  },
-  {
-    id: 'b3',
-    name: 'The Gourmet Collection',
-    price: 32.99,
-    products: ['7', '8', '2'],
-    description: 'Elevated flavors for the sophisticated palate. Rosemary, Porcini, and Lime.'
-  }
-];

@@ -44,3 +44,10 @@ test('restores inventory only after Shippo confirms the label refund', () => {
   assert.equal(isLabelRefundComplete('QUEUED'), false);
   assert.equal(isLabelRefundComplete('ERROR'), false);
 });
+
+test('bundle cancellation restores each component while tracking the bundle line once', () => {
+  const bundleOrder = { ...order, items: [{ productId: 'starter', name: 'Starter', quantity: 2, itemType: 'bundle' as const, components: [{ productId: 'salt-a', name: 'Salt A', quantity: 2 }, { productId: 'salt-b', name: 'Salt B', quantity: 1 }] }] };
+  const plan = buildRefundWorkflowPlan(bundleOrder, { amount: 15, cancelOrder: false, voidLabel: false, acknowledgeShipped: false, cancelQuantities: { starter: 1 } });
+  assert.deepEqual(plan.inventoryAdjustments, [{ productId: 'salt-a', name: 'Salt A', quantity: 2 }, { productId: 'salt-b', name: 'Salt B', quantity: 1 }]);
+  assert.deepEqual(plan.lineCancellations, [{ lineId: 'starter', quantity: 1 }]);
+});

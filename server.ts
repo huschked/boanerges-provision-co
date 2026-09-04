@@ -17,6 +17,7 @@ import { buildRefundWorkflowPlan, isLabelRefundComplete, type RefundWorkflowRequ
 import { createOrderStatusToken, verifyOrderStatusToken } from "./src/lib/orderStatusToken.js";
 import { buildPublicOrderStatus } from "./src/lib/orderStatusView.js";
 import { createProductSnapshot, isProductPublishReady } from "./src/lib/productCatalog.js";
+import { resolveBundle, type BundleDefinition, type BundleProduct } from "./src/lib/bundleCommerce.js";
 
 dotenv.config();
 
@@ -110,11 +111,17 @@ type PendingOrderItem = {
   shelfLife?: string;
   dietaryClaims?: string[];
   productDataVersion?: number;
+  itemType?: "product" | "bundle";
+  bundleId?: string;
+  compareAtPrice?: number;
+  savingsAmount?: number;
+  components?: Array<{ productId: string; name: string; quantity: number; sizeOz: number; unitPrice: number }>;
 };
 
 type NormalizedCartItem = {
   id: string;
   quantity: number;
+  kind: "product" | "bundle";
 };
 
 type AnalyticsEventType =
@@ -505,7 +512,7 @@ function normalizeCartItems(items: unknown): { items?: NormalizedCartItem[]; err
     return { error: `Cart cannot contain more than ${MAX_CART_ITEMS} line items.` };
   }
 
-  const byProductId = new Map<string, number>();
+  const byCartKey = new Map<string, NormalizedCartItem>();
 
   for (const item of items) {
     if (!item || typeof item !== "object") {
@@ -514,27 +521,32 @@ function normalizeCartItems(items: unknown): { items?: NormalizedCartItem[]; err
 
     const rawId = "id" in item ? (item as { id?: unknown }).id : "";
     const rawQuantity = "quantity" in item ? (item as { quantity?: unknown }).quantity : undefined;
+    const rawKind = "kind" in item ? (item as { kind?: unknown }).kind : "product";
     const id = typeof rawId === "string" ? rawId.trim() : "";
     const quantity = Number(rawQuantity);
+    const kind = rawKind === "bundle" ? "bundle" : rawKind === "product" || rawKind == null ? "product" : null;
 
     if (!id) {
       return { error: "Cart contains an item without a product id." };
     }
 
+    if (!kind) return { error: `Invalid cart item type for ${id}.` };
+
     if (!Number.isInteger(quantity) || quantity <= 0) {
       return { error: `Invalid quantity for product ${id}.` };
     }
 
-    const nextQuantity = (byProductId.get(id) || 0) + quantity;
+    const key = `${kind}:${id}`;
+    const nextQuantity = (byCartKey.get(key)?.quantity || 0) + quantity;
     if (nextQuantity > MAX_ITEM_QUANTITY) {
       return { error: `Quantity for product ${id} cannot exceed ${MAX_ITEM_QUANTITY}.` };
     }
 
-    byProductId.set(id, nextQuantity);
+    byCartKey.set(key, { id, quantity: nextQuantity, kind });
   }
 
   return {
-    items: Array.from(byProductId.entries()).map(([id, quantity]) => ({ id, quantity })),
+    items: Array.from(byCartKey.values()),
   };
 }
 
@@ -940,9 +952,12 @@ function buildOrderEmailHtml({
   const itemMarkup = items
     .map((item) => {
       const productImageUrl = getProductEmailImageUrl(item.imageUrl);
+      const componentSummary = item.itemType === "bundle" && item.components?.length
+        ? `<br><span style="color:#8e8576;font-size:11px;font-weight:400;">${item.components.map(component => `${component.quantity}&times; ${escapeHtml(component.name)}`).join(" &middot; ")}</span>`
+        : "";
       return `
           <tr>
-            <td style="padding:12px 8px 12px 0;color:#f4ecd8;font-size:15px;font-weight:600;">${productImageUrl ? `<img src="${escapeHtml(productImageUrl)}" alt="${escapeHtml(item.imageAlt || item.name)}" width="44" height="44" style="display:inline-block;width:44px;height:44px;object-fit:cover;vertical-align:middle;margin-right:10px;border:1px solid rgba(255,255,255,0.08);" />` : ""}<span style="display:inline-block;vertical-align:middle;">${escapeHtml(item.name)}${item.sizeOz ? `<br><span style="color:#8e8576;font-size:12px;font-weight:400;">${item.sizeOz} oz</span>` : ""}</span></td>
+            <td style="padding:12px 8px 12px 0;color:#f4ecd8;font-size:15px;font-weight:600;">${productImageUrl ? `<img src="${escapeHtml(productImageUrl)}" alt="${escapeHtml(item.imageAlt || item.name)}" width="44" height="44" style="display:inline-block;width:44px;height:44px;object-fit:cover;vertical-align:middle;margin-right:10px;border:1px solid rgba(255,255,255,0.08);" />` : ""}<span style="display:inline-block;vertical-align:middle;">${escapeHtml(item.name)}${item.sizeOz ? `<br><span style="color:#8e8576;font-size:12px;font-weight:400;">${item.sizeOz} oz</span>` : ""}${componentSummary}</span></td>
             <td style="padding:12px 8px;color:#b7ae9c;font-size:14px;text-align:right;white-space:nowrap;">$${item.price.toFixed(2)}</td>
             <td style="padding:12px 8px;color:#b7ae9c;font-size:14px;text-align:center;">${item.quantity}</td>
             <td style="padding:12px 0;color:#c5a059;font-size:14px;text-align:right;font-weight:700;">$${(item.price * item.quantity).toFixed(2)}</td>
@@ -1587,6 +1602,7 @@ async function executeRefundWorkflow(orderId: string, payload: Record<string, un
     const labelVoidComplete = !plan.labelNeedsVoid || isLabelRefundComplete(labelRefund.status);
     const labelNeedsFollowup = plan.labelNeedsVoid && !labelVoidComplete;
     const inventoryAdjustments = labelVoidComplete ? plan.inventoryAdjustments : [];
+    const lineCancellations = labelVoidComplete ? plan.lineCancellations : [];
     const targetRefundedAmount = Number((Number(order.refundedAmount || 0) + request.amount).toFixed(2));
     const refundRecord = {
       stripeRefundId: stripeRefund.id, amount: request.amount, reason, actor,
@@ -1612,10 +1628,10 @@ async function executeRefundWorkflow(orderId: string, payload: Record<string, un
         });
       });
 
-      const restoredByProduct = Object.fromEntries(inventoryAdjustments.map(item => [item.productId, item.quantity]));
+      const cancelledByLine = Object.fromEntries(lineCancellations.map(item => [item.lineId, item.quantity]));
       const nextItems = (currentOrder.items || []).map((item: PendingOrderItem & { cancelledQuantity?: number }) => ({
         ...item,
-        ...(restoredByProduct[item.productId] ? { cancelledQuantity: Number(item.cancelledQuantity || 0) + restoredByProduct[item.productId] } : {}),
+        ...(cancelledByLine[item.productId] ? { cancelledQuantity: Number(item.cancelledQuantity || 0) + cancelledByLine[item.productId] } : {}),
       }));
       const cancelled = request.cancelOrder && labelVoidComplete;
       const labelVoided = plan.labelNeedsVoid && labelVoidComplete;
@@ -1639,6 +1655,7 @@ async function executeRefundWorkflow(orderId: string, payload: Record<string, un
         ...(labelNeedsFollowup ? {
           fulfillmentStatus: "requires_attention",
           pendingInventoryRestock: plan.inventoryAdjustments,
+          pendingLineCancellations: plan.lineCancellations,
           shipmentException: { status: "requires_review", type: "label_refund", message: labelRefund.error || `Shippo label refund is ${labelRefund.status.replaceAll("_", " ")} and requires review.`, occurredAt: admin.firestore.FieldValue.serverTimestamp() },
         } : {}),
         ...(labelVoided ? {
@@ -1879,59 +1896,100 @@ async function createInventoryReservation({
   const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + INVENTORY_RESERVATION_MINUTES * 60 * 1000);
 
   return db.runTransaction(async transaction => {
-    const productRefs = cartItems.map(item => db.collection("products").doc(item.id));
-    const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+    const bundleItems = cartItems.filter(item => item.kind === "bundle");
+    const bundleRefs = bundleItems.map(item => db.collection("bundles").doc(item.id));
+    const bundleSnaps = await Promise.all(bundleRefs.map(bundleRef => transaction.get(bundleRef)));
+    const bundleDefinitions = new Map(bundleSnaps.map((snap, index) => [bundleItems[index].id, snap.exists ? { id: snap.id, ...snap.data() } as BundleDefinition : null]));
+    const requiredProductIds = new Set(cartItems.filter(item => item.kind === "product").map(item => item.id));
+    bundleDefinitions.forEach(definition => {
+      if (!definition || !Array.isArray(definition.components)) return;
+      definition.components.forEach(component => {
+        if (component && typeof component === "object" && typeof (component as { productId?: unknown }).productId === "string") {
+          requiredProductIds.add(String((component as { productId: string }).productId));
+        }
+      });
+    });
+    const productRefs = Array.from(requiredProductIds).map(productId => db.collection("products").doc(productId));
+    const productSnaps = await Promise.all(productRefs.map(productRef => transaction.get(productRef)));
+    const productRecords = new Map(productSnaps.map(snap => [snap.id, snap.exists ? snap.data()! : null]));
+    const bundleProducts = new Map<string, BundleProduct>();
+    productRecords.forEach((data, id) => {
+      if (data && data.active === true && isProductPublishReady(data)) {
+        bundleProducts.set(id, {
+          id,
+          name: String(data.name),
+          price: Number(data.price),
+          sizeOz: Number(data.sizeOz),
+          currentInventory: Number(data.currentInventory),
+          reservedInventory: Number(data.reservedInventory || 0),
+          imageUrl: String(data.imageUrl || ""),
+          imageAlt: String(data.imageAlt || ""),
+          stripeTaxCode: String(data.stripeTaxCode || ""),
+        });
+      }
+    });
     const unavailableItems: CheckoutAvailabilityError["unavailableItems"] = [];
     const orderItems: PendingOrderItem[] = [];
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+    const componentDemand = new Map<string, number>();
     let calculatedTotal = 0;
 
-    for (const [index, item] of cartItems.entries()) {
-      const snap = productSnaps[index];
-      const data = snap.exists ? snap.data()! : null;
-      const name = data?.name || "Unavailable product";
-      const inventory = Number(data?.currentInventory || 0);
-      const reserved = Number(data?.reservedInventory || 0);
-      const available = Math.max(0, inventory - reserved);
-      const price = Number(data?.price);
-      if (!snap.exists || data?.active !== true || !data || !isProductPublishReady(data)) {
-        unavailableItems.push({ productId: item.id, name, requested: item.quantity, available: 0, reason: "This product is temporarily unavailable while its catalog information is reviewed." });
+    for (const item of cartItems) {
+      if (item.kind === "product") {
+        const data = productRecords.get(item.id);
+        const name = String(data?.name || "Unavailable product");
+        if (!data || data.active !== true || !isProductPublishReady(data)) {
+          unavailableItems.push({ productId: item.id, name, requested: item.quantity, available: 0, reason: "This product is temporarily unavailable while its catalog information is reviewed." });
+          continue;
+        }
+        componentDemand.set(item.id, (componentDemand.get(item.id) || 0) + item.quantity);
+        const images = typeof data.imageUrl === "string" && /^https?:\/\//i.test(data.imageUrl) ? [data.imageUrl] : undefined;
+        lineItems.push({ price_data: { currency: CURRENCY, product_data: { name, description: `${data.sizeOz} oz · ${data.heatLabel}`, images, tax_code: data.stripeTaxCode || DEFAULT_PRODUCT_TAX_CODE, metadata: { itemType: "product", productId: item.id, productDataVersion: String(data.productDataVersion) } }, unit_amount: toStripeAmount(Number(data.price)) }, quantity: item.quantity });
+        orderItems.push({ ...createProductSnapshot(data, item.id, item.quantity), itemType: "product" });
+        calculatedTotal += Number(data.price) * item.quantity;
         continue;
       }
-      if (!Number.isInteger(inventory) || available < item.quantity) {
-        unavailableItems.push({ productId: item.id, name, requested: item.quantity, available });
+
+      const definition = bundleDefinitions.get(item.id);
+      const resolved = definition ? resolveBundle(definition, bundleProducts) : { error: "Bundle was not found." };
+      if (!resolved.bundle) {
+        unavailableItems.push({ productId: item.id, name: typeof definition?.name === "string" ? definition.name : "Unavailable bundle", requested: item.quantity, available: 0, reason: resolved.error });
         continue;
       }
-      const images = typeof data?.imageUrl === "string" && /^https?:\/\//i.test(data.imageUrl) ? [data.imageUrl] : undefined;
-      lineItems.push({
-        price_data: {
-          currency: CURRENCY,
-          product_data: {
-            name,
-            description: `${data.sizeOz} oz · ${data.heatLabel}`,
-            images,
-            tax_code: data?.stripeTaxCode || DEFAULT_PRODUCT_TAX_CODE,
-            metadata: { productId: item.id, productDataVersion: String(data.productDataVersion) },
-          },
-          unit_amount: toStripeAmount(price),
-        },
-        quantity: item.quantity,
-      });
-      orderItems.push(createProductSnapshot(data, item.id, item.quantity));
-      calculatedTotal += price * item.quantity;
+      const bundle = resolved.bundle;
+      if (bundle.availableStock < item.quantity) {
+        unavailableItems.push({ productId: bundle.id, name: bundle.name, requested: item.quantity, available: bundle.availableStock, reason: `Only ${bundle.availableStock} bundle${bundle.availableStock === 1 ? " is" : "s are"} currently available from component inventory.` });
+        continue;
+      }
+      bundle.components.forEach(component => componentDemand.set(component.productId, (componentDemand.get(component.productId) || 0) + component.quantity * item.quantity));
+      const images = /^https?:\/\//i.test(bundle.imageUrl) ? [bundle.imageUrl] : undefined;
+      lineItems.push({ price_data: { currency: CURRENCY, product_data: { name: bundle.name, description: `${bundle.components.length} flavors · ${bundle.sizeOz} oz total`, images, tax_code: bundle.stripeTaxCode || DEFAULT_PRODUCT_TAX_CODE, metadata: { itemType: "bundle", bundleId: bundle.id } }, unit_amount: toStripeAmount(bundle.sellingPrice) }, quantity: item.quantity });
+      orderItems.push({ productId: bundle.id, bundleId: bundle.id, itemType: "bundle", name: bundle.name, price: bundle.sellingPrice, compareAtPrice: bundle.compareAtPrice, savingsAmount: bundle.savingsAmount, quantity: item.quantity, heatLevel: 0, sizeOz: bundle.sizeOz, imageUrl: bundle.imageUrl, imageAlt: bundle.imageAlt, imageType: bundle.imageType, components: bundle.components });
+      calculatedTotal += bundle.sellingPrice * item.quantity;
     }
 
+    componentDemand.forEach((requested, productId) => {
+      const data = productRecords.get(productId);
+      const available = data ? Math.max(0, Number(data.currentInventory || 0) - Number(data.reservedInventory || 0)) : 0;
+      if (!data || !Number.isInteger(Number(data.currentInventory)) || available < requested) {
+        const directItem = cartItems.find(item => item.kind === "product" && item.id === productId);
+        const affectedBundle = orderItems.find(item => item.itemType === "bundle" && item.components?.some(component => component.productId === productId));
+        unavailableItems.push({ productId: directItem?.id || affectedBundle?.productId || productId, name: directItem ? String(data?.name || productId) : affectedBundle?.name || String(data?.name || productId), requested, available, reason: "Combined cart quantities exceed the available component inventory." });
+      }
+    });
     if (unavailableItems.length) throw new CheckoutAvailabilityError(unavailableItems);
+    calculatedTotal = Number(calculatedTotal.toFixed(2));
     const shippingCost = calculatedTotal >= FREE_SHIPPING_THRESHOLD ? 0 : STANDARD_SHIPPING_AMOUNT;
-    for (const [index, item] of cartItems.entries()) {
-      const data = productSnaps[index].data()!;
-      transaction.update(productRefs[index], {
-        reservedInventory: Number(data.reservedInventory || 0) + item.quantity,
+    componentDemand.forEach((quantity, productId) => {
+      const data = productRecords.get(productId)!;
+      transaction.update(db.collection("products").doc(productId), {
+        reservedInventory: Number(data.reservedInventory || 0) + quantity,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-    }
+    });
+    const reservationItems = Array.from(componentDemand.entries()).map(([productId, quantity]) => ({ productId, name: String(productRecords.get(productId)?.name || productId), quantity }));
     transaction.create(reservationRef, {
-      pendingOrderId, status: "reserved", items: orderItems.map(item => ({ productId: item.productId, name: item.name, quantity: item.quantity })),
+      pendingOrderId, status: "reserved", items: reservationItems,
       customerEmail, expiresAt, createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     transaction.create(pendingOrderRef, {
@@ -2005,6 +2063,33 @@ async function commitInventoryReservation(reservationId: string, orderId: string
     transaction.set(pendingOrderRef, { status: "completed", paymentStatus: "paid", reservationStatus: "committed", orderId, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     transaction.set(db.collection("inventory_reservation_events").doc(`commit_${reservationId}`), { reservationId, orderId, type: "committed", createdAt: admin.firestore.FieldValue.serverTimestamp() });
     return { changed: true, status: "committed" };
+  });
+}
+
+async function getActiveResolvedBundles() {
+  const [bundleSnapshot, productSnapshot] = await Promise.all([
+    db.collection("bundles").where("active", "==", true).get(),
+    db.collection("products").where("active", "==", true).get(),
+  ]);
+  const products = new Map<string, BundleProduct>();
+  productSnapshot.docs.forEach(productDoc => {
+    const data = productDoc.data();
+    if (!isProductPublishReady(data)) return;
+    products.set(productDoc.id, {
+      id: productDoc.id,
+      name: String(data.name),
+      price: Number(data.price),
+      sizeOz: Number(data.sizeOz),
+      currentInventory: Number(data.currentInventory),
+      reservedInventory: Number(data.reservedInventory || 0),
+      imageUrl: String(data.imageUrl || ""),
+      imageAlt: String(data.imageAlt || ""),
+      stripeTaxCode: String(data.stripeTaxCode || ""),
+    });
+  });
+  return bundleSnapshot.docs.flatMap(bundleDoc => {
+    const result = resolveBundle({ id: bundleDoc.id, ...bundleDoc.data() }, products);
+    return result.bundle ? [result.bundle] : [];
   });
 }
 
@@ -2124,6 +2209,16 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
     windowMs: 15 * 60 * 1000,
     max: 60,
     message: { error: "Too many status requests. Please wait before trying again.", code: "rate_limited" },
+  });
+
+  app.get("/api/bundles", orderStatusLimiter, async (_req, res) => {
+    try {
+      res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+      res.json({ bundles: await getActiveResolvedBundles() });
+    } catch (error) {
+      console.error("Bundle Fetch Error:", error);
+      res.status(500).json({ error: "Bundles are temporarily unavailable." });
+    }
   });
 
   app.get("/api/order-status", orderStatusLimiter, async (req, res) => {

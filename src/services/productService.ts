@@ -35,6 +35,7 @@ export interface Product {
   active: boolean;
   featured: boolean;
   currentInventory: number;
+  reservedInventory?: number;
   reorderThreshold: number;
   stripePriceId?: string;
   stripeTaxCode?: string;
@@ -45,6 +46,10 @@ export interface Product {
   category?: string;
   createdAt?: unknown;
   updatedAt?: unknown;
+  commerceType?: 'product' | 'bundle';
+  compareAtPrice?: number;
+  savingsAmount?: number;
+  bundleComponents?: Array<{ productId: string; name: string; quantity: number; sizeOz: number; unitPrice: number }>;
 }
 
 export const getProducts = async (category?: string) => {

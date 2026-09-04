@@ -5,19 +5,21 @@ import { Link } from 'react-router-dom';
 import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
 import { getProductsByIds } from '@/src/services/productService';
+import { bundleToCartProduct, getBundles } from '@/src/services/bundleService';
 
 export const CartDrawer: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   const { items, removeItem, updateQuantity, refreshProductSnapshots, total, itemCount } = useCart();
-  const productIds = items.map((item) => item.product.id).sort().join('|');
+  const productIds = items.filter((item) => item.product.commerceType !== 'bundle').map((item) => item.product.id).sort().join('|');
+  const bundleIds = items.filter((item) => item.product.commerceType === 'bundle').map((item) => item.product.id).sort().join('|');
 
   useEffect(() => {
-    if (!isOpen || !productIds) return;
+    if (!isOpen || (!productIds && !bundleIds)) return;
     let cancelled = false;
-    getProductsByIds(productIds.split('|'))
-      .then((products) => { if (!cancelled) refreshProductSnapshots(products); })
+    Promise.all([productIds ? getProductsByIds(productIds.split('|')) : Promise.resolve([]), bundleIds ? getBundles() : Promise.resolve([])])
+      .then(([products, bundles]) => { if (!cancelled) refreshProductSnapshots([...products, ...bundles.filter(bundle => bundleIds.split('|').includes(bundle.id)).map(bundleToCartProduct)]); })
       .catch((error) => console.error('Unable to refresh cart product data:', error));
     return () => { cancelled = true; };
-  }, [isOpen, productIds, refreshProductSnapshots]);
+  }, [isOpen, productIds, bundleIds, refreshProductSnapshots]);
 
   return (
     <AnimatePresence>
@@ -85,7 +87,7 @@ export const CartDrawer: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
                         <h3 className="font-serif text-lg leading-tight text-brand-parchment">{item.product.name}</h3>
                         <p className="font-bold text-brand-gold">${(item.product.price * item.quantity).toFixed(2)}</p>
                       </div>
-                      <p className="text-[10px] text-brand-parchment/40 uppercase tracking-widest font-black">{item.product.sizeOz} oz</p>
+                      <p className="text-[10px] text-brand-parchment/40 uppercase tracking-widest font-black">{item.product.commerceType === 'bundle' ? `${item.product.bundleComponents?.length || 0} flavors · ` : ''}{item.product.sizeOz} oz</p>
                       
                       <div className="flex items-center justify-between pt-2">
                         <div className="flex items-center border border-white/10 rounded-sm bg-white/5">

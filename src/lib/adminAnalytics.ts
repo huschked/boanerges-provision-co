@@ -99,6 +99,7 @@ type OrderItem = {
   price?: number;
   quantity?: number;
   heatLevel?: number;
+  itemType?: 'product' | 'bundle';
 };
 
 const HEAT_LEVEL_LABELS = ['No Heat', 'Mild', 'Medium', 'Bold', 'Hot', 'Inferno'];
@@ -301,7 +302,7 @@ export function buildAnalyticsData({
       heatLevelTotals.set(heatLabel, (heatLevelTotals.get(heatLabel) || 0) + revenue);
 
       const lowerLabel = label.toLowerCase();
-      const isBundle = lowerLabel.includes('bundle') || lowerLabel.includes('gift set') || lowerLabel.includes('collection');
+      const isBundle = item.itemType === 'bundle' || lowerLabel.includes('bundle') || lowerLabel.includes('gift set') || lowerLabel.includes('collection');
       if (isBundle) {
         const bundleMetric = bundleTotals.get(label) || { label, orders: 0, revenue: 0 };
         bundleMetric.orders += 1;

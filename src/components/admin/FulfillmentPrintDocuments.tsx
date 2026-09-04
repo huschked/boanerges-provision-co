@@ -39,7 +39,7 @@ const PackingSlip: React.FC<{ order: Order; qrDataUrl: string }> = ({ order, qrD
         <thead><tr><th>Product ID</th><th>Item</th><th>Size</th><th className="print-number">Pack</th></tr></thead>
         <tbody>{items.map((item, index) => (
           <tr key={`${item.productId || item.name}-${index}`}>
-            <td className="print-mono">{item.productId || '—'}</td><td>{item.name || 'Unnamed item'}</td><td>{item.sizeOz ? `${item.sizeOz} oz` : '—'}</td><td className="print-number print-quantity">{item.fulfillQuantity}</td>
+            <td className="print-mono">{item.productId || '—'}</td><td>{item.name || 'Unnamed item'}{item.itemType === 'bundle' && item.components?.length ? <small style={{ display: 'block' }}>{item.components.map(component => `${component.quantity}× ${component.name}`).join(' · ')}</small> : null}</td><td>{item.sizeOz ? `${item.sizeOz} oz` : '—'}</td><td className="print-number print-quantity">{item.fulfillQuantity}</td>
           </tr>
         ))}</tbody>
       </table>

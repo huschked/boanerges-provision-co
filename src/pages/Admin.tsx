@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
-import { Lock, LayoutDashboard, Package, ShoppingCart, Users, Mail, LogOut, Search, Loader2, RefreshCw, ChartNoAxesCombined } from 'lucide-react';
+import { Lock, LayoutDashboard, Package, ShoppingCart, Users, Mail, LogOut, Search, Loader2, RefreshCw, ChartNoAxesCombined, Gift } from 'lucide-react';
 import logo from '@/src/assets/BoanergesLogoTransparent-v2.png';
 import { auth, db } from '@/src/lib/firebase';
 import { inMemoryPersistence, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, setPersistence, signOut, User } from 'firebase/auth';
@@ -15,9 +15,10 @@ import type { OrderQueueFilter } from '../components/admin/OrdersView';
 import { SubscribersView, Subscriber } from '../components/admin/SubscribersView';
 import { MessagesView, ContactMessage } from '../components/admin/MessagesView';
 import { AnalyticsView } from '../components/admin/AnalyticsView';
+import { BundlesView } from '../components/admin/BundlesView';
 import { normalizeOrderLifecycle } from '@/src/lib/orderLifecycle';
 
-type AdminTab = 'dashboard' | 'analytics' | 'products' | 'orders' | 'subscribers' | 'contact';
+type AdminTab = 'dashboard' | 'analytics' | 'products' | 'bundles' | 'orders' | 'subscribers' | 'contact';
 
 export const Admin: React.FC = () => {
   const ADMIN_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
@@ -285,6 +286,7 @@ export const Admin: React.FC = () => {
             { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
             { id: 'analytics', label: 'Analytics', icon: ChartNoAxesCombined },
             { id: 'products', label: 'Inventory', icon: Package },
+            { id: 'bundles', label: 'Bundles', icon: Gift },
             { id: 'orders', label: 'Orders', icon: ShoppingCart },
             { id: 'subscribers', label: 'Audience', icon: Users },
             { id: 'contact', label: 'Inquiries', icon: Mail },
@@ -356,6 +358,7 @@ export const Admin: React.FC = () => {
           )}
           {activeTab === 'analytics' && <AnalyticsView orders={orders} products={products} subscribers={subscribers} messages={messages} />}
           {activeTab === 'products' && <ProductsView products={filteredProducts} onRefresh={fetchData} />}
+          {activeTab === 'bundles' && <BundlesView products={products} />}
           {activeTab === 'orders' && <OrdersView orders={filteredOrders} onRefresh={fetchData} searchTerm={searchTerm} onSearchTermChange={setSearchTerm} queueFilter={orderQueue} onQueueFilterChange={setOrderQueue} initialSelectedOrderId={initialOrderId} />}
           {activeTab === 'subscribers' && <SubscribersView subscribers={filteredSubscribers} />}
           {activeTab === 'contact' && <MessagesView messages={filteredMessages} onRefresh={fetchData} />}

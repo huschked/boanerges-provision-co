@@ -5,6 +5,7 @@ import { useCart } from '@/src/store';
 import toast from 'react-hot-toast';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
 import { getProductsByIds } from '@/src/services/productService';
+import { bundleToCartProduct, getBundles } from '@/src/services/bundleService';
 
 export const Checkout: React.FC = () => {
   const { items, total, updateQuantity, removeItem, refreshProductSnapshots } = useCart();
@@ -13,16 +14,17 @@ export const Checkout: React.FC = () => {
   const [newsletterOptIn, setNewsletterOptIn] = useState(false);
   const [unavailableItems, setUnavailableItems] = useState<Array<{ productId: string; name: string; requested: number; available: number; reason?: string }>>([]);
   const [checkoutError, setCheckoutError] = useState<{ message: string; code?: string } | null>(null);
-  const productIds = items.map((item) => item.product.id).sort().join('|');
+  const productIds = items.filter((item) => item.product.commerceType !== 'bundle').map((item) => item.product.id).sort().join('|');
+  const bundleIds = items.filter((item) => item.product.commerceType === 'bundle').map((item) => item.product.id).sort().join('|');
 
   useEffect(() => {
-    if (!productIds) return;
+    if (!productIds && !bundleIds) return;
     let cancelled = false;
-    getProductsByIds(productIds.split('|'))
-      .then((products) => { if (!cancelled) refreshProductSnapshots(products); })
+    Promise.all([productIds ? getProductsByIds(productIds.split('|')) : Promise.resolve([]), bundleIds ? getBundles() : Promise.resolve([])])
+      .then(([products, bundles]) => { if (!cancelled) refreshProductSnapshots([...products, ...bundles.filter(bundle => bundleIds.split('|').includes(bundle.id)).map(bundleToCartProduct)]); })
       .catch((error) => console.error('Unable to refresh checkout product data:', error));
     return () => { cancelled = true; };
-  }, [productIds, refreshProductSnapshots]);
+  }, [productIds, bundleIds, refreshProductSnapshots]);
 
   const handleCheckout = async () => {
     setLoading(true);
@@ -49,6 +51,7 @@ export const Checkout: React.FC = () => {
           items: items.map(item => ({
             id: item.product.id,
             quantity: item.quantity,
+            kind: item.product.commerceType === 'bundle' ? 'bundle' : 'product',
           })),
           customerEmail: email || undefined,
           newsletterOptIn,
@@ -213,7 +216,7 @@ export const Checkout: React.FC = () => {
                   <div className="flex-1 flex justify-between items-center">
                     <div className="space-y-1">
                       <p className="text-base font-bold text-brand-parchment leading-tight">{item.product.name}</p>
-                      <p className="text-[10px] text-brand-parchment/40 uppercase tracking-widest font-black">{item.product.sizeOz} oz</p>
+                      <p className="text-[10px] text-brand-parchment/40 uppercase tracking-widest font-black">{item.product.commerceType === 'bundle' ? `${item.product.bundleComponents?.length || 0} flavors · ` : ''}{item.product.sizeOz} oz</p>
                     </div>
                     <p className="text-base font-bold text-brand-gold">${(item.product.price * item.quantity).toFixed(2)}</p>
                   </div>

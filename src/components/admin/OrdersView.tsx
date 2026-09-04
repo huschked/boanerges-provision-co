@@ -593,8 +593,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                       <div className="space-y-1">
                         <p className="text-brand-parchment font-black">{item.name}</p>
                         <p className="text-[10px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">
-                          Qty {item.quantity} {item.cancelledQuantity ? `· Cancelled ${item.cancelledQuantity}` : ''} {item.sizeOz ? `- ${item.sizeOz}oz` : ''}
+                          Qty {item.quantity} {item.cancelledQuantity ? `· Cancelled ${item.cancelledQuantity}` : ''} {item.sizeOz ? `- ${item.sizeOz}oz` : ''}{item.itemType === 'bundle' ? ' · Bundle' : ''}
                         </p>
+                        {item.itemType === 'bundle' && Array.isArray(item.components) && <p className="text-xs text-brand-parchment/45">{item.components.map((component: any) => `${component.quantity}× ${component.name}`).join(' · ')}</p>}
                       </div>
                       <p className="text-brand-gold font-black">${((item.price || 0) * (item.quantity || 0)).toFixed(2)}</p>
                     </div>

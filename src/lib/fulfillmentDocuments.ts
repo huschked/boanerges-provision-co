@@ -4,6 +4,8 @@ export type FulfillmentDocumentItem = {
   quantity?: number;
   cancelledQuantity?: number;
   sizeOz?: number;
+  itemType?: 'product' | 'bundle';
+  components?: Array<{ productId: string; name: string; quantity: number; sizeOz: number }>;
 };
 
 export type FulfillmentDocumentOrder = {
@@ -42,20 +44,17 @@ export function buildConsolidatedPickList(orders: FulfillmentDocumentOrder[]): P
 
   for (const order of orders) {
     for (const item of getPackingSlipItems(order)) {
-      const productId = item.productId || item.name || 'unknown-item';
-      const key = `${productId}::${Number(item.sizeOz || 0)}`;
-      const existing = grouped.get(key) || {
-        productId,
-        name: item.name || productId,
-        sizeOz: Number(item.sizeOz || 0),
-        quantity: 0,
-        orderCount: 0,
-        orderIds: new Set<string>(),
-      };
-      existing.quantity += item.fulfillQuantity;
-      existing.orderIds.add(order.id);
-      existing.orderCount = existing.orderIds.size;
-      grouped.set(key, existing);
+      const pickItems = item.itemType === 'bundle' && Array.isArray(item.components)
+        ? item.components.map(component => ({ ...component, quantity: component.quantity * item.fulfillQuantity }))
+        : [{ productId: item.productId || item.name || 'unknown-item', name: item.name || item.productId || 'Unknown item', sizeOz: Number(item.sizeOz || 0), quantity: item.fulfillQuantity }];
+      for (const pickItem of pickItems) {
+        const key = `${pickItem.productId}::${Number(pickItem.sizeOz || 0)}`;
+        const existing = grouped.get(key) || { productId: pickItem.productId, name: pickItem.name, sizeOz: Number(pickItem.sizeOz || 0), quantity: 0, orderCount: 0, orderIds: new Set<string>() };
+        existing.quantity += pickItem.quantity;
+        existing.orderIds.add(order.id);
+        existing.orderCount = existing.orderIds.size;
+        grouped.set(key, existing);
+      }
     }
   }
 

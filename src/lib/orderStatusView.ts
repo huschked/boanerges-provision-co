@@ -54,6 +54,10 @@ export function buildPublicOrderStatus(
       unitPrice: Number(item.price || 0),
       quantity: Number(item.quantity || 0),
       cancelledQuantity: Number(item.cancelledQuantity || 0),
+      itemType: item.itemType === 'bundle' ? 'bundle' : 'product',
+      components: item.itemType === 'bundle' && Array.isArray(item.components)
+        ? item.components.map((component: Record<string, unknown>) => ({ name: String(component.name || 'Provision'), quantity: Number(component.quantity || 0) }))
+        : [],
     })),
     amounts: {
       subtotal: Number(order.subtotalAmount || 0),
