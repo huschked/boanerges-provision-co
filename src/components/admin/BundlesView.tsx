@@ -29,7 +29,9 @@ export const BundlesView: React.FC<{ products: Product[] }> = ({ products }) => 
   const [form, setForm] = useState<BundleRecord>(emptyForm);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const productIds = useMemo(() => new Set(products.map(product => product.id)), [products]);
   const productMap = useMemo(() => new Map(products.filter(product => product.active && isProductPublishReady(product as unknown as Record<string, unknown>)).map(product => [product.id, product])), [products]);
+  const staleComponents = useMemo(() => form.components.filter(component => !productIds.has(component.productId)), [form.components, productIds]);
   const preview = resolveBundle({ ...form, active: true }, productMap);
 
   const load = async () => {
@@ -45,6 +47,20 @@ export const BundlesView: React.FC<{ products: Product[] }> = ({ products }) => 
   const update = (field: keyof BundleRecord, value: unknown) => setForm(current => ({ ...current, [field]: value }));
   const toggleProduct = (productId: string, checked: boolean) => update('components', checked ? [...form.components, { productId, quantity: 1 }] : form.components.filter(component => component.productId !== productId));
   const updateQuantity = (productId: string, quantity: number) => update('components', form.components.map(component => component.productId === productId ? { ...component, quantity } : component));
+  const removeComponent = (productId: string) => setForm(current => ({ ...current, components: current.components.filter(component => component.productId !== productId) }));
+  const replaceComponent = (staleProductId: string, replacementProductId: string) => {
+    if (!replacementProductId) return;
+    setForm(current => {
+      const stale = current.components.find(component => component.productId === staleProductId);
+      if (!stale) return current;
+      const withoutStale = current.components.filter(component => component.productId !== staleProductId);
+      const replacement = withoutStale.find(component => component.productId === replacementProductId);
+      const components = replacement
+        ? withoutStale.map(component => component.productId === replacementProductId ? { ...component, quantity: Math.min(20, component.quantity + stale.quantity) } : component)
+        : [...withoutStale, { productId: replacementProductId, quantity: stale.quantity }];
+      return { ...current, components };
+    });
+  };
 
   const save = async () => {
     const id = slugify(form.id || text(form.slug) || text(form.name));
@@ -81,7 +97,17 @@ export const BundlesView: React.FC<{ products: Product[] }> = ({ products }) => 
     {editing && <section className="card-premium p-6 lg:p-10 space-y-8 border-brand-gold/20">
       <div className="flex justify-between"><h4 className="text-2xl font-serif text-brand-parchment">{form.id ? 'Edit Bundle' : 'New Bundle'}</h4><button onClick={() => setEditing(false)}><X className="text-brand-parchment/40" /></button></div>
       <div className="grid md:grid-cols-2 gap-5"><input className="input-premium" placeholder="Bundle name" value={text(form.name)} onChange={event => { update('name', event.target.value); if (!form.id) update('slug', slugify(event.target.value)); }} /><input className="input-premium" placeholder="URL slug" value={text(form.slug)} onChange={event => update('slug', slugify(event.target.value))} /><textarea className="input-premium md:col-span-2" placeholder="Customer-facing description" value={text(form.description)} onChange={event => update('description', event.target.value)} /><input type="number" min="0.01" step="0.01" className="input-premium" placeholder="Selling price" value={String(form.sellingPrice || '')} onChange={event => update('sellingPrice', event.target.value)} /><input className="input-premium" placeholder="Stripe tax code (optional default override)" value={text(form.stripeTaxCode)} onChange={event => update('stripeTaxCode', event.target.value)} /><input className="input-premium md:col-span-2" placeholder="Bundle image URL" value={text(form.imageUrl)} onChange={event => update('imageUrl', event.target.value)} /><input className="input-premium" placeholder="Specific image description" value={text(form.imageAlt)} onChange={event => update('imageAlt', event.target.value)} /><select className="input-premium" value={text(form.imageType) || 'illustrative'} onChange={event => update('imageType', event.target.value)}><option value="illustrative">Illustrative</option><option value="photograph">Photograph</option></select></div>
-      <div><p className="text-[10px] uppercase tracking-widest text-brand-gold font-black mb-4">Components and quantities</p><div className="grid md:grid-cols-2 gap-3">{products.map(product => { const component = form.components.find(item => item.productId === product.id); return <label key={product.id} className="border border-white/10 p-4 flex items-center gap-4"><input type="checkbox" checked={Boolean(component)} onChange={event => toggleProduct(product.id, event.target.checked)} /><span className="flex-1 text-sm text-brand-parchment">{product.name}<small className="block text-brand-parchment/35">${product.price.toFixed(2)} · {product.sizeOz} oz · {product.currentInventory} on hand</small></span>{component && <input aria-label={`${product.name} quantity`} type="number" min="1" max="20" className="input-premium w-20 py-2" value={component.quantity} onChange={event => updateQuantity(product.id, Number(event.target.value))} />}</label>; })}</div></div>
+      <div className="space-y-4"><p className="text-[10px] uppercase tracking-widest text-brand-gold font-black">Components and quantities</p>
+        {staleComponents.length > 0 && <div className="border border-amber-400/30 bg-amber-400/[0.05] p-5 space-y-4">
+          <div><p className="text-sm font-black text-amber-200">This bundle references products that no longer exist under their saved IDs.</p><p className="mt-1 text-xs text-brand-parchment/50">Replace each reference with a current product or remove it before saving.</p></div>
+          {staleComponents.map(component => <div key={component.productId} className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(14rem,1fr)_auto] md:items-center">
+            <div><p className="text-sm text-brand-parchment">Missing product</p><code className="text-xs text-amber-300/80 break-all">{component.productId}</code><p className="text-xs text-brand-parchment/40">Quantity: {component.quantity}</p></div>
+            <select aria-label={`Replacement for ${component.productId}`} className="input-premium" defaultValue="" onChange={event => replaceComponent(component.productId, event.target.value)}><option value="" disabled>Choose replacement product</option>{products.map(product => <option key={product.id} value={product.id}>{product.name} ({product.id})</option>)}</select>
+            <button type="button" onClick={() => removeComponent(component.productId)} className="px-4 py-3 border border-red-400/25 text-red-300 text-xs flex items-center justify-center gap-2"><Trash2 size={13} /> Remove</button>
+          </div>)}
+        </div>}
+        <div className="grid md:grid-cols-2 gap-3">{products.map(product => { const component = form.components.find(item => item.productId === product.id); return <label key={product.id} className="border border-white/10 p-4 flex items-center gap-4"><input type="checkbox" checked={Boolean(component)} onChange={event => toggleProduct(product.id, event.target.checked)} /><span className="flex-1 text-sm text-brand-parchment">{product.name}<small className="block text-brand-parchment/35">${product.price.toFixed(2)} · {product.sizeOz} oz · {product.currentInventory} on hand</small></span>{component && <input aria-label={`${product.name} quantity`} type="number" min="1" max="20" className="input-premium w-20 py-2" value={component.quantity} onChange={event => updateQuantity(product.id, Number(event.target.value))} />}</label>; })}</div>
+      </div>
       <div className={`border p-5 ${preview.bundle ? 'border-green-400/20 text-green-200' : 'border-amber-400/25 text-amber-200'}`}>{preview.bundle ? <p>Component value ${preview.bundle.compareAtPrice.toFixed(2)} · Selling price ${preview.bundle.sellingPrice.toFixed(2)} · Save ${preview.bundle.savingsAmount.toFixed(2)} ({preview.bundle.savingsPercent}%) · {preview.bundle.availableStock} currently available</p> : <p>{preview.error}</p>}</div>
       <label className="flex items-center gap-3 text-sm text-brand-parchment/70"><input type="checkbox" checked={form.active === true} onChange={event => update('active', event.target.checked)} /> Active and available to customers when component stock permits</label>
       <button onClick={save} className="btn-primary">Save Bundle</button>
