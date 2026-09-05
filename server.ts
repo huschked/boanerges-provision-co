@@ -1,4 +1,5 @@
 import express from "express";
+import { registerReviewRoutes } from "./src/server/reviews.js";
 import { isMissingResendContact } from "./src/lib/resendContact.js";
 import { createHash, randomUUID, randomBytes, timingSafeEqual } from "crypto";
 import { mayActivateMarketing, validPreferenceToken, preferenceAction } from "./src/lib/marketingConsent.js";
@@ -1399,7 +1400,7 @@ async function processShippoTrackingWebhook(payload: ShippoTrackingWebhook) {
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
   if (nextShipmentStatus === "delivered") {
-    updates.deliveredAt = admin.firestore.FieldValue.serverTimestamp();
+    if (!order.deliveredAt) updates.deliveredAt = admin.firestore.FieldValue.serverTimestamp();
     updates.shipmentException = admin.firestore.FieldValue.delete();
   } else if (notificationKind === "exception") {
     updates.shipmentException = {
@@ -2379,6 +2380,14 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
 
   // Standard JSON parsing for other routes
   app.use(express.json());
+  registerReviewRoutes(app, {
+    db, authenticateAdmin, appUrl: () => getPublicAppUrl(),
+    send: async (message, idempotencyKey) => {
+      const result = await resend.emails.send({ ...message, from: ORDERS_EMAIL_FROM, replyTo: "support@boanergesprovisions.com" }, { idempotencyKey });
+      if (result.error || !result.data?.id) throw new Error("Review invitation could not be confirmed.");
+      return result.data.id;
+    },
+  });
 
   app.post("/api/webhooks/shippo", async (req, res) => {
     if (!SHIPPO_WEBHOOK_SECRET) {

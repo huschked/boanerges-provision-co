@@ -168,24 +168,6 @@ This board is the working queue for website development. Keep cards actionable e
   - Browser-check mobile, tablet, desktop, zoom, reduced-motion, loading, empty, and error states.
 - **Notes / Links:** Prefer responsive card behavior based on available width instead of forcing two columns on every small phone.
 
-### WEB-043 - Add Verified-Buyer Review Requests and Moderated Reviews
-
-- **Priority:** Medium
-- **Area:** storefront/checkout/admin
-- **Goal:** Build credible social proof by requesting and publishing reviews only from customers who purchased the reviewed product.
-- **Acceptance Criteria:**
-  - An idempotent review-request email is scheduled from a documented post-delivery delay and sent only for eligible delivered orders.
-  - Each request uses a signed, expiring, single-purpose link tied to the order and purchased product without exposing customer or order data.
-  - A verified buyer can submit one rating and review per purchased product, with clear consent for public display and safe edit/support handling.
-  - Duplicate, forged, expired, cross-product, abusive, and rate-limited submissions are handled safely.
-  - Reviews enter a moderation queue with publish/reject controls, audit history, and protection against silently changing the customer's meaning.
-  - PDP aggregates are calculated only from published verified reviews and display honest zero-review states.
-  - Review emails include unsubscribe/preferences handling appropriate to transactional review requests, and any incentive is disclosed prominently.
-- **Verification:**
-  - Test delivered/not-delivered eligibility, delayed scheduling, duplicate carrier events, token tampering/expiry, one-review enforcement, moderation, aggregate recalculation, rejection, and email replay.
-  - Submit and publish a review from a real sandbox order, then confirm the correct PDP count and content.
-- **Notes / Links:** Reuses the completed delivery lifecycle from WEB-014 and signed-link patterns from WEB-020. Do not restore hard-coded ratings while this feature is under development.
-
 ### WEB-001 - Storefront Polish Pass
 
 - **Priority:** High
@@ -238,21 +220,24 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
-### WEB-044 - Add Compliant Marketing Email Preferences
+### WEB-043 - Add Verified-Buyer Review Requests and Moderated Reviews
 
-- **Priority:** High
-- **Area:** checkout/content/infra
-- **Goal:** Give newsletter recipients a reliable opt-out and ensure marketing messages contain the required sender information.
+- **Priority:** Medium
+- **Area:** storefront/checkout/admin
+- **Goal:** Build credible social proof by requesting and publishing reviews only from customers who purchased the reviewed product.
 - **Acceptance Criteria:**
-  - Every marketing email has an accurate sender identity, non-deceptive subject, working unsubscribe action, and a configured valid physical postal address.
-  - Unsubscribe requests update the Firestore subscriber and Resend audience/suppression state without requiring login or information beyond the email/link token.
-  - Opt-out requests are honored within the applicable deadline and cannot be reversed by a replayed signup or checkout event without fresh consent.
-  - Transactional order messages remain distinct from marketing messages and do not silently add promotional content that changes their primary purpose.
-  - Preference changes are idempotent, auditable, rate-limited, and covered by the Privacy Policy.
-- **Progress:** Public token-based preferences, explicit unsubscribe, expiring single-use re-subscription confirmation, checkout replay protection, verified Resend opt-out webhook, provider sync retry in Audience, actual subscriber statuses, privacy copy, server-only preference writes, and marketing footer are implemented.
-- **Verification:** TypeScript and all 44 automated tests pass. Live unsubscribe/re-subscribe, provider webhook, deployed Firestore rules, and rendered emails remain to verify using `docs/marketing-preferences.md`.
-- **Owner decision:** Leave `MARKETING_POSTAL_ADDRESS` blank; do not publish the home address. Marketing welcome emails are blocked until an approved address is configured. Transactional emails remain enabled. Do not send dashboard Broadcasts until an approved address and unsubscribe footer are configured there as well.
-- **Notes / Links:** Deploy `firestore.rules`, configure `RESEND_WEBHOOK_SECRET` for `contact.updated`, and follow `docs/marketing-preferences.md`. Failed provider sync remains visible for admin retry; no background retry worker is scheduled.
+  - An idempotent review-request email is scheduled from a documented post-delivery delay and sent only for eligible delivered orders.
+  - Each request uses a signed, expiring, single-purpose link tied to the order and purchased product without exposing customer or order data.
+  - A verified buyer can submit one rating and review per purchased product, with clear consent for public display and safe edit/support handling.
+  - Duplicate, forged, expired, cross-product, abusive, and rate-limited submissions are handled safely.
+  - Reviews enter a moderation queue with publish/reject controls, audit history, and protection against silently changing the customer's meaning.
+  - PDP aggregates are calculated only from published verified reviews and display honest zero-review states.
+  - Review emails include unsubscribe/preferences handling appropriate to transactional review requests, and any incentive is disclosed prominently.
+- **Verification:**
+  - Passed TypeScript, production build, and all 53 automated tests, including HTTP review workflow tests with in-memory database/email adapters. Existing large-bundle warning remains.
+  - Tests cover seven-day eligibility, signed-link tampering/expiry, bundle eligibility, concurrent duplicate submission, cross-product input, moderation/audit, published-only aggregates, opt-outs, replay/uncertain email sends, authorization, and rate limiting.
+  - Owner still needs to deploy/configure and submit/publish/unpublish a review from a sandbox order, verify actual email/opt-out delivery, and check desktop/mobile/keyboard behavior.
+- **Notes / Links:** Implemented seven-day delay, daily capped worker, 60-day private links, one review per buyer/product, Admin Reviews queue and invitation visibility, public ratings, and separate review-email opt-out. Customer wording remains immutable in Admin; corrections use verified support handling. Sending defaults off and requires an approved postal address, `REVIEW_LINK_SECRET`, `CRON_SECRET`, and `REVIEW_REQUESTS_ENABLED=true`. Setup, limits, recovery, and sandbox checklist: `docs/verified-buyer-reviews.md`. No live data or emails were changed by implementation tests.
 
 ### WEB-042 - Implement Subscribe & Save with Stripe Billing
 
@@ -292,6 +277,22 @@ This board is the working queue for website development. Keep cards actionable e
 - **Notes / Links:** Migration and verification instructions are in `docs/product-catalog-readiness.md`. No ingredient, allergen, cross-contact, storage, shelf-life, or dietary values were invented.
 
 ## Done
+
+### WEB-044 - Add Compliant Marketing Email Preferences
+
+- **Priority:** High
+- **Area:** checkout/content/infra
+- **Goal:** Give newsletter recipients a reliable opt-out and ensure marketing messages contain the required sender information.
+- **Acceptance Criteria:**
+  - Marketing emails identify the sender and include an unsubscribe action and approved postal address; application marketing sending is blocked when the address is blank.
+  - Unsubscribe updates Firestore and Resend without login. Replayed signup requests and checkout events cannot undo opt-out.
+  - Fresh website signup subscribes immediately with on-site feedback, including re-subscriptions, per owner direction; no confirmation email is required.
+  - Preference changes are auditable and rate-limited, with admin retry for provider sync failures and matching Privacy Policy copy.
+  - Confirmed admin deletion removes the Resend contact and Audience entry while retaining minimal suppression history. Legacy document IDs and missing provider contacts are supported.
+  - Transactional order and subscription service emails remain separate from marketing. Unsupported newsletter discount copy is removed.
+- **Verification:** Owner accepted the story as finished after deployment feedback, Resend opt-out synchronization, subscriber-management fixes, and email checks. TypeScript and production builds passed during implementation; targeted consent and provider-error regression tests passed. Detailed verification procedures remain in `docs/marketing-preferences.md`.
+- **Deferred configuration:** Owner requested no publication of the home address. An approved `MARKETING_POSTAL_ADDRESS` and final postal-footer verification remain intentionally deferred until suitable mailing details are available. The app blocks marketing welcome emails if this variable is blank; direct Resend Broadcasts require their own approved footer setup.
+- **Notes / Links:** `docs/marketing-preferences.md`. Provider sync failures remain visible for admin retry; no background retry worker is scheduled.
 
 ### WEB-036 - Rebuild or Disable Bundle Commerce
 

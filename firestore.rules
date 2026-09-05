@@ -208,6 +208,20 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Review content, invitations, consent and audit history are server-write-only.
+    // Public reviews are served through a field-whitelisted API, never this collection.
+    match /reviews/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /review_audit/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /review_invitations/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
     match /{document=**} {
       allow read, write: if false;
     }

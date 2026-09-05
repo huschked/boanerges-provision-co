@@ -28,6 +28,11 @@ export const PrivacyPolicy: React.FC = () => (
           <p><strong className="text-brand-parchment">Website activity.</strong> We collect limited events such as product views, add-to-cart actions, checkout starts, and newsletter signups. Our hosting and security providers may also process request information such as IP address, browser details, and timestamps. Your cart is saved in your browser so it can survive navigation and a cancelled checkout.</p>
         </Section>
 
+        <Section title="Product reviews">
+          <p>After delivery, we may invite you to review a purchased product. Review invitations are optional and include a separate opt-out; existing email opt-outs are also respected. Submitting a review requires your agreement to publish your chosen display name, rating, and review after moderation. We do not publish your email, shipping address, or order number with a review.</p>
+          <p>We keep purchase-verification, consent, and moderation records to prevent duplicate or fraudulent reviews. Contact support to request a correction or removal. We verify ownership before handling these requests and do not silently rewrite customer feedback.</p>
+        </Section>
+
         <Section title="How we use information">
           <ul className="list-disc pl-5 space-y-2">
             <li>Process payment, fulfill and ship orders, provide tracking, and handle refunds or support.</li>

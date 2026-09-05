@@ -6,6 +6,7 @@ import { getProductBySlug, getProducts, Product, type SubscriptionCadence } from
 import { createSubscriptionCheckout, getSubscriptionOptions, type SubscriptionOption } from '@/src/services/subscriptionService';
 import { HeatScale } from '@/src/components/HeatScale';
 import { ProductCard } from '@/src/components/ProductCard';
+import { ProductReviews } from '@/src/components/ProductReviews';
 import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
@@ -250,6 +251,7 @@ export const ProductDetail: React.FC = () => {
         </div>
 
         {/* Related Products */}
+        <ProductReviews productId={product.id} />
         {relatedProducts.length > 0 && (
           <section className="mt-40">
             <div className="text-center space-y-4 mb-20">

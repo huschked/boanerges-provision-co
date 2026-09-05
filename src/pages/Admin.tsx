@@ -17,9 +17,10 @@ import { MessagesView, ContactMessage } from '../components/admin/MessagesView';
 import { AnalyticsView } from '../components/admin/AnalyticsView';
 import { BundlesView } from '../components/admin/BundlesView';
 import { SubscriptionsView } from '../components/admin/SubscriptionsView';
+import { ReviewsView } from '../components/admin/ReviewsView';
 import { normalizeOrderLifecycle } from '@/src/lib/orderLifecycle';
 
-type AdminTab = 'dashboard' | 'analytics' | 'products' | 'bundles' | 'subscriptions' | 'orders' | 'subscribers' | 'contact';
+type AdminTab = 'dashboard' | 'analytics' | 'products' | 'bundles' | 'subscriptions' | 'orders' | 'subscribers' | 'contact' | 'reviews';
 
 export const Admin: React.FC = () => {
   const ADMIN_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
@@ -289,6 +290,7 @@ export const Admin: React.FC = () => {
             { id: 'products', label: 'Inventory', icon: Package },
             { id: 'bundles', label: 'Bundles', icon: Gift },
             { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard },
+            { id: 'reviews', label: 'Reviews', icon: Mail },
             { id: 'orders', label: 'Orders', icon: ShoppingCart },
             { id: 'subscribers', label: 'Audience', icon: Users },
             { id: 'contact', label: 'Inquiries', icon: Mail },
@@ -362,6 +364,7 @@ export const Admin: React.FC = () => {
           {activeTab === 'products' && <ProductsView products={filteredProducts} onRefresh={fetchData} />}
           {activeTab === 'bundles' && <BundlesView products={products} />}
           {activeTab === 'subscriptions' && <SubscriptionsView />}
+          {activeTab === 'reviews' && <ReviewsView />}
           {activeTab === 'orders' && <OrdersView orders={filteredOrders} onRefresh={fetchData} searchTerm={searchTerm} onSearchTermChange={setSearchTerm} queueFilter={orderQueue} onQueueFilterChange={setOrderQueue} initialSelectedOrderId={initialOrderId} />}
           {activeTab === 'subscribers' && <SubscribersView subscribers={filteredSubscribers} />}
           {activeTab === 'contact' && <MessagesView messages={filteredMessages} onRefresh={fetchData} />}
