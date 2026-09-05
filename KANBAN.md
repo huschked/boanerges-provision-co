@@ -136,22 +136,6 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Ready
 
-### WEB-044 - Add Compliant Marketing Email Preferences
-
-- **Priority:** High
-- **Area:** checkout/content/infra
-- **Goal:** Give newsletter recipients a reliable opt-out and ensure marketing messages contain the required sender information.
-- **Acceptance Criteria:**
-  - Every marketing email has an accurate sender identity, non-deceptive subject, working unsubscribe action, and a configured valid physical postal address.
-  - Unsubscribe requests update the Firestore subscriber and Resend audience/suppression state without requiring login or information beyond the email/link token.
-  - Opt-out requests are honored within the applicable deadline and cannot be reversed by a replayed signup or checkout event without fresh consent.
-  - Transactional order messages remain distinct from marketing messages and do not silently add promotional content that changes their primary purpose.
-  - Preference changes are idempotent, auditable, rate-limited, and covered by the Privacy Policy.
-- **Verification:**
-  - Send marketing and transactional test messages, exercise unsubscribe/re-subscribe/replay cases, and confirm provider and Firestore state.
-  - Confirm the configured postal address and final email templates with the business owner before launch.
-- **Notes / Links:** Added after reviewing FTC CAN-SPAM guidance during WEB-038. A street address, registered USPS post office box, or qualifying registered private mailbox may be used; do not publish a private address without owner approval.
-
 ### WEB-039 - Repair Merchandising Navigation and CTA Destinations
 
 - **Priority:** High
@@ -253,6 +237,22 @@ This board is the working queue for website development. Keep cards actionable e
 ## In Progress
 
 ## Review / Verify
+
+### WEB-044 - Add Compliant Marketing Email Preferences
+
+- **Priority:** High
+- **Area:** checkout/content/infra
+- **Goal:** Give newsletter recipients a reliable opt-out and ensure marketing messages contain the required sender information.
+- **Acceptance Criteria:**
+  - Every marketing email has an accurate sender identity, non-deceptive subject, working unsubscribe action, and a configured valid physical postal address.
+  - Unsubscribe requests update the Firestore subscriber and Resend audience/suppression state without requiring login or information beyond the email/link token.
+  - Opt-out requests are honored within the applicable deadline and cannot be reversed by a replayed signup or checkout event without fresh consent.
+  - Transactional order messages remain distinct from marketing messages and do not silently add promotional content that changes their primary purpose.
+  - Preference changes are idempotent, auditable, rate-limited, and covered by the Privacy Policy.
+- **Progress:** Public token-based preferences, explicit unsubscribe, expiring single-use re-subscription confirmation, checkout replay protection, verified Resend opt-out webhook, provider sync retry in Audience, actual subscriber statuses, privacy copy, server-only preference writes, and marketing footer are implemented.
+- **Verification:** TypeScript and all 44 automated tests pass. Live unsubscribe/re-subscribe, provider webhook, deployed Firestore rules, and rendered emails remain to verify using `docs/marketing-preferences.md`.
+- **Owner decision:** Leave `MARKETING_POSTAL_ADDRESS` blank; do not publish the home address. Marketing welcome emails are blocked until an approved address is configured. Transactional emails remain enabled. Do not send dashboard Broadcasts until an approved address and unsubscribe footer are configured there as well.
+- **Notes / Links:** Deploy `firestore.rules`, configure `RESEND_WEBHOOK_SECRET` for `contact.updated`, and follow `docs/marketing-preferences.md`. Failed provider sync remains visible for admin retry; no background retry worker is scheduled.
 
 ### WEB-042 - Implement Subscribe & Save with Stripe Billing
 

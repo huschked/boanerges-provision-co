@@ -1,4 +1,6 @@
 import React from 'react';
+import { auth } from '@/src/lib/firebase';
+import toast from 'react-hot-toast';
 
 export interface Subscriber {
   id: string;
@@ -7,6 +9,8 @@ export interface Subscriber {
   subscribedAt?: any;
   createdAt?: any;
   status: string;
+  resendSyncStatus?: string;
+  welcomeEmailStatus?: string;
 }
 
 interface SubscribersViewProps {
@@ -14,6 +18,18 @@ interface SubscribersViewProps {
 }
 
 export const SubscribersView: React.FC<SubscribersViewProps> = ({ subscribers }) => {
+  const [retrying, setRetrying] = React.useState('');
+  async function retry(email: string) {
+    setRetrying(email);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/admin/marketing/retry-sync', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ email }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      toast.success('Preference synchronized. Refresh to update the table.');
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Sync failed.'); }
+    finally { setRetrying(''); }
+  }
   const getJoinedDate = (subscriber: Subscriber) => subscriber.subscribedAt || subscriber.createdAt;
 
   return (
@@ -49,8 +65,11 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({ subscribers })
                 </td>
                 <td className="px-10 py-8 text-right">
                   <span className="px-4 py-1.5 rounded-full bg-green-400/5 text-green-400 text-[8px] uppercase tracking-[0.2em] font-black border border-green-400/10">
-                    Active
+                    {sub.status || 'Unknown'}
                   </span>
+                  <p className="mt-3 text-xs text-brand-parchment/70">Email sync: {sub.resendSyncStatus || 'Not synced'}</p>
+                  <p className="mt-1 text-xs text-brand-parchment/70">Welcome: {sub.welcomeEmailStatus || 'Not sent'}</p>
+                  {['failed', 'pending'].includes(sub.resendSyncStatus || '') && <button className="mt-2 underline text-brand-gold p-3" disabled={!!retrying} onClick={() => retry(sub.email)}>{retrying === sub.email ? 'Retrying…' : 'Retry email sync'}</button>}
                 </td>
               </tr>
             ))}

@@ -19,6 +19,7 @@ import { Admin } from './pages/Admin';
 import { ReturnsPolicy } from './pages/ReturnsPolicy';
 import { OrderStatus } from './pages/OrderStatus';
 import { PrivacyPolicy } from './pages/PrivacyPolicy';
+import { EmailPreferences } from './pages/EmailPreferences';
 import { TermsOfService } from './pages/TermsOfService';
 import { auth } from './lib/firebase';
 
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="/success" element={<CheckoutSuccess />} />
           <Route path="/returns" element={<ReturnsPolicy />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/email-preferences" element={<EmailPreferences />} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/order-status" element={<OrderStatus />} />
           <Route path="/admin" element={<Admin />} />

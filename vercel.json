@@ -6,6 +6,7 @@
     }
   },
   "rewrites": [
+    { "source": "/email-preferences", "destination": "/index.html" },
     {
       "source": "/api/:path*",
       "destination": "/api?path=:path*"

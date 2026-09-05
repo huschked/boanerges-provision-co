@@ -1,5 +1,6 @@
 import express from "express";
-import { createHash, randomUUID, timingSafeEqual } from "crypto";
+import { createHash, randomUUID, randomBytes, timingSafeEqual } from "crypto";
+import { mayActivateMarketing, validPreferenceToken, preferenceAction } from "./src/lib/marketingConsent.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import Stripe from "stripe";
@@ -903,7 +904,44 @@ function buildEmailLayout({
   `;
 }
 
-function buildNewsletterEmailHtml({ email }: { email: string }) {
+async function createMarketingLink(email: string, action: "unsubscribe" | "subscribe") {
+  const token = randomBytes(32).toString("hex");
+  const subscriber = (await db.collection("subscribers").doc(email).get()).data() || {};
+  await db.collection("marketing_tokens").doc(createHash("sha256").update(token).digest("hex")).set({
+    email, action, version: Number(subscriber.preferenceVersion || 0),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    // Opt-out links remain usable; affirmative consent links expire after 24 hours.
+    expiresAt: action === "subscribe" ? admin.firestore.Timestamp.fromMillis(Date.now() + 86400000) : null,
+  });
+  return `${getPublicAppUrl("https://boanerges-provision-co.vercel.app")}/email-preferences?token=${token}`;
+}
+
+async function syncMarketingPreference(email: string) {
+  const ref = db.collection("subscribers").doc(email);
+  // Version checks converge if an opt-out arrives while a provider request is in flight.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const data = (await ref.get()).data() || {};
+    const unsubscribed = data.status !== "active" || data.consent !== true;
+    try {
+      const result = await resend.contacts.update({ email, unsubscribed });
+      if (result.error) throw new Error(result.error.message);
+      const stable = await db.runTransaction(async transaction => {
+        const current = (await transaction.get(ref)).data() || {};
+        if (current.preferenceVersion !== data.preferenceVersion || current.status !== data.status) return false;
+        transaction.set(ref, { resendSyncStatus: "updated", resendSyncError: "", resendSyncAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        return true;
+      });
+      if (stable) return true;
+    } catch (error) {
+      await ref.set({ resendSyncStatus: "failed", resendSyncError: sanitizeResendError(error) }, { merge: true });
+      return false;
+    }
+  }
+  await ref.set({ resendSyncStatus: "failed", resendSyncError: "Preference changed during sync; retry required." }, { merge: true });
+  return false;
+}
+
+function buildNewsletterEmailHtml({ email, unsubscribeUrl }: { email: string; unsubscribeUrl: string }) {
   return buildEmailLayout({
     eyebrow: "Welcome to the Table",
     title: "You are in the inner circle now.",
@@ -918,11 +956,11 @@ function buildNewsletterEmailHtml({ email }: { email: string }) {
         </div>
         <div style="padding:20px;border:1px solid rgba(255,255,255,0.08);">
           <p style="margin:0 0 10px;color:#c5a059;font-size:11px;font-weight:800;letter-spacing:0.24em;text-transform:uppercase;">Subscribed Email</p>
-          <p style="margin:0;color:#f4ecd8;font-size:15px;line-height:1.7;">${email}</p>
+          <p style="margin:0;color:#f4ecd8;font-size:15px;line-height:1.7;">${escapeHtml(email)}</p>
         </div>
       </div>
     `,
-    footerNote: "Questions or special requests? Reply to this email and our team will take care of you.",
+    footerNote: `Marketing email from Boanerges Provisions Co.<br>${escapeHtml(process.env.MARKETING_POSTAL_ADDRESS || "")}<br><a href="${escapeHtml(unsubscribeUrl)}" style="color:#c5a059">Unsubscribe from marketing emails</a>. Order and subscription service emails are unaffected.`,
   });
 }
 
@@ -945,7 +983,22 @@ async function activateNewsletterSubscriber({
   const existing = existingSubscriber.data() || {};
   const wasActive = existingSubscriber.exists && existing.status === "active" && existing.consent === true;
 
-  await subscriberRef.set({
+  if (RESEND_AUDIENCE_ID) {
+    const provider = await resend.contacts.get({ email: normalizedEmail });
+    if (provider.data?.unsubscribed) {
+      await subscriberRef.set({ email: normalizedEmail, status: "unsubscribed", consent: false, unsubscribedAt: admin.firestore.FieldValue.serverTimestamp(), createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      return { welcomeEmailStatus: "unsubscribed", welcomeEmailError: "", alreadySubscribed: false };
+    }
+    if (provider.error && provider.error.name !== "not_found") throw new Error(provider.error.message);
+  }
+
+  const activated = await db.runTransaction(async transaction => {
+    const current = (await transaction.get(subscriberRef)).data() || {};
+    if (!mayActivateMarketing(current)) return false;
+    if (current.status !== "active") transaction.create(db.collection("marketing_events").doc(), {
+      email: normalizedEmail, action: "subscribe", source, ...(checkoutOrderId ? { checkoutOrderId } : {}), createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    transaction.set(subscriberRef, {
     email: normalizedEmail,
     source,
     consent: true,
@@ -956,7 +1009,10 @@ async function activateNewsletterSubscriber({
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     welcomeEmailStatus: existing.welcomeEmailStatus === "sent" ? "sent" : "queued",
     resendAudienceId: RESEND_AUDIENCE_ID || "",
-  }, { merge: true });
+    }, { merge: true });
+    return true;
+  });
+  if (!activated) return { welcomeEmailStatus: "unsubscribed", welcomeEmailError: "", alreadySubscribed: false };
 
   if (!wasActive) await incrementAnalyticsDaily(getDateKey(), { newsletterSignups: 1 });
 
@@ -973,7 +1029,19 @@ async function activateNewsletterSubscriber({
     resendSyncAt: admin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
 
+  // Reconcile a concurrent opt-out after an in-flight audience activation.
+  if ((await subscriberRef.get()).data()?.status !== "active") {
+    await syncMarketingPreference(normalizedEmail);
+    return { welcomeEmailStatus: "unsubscribed", welcomeEmailError: "", alreadySubscribed: false };
+  }
+
   if (existing.welcomeEmailStatus === "sent") return { welcomeEmailStatus: "sent", welcomeEmailError: "", alreadySubscribed: true };
+
+  if (!process.env.MARKETING_POSTAL_ADDRESS?.trim()) {
+    const welcomeEmailError = "Marketing sending is disabled until an approved mailing address is configured.";
+    await subscriberRef.set({ welcomeEmailStatus: "blocked_missing_address", welcomeEmailError }, { merge: true });
+    return { welcomeEmailStatus: "blocked_missing_address", welcomeEmailError, alreadySubscribed: false };
+  }
 
   if (usesResendTestSender(GENERAL_EMAIL_FROM) && normalizedEmail !== RESEND_TEST_RECIPIENT.toLowerCase()) {
     const welcomeEmailError = `Resend test sender can only email ${RESEND_TEST_RECIPIENT}. Verify a sending domain to deliver to other recipients.`;
@@ -982,13 +1050,17 @@ async function activateNewsletterSubscriber({
   }
 
   try {
+    const unsubscribeUrl = await createMarketingLink(normalizedEmail, "unsubscribe");
+    const latest = (await subscriberRef.get()).data();
+    if (latest?.status !== "active" || latest?.consent !== true) return { welcomeEmailStatus: "unsubscribed", welcomeEmailError: "", alreadySubscribed: false };
     const welcomeEmailResult = await resend.emails.send({
       from: GENERAL_EMAIL_FROM,
       replyTo: GENERAL_REPLY_TO,
       to: normalizedEmail,
       subject: "Welcome to Boanerges Provisions Co.",
-      html: buildNewsletterEmailHtml({ email: normalizedEmail }),
-    }, checkoutOrderId ? { idempotencyKey: `checkout-newsletter-${checkoutOrderId}` } : undefined);
+      html: buildNewsletterEmailHtml({ email: normalizedEmail, unsubscribeUrl }),
+      text: `Welcome to Boanerges Provisions Co. You requested news about flavors, restocks, and pairings.\n\n${process.env.MARKETING_POSTAL_ADDRESS}\nUnsubscribe: ${unsubscribeUrl}\nOrder and subscription service emails are unaffected.`,
+    }, { idempotencyKey: `newsletter-welcome-${createHash("sha256").update(normalizedEmail).digest("hex")}` });
     if (welcomeEmailResult.error) throw new Error(welcomeEmailResult.error.message || "Email provider rejected the welcome email.");
     await subscriberRef.set({ welcomeEmailStatus: "sent", welcomeEmailSentAt: admin.firestore.FieldValue.serverTimestamp(), welcomeEmailId: welcomeEmailResult.data?.id || "", welcomeEmailError: "" }, { merge: true });
     return { welcomeEmailStatus: "sent", welcomeEmailError: "", alreadySubscribed: false };
@@ -2258,6 +2330,34 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
     res.sendFile(path.resolve(__dirname, "src/assets/BoanergesLogoTransparent-v2.png"));
   });
 
+  app.post("/api/webhooks/resend", bodyParser.raw({ type: "application/json" }), async (req, res) => {
+    let event;
+    try {
+      if (!process.env.RESEND_WEBHOOK_SECRET) return res.status(503).json({ error: "Webhook not configured." });
+      event = resend.webhooks.verify({ payload: req.body.toString(), webhookSecret: process.env.RESEND_WEBHOOK_SECRET,
+        headers: { id: req.get("svix-id") || "", timestamp: req.get("svix-timestamp") || "", signature: req.get("svix-signature") || "" } });
+    } catch { return res.status(400).json({ error: "Invalid webhook signature." }); }
+    try {
+      if (event.type === "contact.updated" && event.data.unsubscribed === true) {
+        const email = normalizeCustomerEmail(event.data.email);
+        if (!email) return res.status(400).json({ error: "Invalid contact." });
+        const eventRef = db.collection("marketing_events").doc(createHash("sha256").update(req.get("svix-id") || "").digest("hex"));
+        const ref = db.collection("subscribers").doc(email);
+        await db.runTransaction(async transaction => {
+          const receipt = await transaction.get(eventRef);
+          const current = (await transaction.get(ref)).data() || {};
+          if (receipt.exists) return;
+          transaction.create(eventRef, { email, action: "provider_unsubscribe", createdAt: admin.firestore.FieldValue.serverTimestamp() });
+          // Provider subscription events never grant consent. Ignore opt-outs older than a later confirmed preference.
+          const occurredAt = Date.parse(event.created_at);
+          if (current.status === "active" && occurredAt < (current.preferenceChangedAt?.toMillis?.() || 0)) return;
+          transaction.set(ref, { email, status: "unsubscribed", consent: false, unsubscribedAt: admin.firestore.FieldValue.serverTimestamp(), preferenceChangedAt: admin.firestore.FieldValue.serverTimestamp(), preferenceVersion: Number(current.preferenceVersion || 0) + 1, resendSyncStatus: "updated", resendSyncError: "", createdAt: current.createdAt || admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        });
+      }
+      return res.json({ received: true });
+    } catch { return res.status(500).json({ error: "Preference processing failed." }); }
+  });
+
   // Standard JSON parsing for other routes
   app.use(express.json());
 
@@ -2295,6 +2395,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
   });
 
   app.use("/api/subscribers", apiLimiter);
+  app.use("/api/email-preferences", apiLimiter);
   app.use("/api/contact", apiLimiter);
   app.use("/api/analytics/events", apiLimiter);
 
@@ -2629,6 +2730,55 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
     }
   });
 
+  app.get("/api/email-preferences", async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (!validPreferenceToken(req.query.token)) return res.status(400).json({ error: "This preference link is invalid." });
+    try {
+      const snap = await db.collection("marketing_tokens").doc(createHash("sha256").update(req.query.token).digest("hex")).get();
+      const data = snap.data();
+      if (!data || (data.expiresAt && data.expiresAt.toMillis() < Date.now())) return res.status(400).json({ error: "This link is invalid or expired. Request a new signup email." });
+      return res.json({ action: data.action });
+    } catch { return res.status(503).json({ error: "Unable to load preferences. Please try again." }); }
+  });
+
+  app.post("/api/email-preferences", async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (!validPreferenceToken(req.body?.token)) return res.status(400).json({ error: "This preference link is invalid." });
+    try {
+      const tokenRef = db.collection("marketing_tokens").doc(createHash("sha256").update(req.body.token).digest("hex"));
+      const result = await db.runTransaction(async transaction => {
+        const token = (await transaction.get(tokenRef)).data();
+        if (!token || (token.expiresAt && token.expiresAt.toMillis() < Date.now())) throw new Error("This link is invalid or expired. Request a new signup email.");
+        const ref = db.collection("subscribers").doc(token.email);
+        const current = (await transaction.get(ref)).data() || {};
+        const action = preferenceAction({ action: token.action, version: token.version, usedAt: token.usedAt, expiresAtMs: token.expiresAt?.toMillis() }, current, req.body.consent === true);
+        if (token.action === "subscribe" && token.usedAt) return { email: token.email, action };
+        const status = action === "subscribe" ? "active" : "unsubscribed";
+        if (current.status !== status || (status === "active" && current.consent !== true)) {
+          transaction.set(ref, { email: token.email, status, consent: status === "active", preferenceVersion: Number(current.preferenceVersion || 0) + 1,
+            preferenceChangedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            ...(status === "active" ? { unsubscribedAt: admin.firestore.FieldValue.delete(), consentAt: admin.firestore.FieldValue.serverTimestamp(), source: "confirmed_resubscription" } : { unsubscribedAt: admin.firestore.FieldValue.serverTimestamp() }),
+            resendSyncStatus: "pending", createdAt: current.createdAt || admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+          transaction.create(db.collection("marketing_events").doc(), { email: token.email, action: token.action, source: "signed_link", createdAt: admin.firestore.FieldValue.serverTimestamp() });
+        }
+        transaction.set(tokenRef, { usedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        return { email: token.email, action: token.action };
+      });
+      const synced = await syncMarketingPreference(result.email);
+      return res.json({ success: true, action: result.action, syncPending: !synced });
+    } catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : "Unable to save preferences." }); }
+  });
+
+  app.post("/api/admin/marketing/retry-sync", async (req, res) => {
+    try {
+      await authenticateAdmin(req);
+      const email = normalizeCustomerEmail(req.body?.email);
+      if (!email) return res.status(400).json({ error: "Invalid email." });
+      if (!(await syncMarketingPreference(email))) return res.status(502).json({ error: "Resend sync failed. The saved preference remains in place." });
+      return res.json({ success: true });
+    } catch { return res.status(403).json({ error: "Admin access required." }); }
+  });
+
   // Newsletter Signup
   app.post("/api/subscribers", async (req, res) => {
     try {
@@ -2636,6 +2786,12 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       const normalizedEmail = normalizeCustomerEmail(email);
       if (!normalizedEmail || consent !== true) return res.status(400).json({ error: "Enter a valid email and confirm newsletter consent.", code: "validation_error" });
       const result = await activateNewsletterSubscriber({ email: normalizedEmail, source: typeof source === "string" ? source.slice(0, 80) : "storefront" });
+      if (result.welcomeEmailStatus === "unsubscribed") {
+        const url = await createMarketingLink(normalizedEmail, "subscribe");
+        const confirmation = await resend.emails.send({ from: GENERAL_EMAIL_FROM, replyTo: GENERAL_REPLY_TO, to: normalizedEmail, subject: "Confirm your newsletter signup", text: `You requested to receive Boanerges Provisions Co. marketing emails again. Confirm within 24 hours: ${url}\n\nIf you did not request this, ignore this email. Your preference will not change.` });
+        if (confirmation.error) throw new Error(confirmation.error.message);
+        return res.status(202).json({ success: true, message: "Check your email to confirm your newsletter signup." });
+      }
       res.status(result.alreadySubscribed ? 200 : 201).json({ success: true, ...result });
     } catch (error: any) {
       console.error("Subscriber Error:", error);
@@ -2983,7 +3139,7 @@ async function completeCheckoutNewsletterConsent(orderId: string, order: Firebas
       checkoutOrderId: orderId,
     });
     await orderRef.set({
-      newsletterSubscriptionStatus: "active",
+      newsletterSubscriptionStatus: result.welcomeEmailStatus === "unsubscribed" ? "unsubscribed" : "active",
       newsletterWelcomeEmailStatus: result.welcomeEmailStatus,
       newsletterSubscribedAt: admin.firestore.FieldValue.serverTimestamp(),
       newsletterSubscriptionError: admin.firestore.FieldValue.delete(),

@@ -157,15 +157,16 @@ service cloud.firestore {
 
     match /subscribers/{subscriberId} {
       allow read: if isAdmin();
-      allow create: if
-        request.resource.data.keys().hasOnly(["email", "source", "consent", "status", "createdAt", "updatedAt"]) &&
-        request.resource.data.keys().hasAll(["email", "source", "consent", "status"]) &&
-        request.resource.data.email == subscriberId &&
-        isValidEmail(request.resource.data.email) &&
-        request.resource.data.consent == true &&
-        request.resource.data.status in ["active", "pending"] &&
-        isOptionalShortText(request.resource.data.source, 80);
-      allow update, delete: if isAdmin();
+      allow write: if false;
+    }
+
+    match /marketing_events/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /marketing_tokens/{tokenId} {
+      allow read, write: if false;
     }
 
     match /contact_messages/{messageId} {

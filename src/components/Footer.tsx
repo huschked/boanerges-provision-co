@@ -15,8 +15,8 @@ export const Footer: React.FC = () => {
 
     setSubmitting(true);
     try {
-      await subscribeToNewsletter(email.trim(), 'footer_newsletter');
-      toast.success('You are subscribed to the table.');
+      const result = await subscribeToNewsletter(email.trim(), 'footer_newsletter');
+      toast.success(result.message || 'You are subscribed to the table.');
       setEmail('');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to subscribe right now.');

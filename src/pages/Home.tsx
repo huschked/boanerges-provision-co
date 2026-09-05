@@ -38,7 +38,8 @@ export const Home: React.FC = () => {
     if (!email) return;
     setSubmitting(true);
     try {
-      await subscribeToNewsletter(email, 'home_newsletter');
+      const result = await subscribeToNewsletter(email, 'home_newsletter');
+      if (result.message) { toast.success(result.message); setEmail(''); return; }
       setSubmitted(true);
       setEmail('');
     } catch (error) {

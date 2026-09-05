@@ -44,7 +44,7 @@ export const PrivacyPolicy: React.FC = () => (
         </Section>
 
         <Section title="Your choices and privacy requests">
-          <p>You may unsubscribe from marketing email by contacting us at the address below. A direct unsubscribe workflow is tracked for completion before production marketing campaigns begin. Transactional order and safety messages may still be sent when necessary.</p>
+          <p>Use the unsubscribe link in any marketing email to stop marketing messages without logging in, or contact us below. We record your preference and synchronize it with our email provider. Re-subscribing after an opt-out requires confirmation through a new email link. We retain consent and opt-out records to honor your choices and prevent old signup events from reversing them. Transactional order, subscription service, and safety messages may still be sent when necessary; unsubscribing from marketing does not cancel a product subscription.</p>
           <p>Depending on where you live, you may have rights to request access, correction, deletion, or a copy of personal information. You may also ask about the third parties to which information was disclosed. We will verify and respond to applicable requests as required by law.</p>
           <p>Email <a className="text-brand-gold hover:text-brand-parchment underline underline-offset-4" href="mailto:support@boanergesprovisions.com?subject=Privacy%20Request">support@boanergesprovisions.com</a> with the subject “Privacy Request.”</p>
         </Section>
