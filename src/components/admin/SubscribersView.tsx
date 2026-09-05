@@ -53,7 +53,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({ subscribers })
     <div className="space-y-10">
       {deleteTarget && <section role="region" aria-label="Confirm subscriber deletion" className="card-premium p-6 space-y-4 border border-red-400/30">
         <h2 className="text-xl text-brand-parchment">Delete {deleteTarget.email}?</h2>
-        <p className="text-brand-parchment/80">This removes their Audience entry and Resend contact. A minimal opt-out record and preference audit history remain to prevent old events from subscribing them again. Orders and product subscriptions are unaffected. Restoring marketing access requires a new signup and email confirmation.</p>
+        <p className="text-brand-parchment/80">This removes their Audience entry and Resend contact. A minimal opt-out record and preference audit history remain to prevent old events from subscribing them again. Orders and product subscriptions are unaffected. They can subscribe again by submitting a new website signup.</p>
         <button disabled={!!retrying} onClick={() => deleteSubscriber(deleteTarget)} className="px-5 py-3 bg-red-400/15 text-red-300 border border-red-400/30">{retrying ? 'Deleting…' : 'Delete from Audience and Resend'}</button>
         <button disabled={!!retrying} onClick={() => setDeleteTarget(null)} className="px-5 py-3 text-brand-parchment">Cancel</button>
       </section>}

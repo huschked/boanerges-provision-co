@@ -975,11 +975,13 @@ async function activateNewsletterSubscriber({
   source,
   consentAt,
   checkoutOrderId,
+  signupRequestId,
 }: {
   email: string;
   source: string;
   consentAt?: unknown;
   checkoutOrderId?: string;
+  signupRequestId?: string;
 }) {
   const normalizedEmail = normalizeCustomerEmail(email);
   if (!normalizedEmail) throw new Error("A valid subscriber email is required.");
@@ -988,9 +990,9 @@ async function activateNewsletterSubscriber({
   const existingSubscriber = await subscriberRef.get();
   const existing = existingSubscriber.data() || {};
   const wasActive = existingSubscriber.exists && existing.status === "active" && existing.consent === true;
-  if (!mayActivateMarketing(existing)) return { welcomeEmailStatus: "unsubscribed", welcomeEmailError: "", alreadySubscribed: false };
+  if (!mayActivateMarketing(existing, !!signupRequestId)) return { welcomeEmailStatus: "unsubscribed", welcomeEmailError: "", alreadySubscribed: false };
 
-  if (RESEND_AUDIENCE_ID) {
+  if (RESEND_AUDIENCE_ID && !signupRequestId) {
     const provider = await resend.contacts.get({ email: normalizedEmail });
     if (provider.data?.unsubscribed) {
       await subscriberRef.set({ email: normalizedEmail, status: "unsubscribed", consent: false, unsubscribedAt: admin.firestore.FieldValue.serverTimestamp(), createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
@@ -1001,7 +1003,12 @@ async function activateNewsletterSubscriber({
 
   const activated = await db.runTransaction(async transaction => {
     const current = (await transaction.get(subscriberRef)).data() || {};
-    if (!mayActivateMarketing(current)) return false;
+    const receiptRef = signupRequestId ? db.collection("marketing_events").doc(createHash("sha256").update(`${normalizedEmail}:${signupRequestId}`).digest("hex")) : null;
+    const receipt = receiptRef ? await transaction.get(receiptRef) : null;
+    if (receipt?.exists) return current.status === "active" && current.consent === true;
+    if (current.deletionState && current.deletionState !== "deleted") throw new Error("Deletion is still in progress. Please try signing up again later.");
+    if (!mayActivateMarketing(current, !!signupRequestId)) return false;
+    if (receiptRef) transaction.create(receiptRef, { email: normalizedEmail, action: "website_signup", source, createdAt: admin.firestore.FieldValue.serverTimestamp() });
     if (current.status !== "active") transaction.create(db.collection("marketing_events").doc(), {
       email: normalizedEmail, action: "subscribe", source, ...(checkoutOrderId ? { checkoutOrderId } : {}), createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -1011,6 +1018,8 @@ async function activateNewsletterSubscriber({
     consent: true,
     consentAt: consentAt || admin.firestore.FieldValue.serverTimestamp(),
     status: "active",
+    ...(signupRequestId ? { unsubscribedAt: admin.firestore.FieldValue.delete(), deletionState: admin.firestore.FieldValue.delete(), deletedAt: admin.firestore.FieldValue.delete(),
+      preferenceVersion: Number(current.preferenceVersion || 0) + 1, preferenceChangedAt: admin.firestore.FieldValue.serverTimestamp() } : {}),
     ...(checkoutOrderId ? { checkoutOrderId } : {}),
     createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1023,7 +1032,7 @@ async function activateNewsletterSubscriber({
 
   if (!wasActive) await incrementAnalyticsDaily(getDateKey(), { newsletterSignups: 1 });
 
-  const shouldSyncAudience = !existingSubscriber.exists || !existing.resendContactId || ["failed", "skipped", ""].includes(existing.resendSyncStatus || "");
+  const shouldSyncAudience = !!signupRequestId || !existingSubscriber.exists || !existing.resendContactId || ["failed", "skipped", ""].includes(existing.resendSyncStatus || "");
   const audienceSyncResult = shouldSyncAudience
     ? await syncSubscriberToResendAudience({ email: normalizedEmail, existingContactId: existing.resendContactId || "" })
     : { status: "updated" as const, contactId: existing.resendContactId || "", error: "" };
@@ -1036,6 +1045,7 @@ async function activateNewsletterSubscriber({
     resendSyncAt: admin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
 
+  if (signupRequestId) await syncMarketingPreference(normalizedEmail);
   // Reconcile a concurrent opt-out after an in-flight audience activation.
   if ((await subscriberRef.get()).data()?.status !== "active") {
     await syncMarketingPreference(normalizedEmail);
@@ -2831,12 +2841,11 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       const { email, source, consent } = req.body;
       const normalizedEmail = normalizeCustomerEmail(email);
       if (!normalizedEmail || consent !== true) return res.status(400).json({ error: "Enter a valid email and confirm newsletter consent.", code: "validation_error" });
-      const result = await activateNewsletterSubscriber({ email: normalizedEmail, source: typeof source === "string" ? source.slice(0, 80) : "storefront" });
+      const signupRequestId = req.body.requestId;
+      if (typeof signupRequestId !== "string" || !/^[a-f0-9-]{36}$/i.test(signupRequestId)) return res.status(400).json({ error: "Please refresh this page and submit your signup again." });
+      const result = await activateNewsletterSubscriber({ email: normalizedEmail, source: typeof source === "string" ? source.slice(0, 80) : "storefront", signupRequestId });
       if (result.welcomeEmailStatus === "unsubscribed") {
-        const url = await createMarketingLink(normalizedEmail, "subscribe");
-        const confirmation = await resend.emails.send({ from: GENERAL_EMAIL_FROM, replyTo: GENERAL_REPLY_TO, to: normalizedEmail, subject: "Confirm your newsletter signup", text: `You requested to receive Boanerges Provisions Co. marketing emails again. Confirm within 24 hours: ${url}\n\nIf you did not request this, ignore this email. Your preference will not change.` });
-        if (confirmation.error) throw new Error(confirmation.error.message);
-        return res.status(202).json({ success: true, message: "Check your email to confirm your newsletter signup." });
+        return res.status(409).json({ error: "Your opt-out remains saved. Submit a new signup to subscribe again." });
       }
       res.status(result.alreadySubscribed ? 200 : 201).json({ success: true, ...result });
     } catch (error: any) {

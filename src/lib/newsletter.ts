@@ -6,6 +6,7 @@ export async function subscribeToNewsletter(email: string, source: string) {
       email,
       source,
       consent: true,
+      requestId: crypto.randomUUID(),
     }),
   });
 
