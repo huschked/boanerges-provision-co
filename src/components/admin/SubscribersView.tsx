@@ -11,6 +11,7 @@ export interface Subscriber {
   status: string;
   resendSyncStatus?: string;
   welcomeEmailStatus?: string;
+  deletionState?: string;
 }
 
 interface SubscribersViewProps {
@@ -19,6 +20,22 @@ interface SubscribersViewProps {
 
 export const SubscribersView: React.FC<SubscribersViewProps> = ({ subscribers }) => {
   const [retrying, setRetrying] = React.useState('');
+  const [removed, setRemoved] = React.useState<string[]>([]);
+  const [deleteTarget, setDeleteTarget] = React.useState<Subscriber | null>(null);
+  const visibleSubscribers = subscribers.filter(sub => sub.deletionState !== 'deleted' && !removed.includes(sub.id));
+  async function deleteSubscriber(sub: Subscriber) {
+    setRetrying(sub.email);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/admin/marketing/delete-subscriber', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ email: sub.email, confirmed: true }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Deletion failed. Please retry.');
+      setRemoved(previous => [...previous, sub.id]);
+      setDeleteTarget(null);
+      toast.success('Subscriber removed from Audience and Resend.');
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Deletion failed. Please retry.'); }
+    finally { setRetrying(''); }
+  }
   async function retry(email: string) {
     setRetrying(email);
     try {
@@ -34,6 +51,12 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({ subscribers })
 
   return (
     <div className="space-y-10">
+      {deleteTarget && <section role="region" aria-label="Confirm subscriber deletion" className="card-premium p-6 space-y-4 border border-red-400/30">
+        <h2 className="text-xl text-brand-parchment">Delete {deleteTarget.email}?</h2>
+        <p className="text-brand-parchment/80">This removes their Audience entry and Resend contact. A minimal opt-out record and preference audit history remain to prevent old events from subscribing them again. Orders and product subscriptions are unaffected. Restoring marketing access requires a new signup and email confirmation.</p>
+        <button disabled={!!retrying} onClick={() => deleteSubscriber(deleteTarget)} className="px-5 py-3 bg-red-400/15 text-red-300 border border-red-400/30">{retrying ? 'Deleting…' : 'Delete from Audience and Resend'}</button>
+        <button disabled={!!retrying} onClick={() => setDeleteTarget(null)} className="px-5 py-3 text-brand-parchment">Cancel</button>
+      </section>}
       <div className="card-premium overflow-hidden">
         <table className="w-full text-left">
           <thead>
@@ -45,7 +68,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({ subscribers })
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
-            {subscribers.map((sub) => (
+            {visibleSubscribers.map((sub) => (
               <tr key={sub.id} className="hover:bg-white/[0.02] transition-all group">
                 <td className="px-10 py-8">
                   <div className="flex items-center gap-4">
@@ -64,16 +87,18 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({ subscribers })
                   </span>
                 </td>
                 <td className="px-10 py-8 text-right">
-                  <span className="px-4 py-1.5 rounded-full bg-green-400/5 text-green-400 text-[8px] uppercase tracking-[0.2em] font-black border border-green-400/10">
+                  <span className={`px-4 py-1.5 rounded-full text-[8px] uppercase tracking-[0.2em] font-black border ${sub.status === 'active' ? 'bg-green-400/5 text-green-400 border-green-400/10' : sub.status === 'pending' ? 'bg-amber-400/10 text-amber-300 border-amber-400/25' : 'bg-slate-400/10 text-slate-300 border-slate-400/25'}`}>
                     {sub.status || 'Unknown'}
                   </span>
                   <p className="mt-3 text-xs text-brand-parchment/70">Email sync: {sub.resendSyncStatus || 'Not synced'}</p>
                   <p className="mt-1 text-xs text-brand-parchment/70">Welcome: {sub.welcomeEmailStatus || 'Not sent'}</p>
+                  {sub.deletionState && <p className="mt-2 text-sm text-red-300">Deletion: {sub.deletionState}. Retry to finish removal.</p>}
+                  <button disabled={!!retrying} onClick={() => setDeleteTarget(sub)} className="mt-2 p-3 underline text-red-300">{sub.deletionState ? 'Retry deletion' : 'Delete subscriber'}</button>
                   {['failed', 'pending'].includes(sub.resendSyncStatus || '') && <button className="mt-2 underline text-brand-gold p-3" disabled={!!retrying} onClick={() => retry(sub.email)}>{retrying === sub.email ? 'Retrying…' : 'Retry email sync'}</button>}
                 </td>
               </tr>
             ))}
-            {subscribers.length === 0 && (
+            {visibleSubscribers.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-10 py-20 text-center text-brand-parchment/30 text-sm">
                   No subscribers found yet.

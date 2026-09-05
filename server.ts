@@ -921,9 +921,15 @@ async function syncMarketingPreference(email: string) {
   // Version checks converge if an opt-out arrives while a provider request is in flight.
   for (let attempt = 0; attempt < 3; attempt++) {
     const data = (await ref.get()).data() || {};
+    if (data.deletionState) {
+      // An audience activation that was already in flight must not recreate a deleted contact.
+      const removed = await resend.contacts.remove({ email });
+      return !removed.error || removed.error.name === "not_found";
+    }
     const unsubscribed = data.status !== "active" || data.consent !== true;
     try {
-      const result = await resend.contacts.update({ email, unsubscribed });
+      let result = await resend.contacts.update({ email, unsubscribed });
+      if (result.error?.name === "not_found" && !unsubscribed) result = await resend.contacts.create({ email, unsubscribed: false });
       if (result.error) throw new Error(result.error.message);
       const stable = await db.runTransaction(async transaction => {
         const current = (await transaction.get(ref)).data() || {};
@@ -982,6 +988,7 @@ async function activateNewsletterSubscriber({
   const existingSubscriber = await subscriberRef.get();
   const existing = existingSubscriber.data() || {};
   const wasActive = existingSubscriber.exists && existing.status === "active" && existing.consent === true;
+  if (!mayActivateMarketing(existing)) return { welcomeEmailStatus: "unsubscribed", welcomeEmailError: "", alreadySubscribed: false };
 
   if (RESEND_AUDIENCE_ID) {
     const provider = await resend.contacts.get({ email: normalizedEmail });
@@ -2348,6 +2355,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
           const current = (await transaction.get(ref)).data() || {};
           if (receipt.exists) return;
           transaction.create(eventRef, { email, action: "provider_unsubscribe", createdAt: admin.firestore.FieldValue.serverTimestamp() });
+          if (current.deletionState) return;
           // Provider subscription events never grant consent. Ignore opt-outs older than a later confirmed preference.
           const occurredAt = Date.parse(event.created_at);
           if (current.status === "active" && occurredAt < (current.preferenceChangedAt?.toMillis?.() || 0)) return;
@@ -2751,13 +2759,15 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
         if (!token || (token.expiresAt && token.expiresAt.toMillis() < Date.now())) throw new Error("This link is invalid or expired. Request a new signup email.");
         const ref = db.collection("subscribers").doc(token.email);
         const current = (await transaction.get(ref)).data() || {};
+        if (current.deletionState && current.deletionState !== "deleted") throw new Error("Subscriber deletion is still being processed. Please try again later.");
+        if (current.deletionState === "deleted" && token.action === "unsubscribe") return { email: token.email, action: "unsubscribe" };
         const action = preferenceAction({ action: token.action, version: token.version, usedAt: token.usedAt, expiresAtMs: token.expiresAt?.toMillis() }, current, req.body.consent === true);
         if (token.action === "subscribe" && token.usedAt) return { email: token.email, action };
         const status = action === "subscribe" ? "active" : "unsubscribed";
         if (current.status !== status || (status === "active" && current.consent !== true)) {
           transaction.set(ref, { email: token.email, status, consent: status === "active", preferenceVersion: Number(current.preferenceVersion || 0) + 1,
             preferenceChangedAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            ...(status === "active" ? { unsubscribedAt: admin.firestore.FieldValue.delete(), consentAt: admin.firestore.FieldValue.serverTimestamp(), source: "confirmed_resubscription" } : { unsubscribedAt: admin.firestore.FieldValue.serverTimestamp() }),
+            ...(status === "active" ? { deletionState: admin.firestore.FieldValue.delete(), deletedAt: admin.firestore.FieldValue.delete(), unsubscribedAt: admin.firestore.FieldValue.delete(), consentAt: admin.firestore.FieldValue.serverTimestamp(), source: "confirmed_resubscription" } : { unsubscribedAt: admin.firestore.FieldValue.serverTimestamp() }),
             resendSyncStatus: "pending", createdAt: current.createdAt || admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
           transaction.create(db.collection("marketing_events").doc(), { email: token.email, action: token.action, source: "signed_link", createdAt: admin.firestore.FieldValue.serverTimestamp() });
         }
@@ -2767,6 +2777,42 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       const synced = await syncMarketingPreference(result.email);
       return res.json({ success: true, action: result.action, syncPending: !synced });
     } catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : "Unable to save preferences." }); }
+  });
+
+  app.post("/api/admin/marketing/delete-subscriber", async (req, res) => {
+    let actor: AdminActor;
+    try { actor = await authenticateAdmin(req); } catch { return res.status(403).json({ error: "Admin access required." }); }
+    const email = normalizeCustomerEmail(req.body?.email);
+    if (!email || req.body?.confirmed !== true) return res.status(400).json({ error: "Confirm the subscriber deletion." });
+    const ref = db.collection("subscribers").doc(email);
+    try {
+      const state = await db.runTransaction(async transaction => {
+        const snap = await transaction.get(ref);
+        if (!snap.exists) return "missing";
+        const data = snap.data()!;
+        if (data.deletionState === "deleted") return "deleted";
+        if (data.deletionState === "deleting" && (data.deletionStartedAt?.toMillis?.() || 0) > Date.now() - 120000) return "busy";
+        transaction.set(ref, { status: "unsubscribed", consent: false, unsubscribedAt: admin.firestore.FieldValue.serverTimestamp(),
+          preferenceVersion: Number(data.preferenceVersion || 0) + 1, deletionState: "deleting", deletionError: "",
+          deletionStartedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        return "delete";
+      });
+      if (state === "missing") return res.status(404).json({ error: "Subscriber not found." });
+      if (state === "busy") return res.status(409).json({ error: "Deletion is already in progress. Retry in two minutes if it remains unfinished." });
+      if (state === "deleted") return res.json({ success: true });
+      const removed = await resend.contacts.remove({ email });
+      if (removed.error && removed.error.name !== "not_found") throw new Error(removed.error.message);
+      await db.runTransaction(async transaction => {
+        const data = (await transaction.get(ref)).data()!;
+        transaction.set(ref, { email, status: "unsubscribed", consent: false, unsubscribedAt: data.unsubscribedAt,
+          preferenceVersion: data.preferenceVersion, deletionState: "deleted", deletedAt: admin.firestore.FieldValue.serverTimestamp() });
+        transaction.create(db.collection("marketing_events").doc(), { email, action: "admin_delete", actorUid: actor.uid, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+      });
+      return res.json({ success: true });
+    } catch (error) {
+      await ref.set({ deletionState: "failed", deletionError: sanitizeResendError(error) }, { merge: true });
+      return res.status(502).json({ error: "Deletion could not finish. The subscriber remains opted out. Retry deletion to finish removing the Resend contact." });
+    }
   });
 
   app.post("/api/admin/marketing/retry-sync", async (req, res) => {

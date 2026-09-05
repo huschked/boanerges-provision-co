@@ -28,3 +28,10 @@ test('fresh confirmation requires consent, current version, and an unexpired tok
 test('old unsubscribe links remain usable across preference changes', () => {
   assert.equal(preferenceAction({ action: 'unsubscribe', version: 0, usedAt: 1 }, { status: 'active', preferenceVersion: 5 }, false), 'unsubscribe');
 });
+
+test('deletion suppression blocks old signup and confirmation but permits fresh confirmed consent', () => {
+  const deleted = { status: 'unsubscribed', unsubscribedAt: 123, preferenceVersion: 4 };
+  assert.equal(mayActivateMarketing(deleted), false);
+  assert.throws(() => preferenceAction({ action: 'subscribe', version: 3 }, deleted, true));
+  assert.equal(preferenceAction({ action: 'subscribe', version: 4 }, deleted, true), 'subscribe');
+});

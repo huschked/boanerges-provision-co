@@ -10,6 +10,9 @@
 
 ## Behavior
 
+- Admin Audience includes a confirmed Delete Subscriber action. The server opts out locally, removes the Resend contact by email (already missing is treated as success), then replaces the profile with a minimal suppression tombstone. Completed tombstones have no `createdAt` and are excluded from the normal Audience query. Orders and product subscriptions remain untouched. Preference audit records remain; this is not a full personal-data erasure operation.
+- If deletion fails, the entry remains available for Retry deletion. An in-flight operation is protected for two minutes before retry recovery. A fresh signup after deletion requires email confirmation; confirmation recreates the Resend contact. Test success, provider failure/retry, repeated deletion, non-admin denial, and stale confirmation before relying on this in production.
+
 - The welcome email identifies the sender, includes the approved postal address and a public unsubscribe link, and has a plain-text alternative.
 - GET requests only display preferences; email scanners do not change consent. The explicit unsubscribe button saves the opt-out immediately, without login or extra information, then synchronizes Resend.
 - Links contain random 256-bit tokens, not email addresses. Only hashes are stored as token document IDs. Unsubscribe links remain usable; re-subscription confirmations expire after 24 hours and are single-use/version-bound.
