@@ -3202,11 +3202,12 @@ function invoiceSubscriptionId(invoice: Stripe.Invoice) {
   return typeof value === "string" ? value : value?.id || "";
 }
 
-async function sendSubscriptionLifecycleEmail(to: string, subject: string, title: string, message: string, idempotencyKey: string) {
+async function sendSubscriptionLifecycleEmail(to: string, subject: string, title: string, message: string, idempotencyKey: string, managementUrl = "") {
   if (!to) return "";
   const result = await resend.emails.send({
     from: ORDERS_EMAIL_FROM, replyTo: ORDERS_REPLY_TO, to, subject,
-    html: `<div style="background:#0b0b0b;color:#eee7dc;padding:36px;font-family:Arial,sans-serif"><p style="color:#cda85a;text-transform:uppercase;letter-spacing:.18em;font-size:11px">Subscribe &amp; Save</p><h1 style="font-family:Georgia,serif">${title}</h1><p style="line-height:1.7;color:#c9c1b5">${message}</p><p style="margin-top:28px;color:#8f887d;font-size:12px">Questions? Reply to this email and our support team will help.</p></div>`,
+    html: `<div style="background:#0b0b0b;color:#eee7dc;padding:36px;font-family:Arial,sans-serif"><p style="color:#cda85a;text-transform:uppercase;letter-spacing:.18em;font-size:11px">Subscribe &amp; Save</p><h1 style="font-family:Georgia,serif">${escapeHtml(title)}</h1><p style="line-height:1.7;color:#c9c1b5">${escapeHtml(message)}</p>${managementUrl ? `<p style="margin:28px 0"><a href="${escapeHtml(managementUrl)}" style="display:inline-block;background:#cda85a;color:#0b0b0b;padding:16px 24px;font-weight:bold;text-decoration:none">Manage Subscription</a></p>` : ""}<p style="margin-top:28px;color:#8f887d;font-size:12px">Questions? Reply to this email and our support team will help.</p></div>`,
+    text: `${title}\n\n${message}${managementUrl ? `\n\nManage Subscription: ${managementUrl}` : ""}\n\nQuestions? Reply to this email and our support team will help.`,
   }, { idempotencyKey });
   if (result.error) throw new Error(result.error.message || "Subscription email failed.");
   return result.data?.id || "";
@@ -3280,7 +3281,14 @@ async function handleUpcomingSubscriptionInvoice(invoice: Stripe.Invoice) {
   const data = snap.data()!;
   const dueAt = (invoice as any).next_payment_attempt || (invoice as any).period_end;
   const dueText = dueAt ? new Date(dueAt * 1000).toLocaleDateString("en-US", { dateStyle: "long", timeZone: "America/Chicago" }) : "your next billing date";
-  await sendSubscriptionLifecycleEmail(normalizeCustomerEmail((invoice as any).customer_email || data.customerEmail), "Upcoming Boanerges subscription renewal", "Your next delivery is coming up.", `Stripe expects to process your recurring payment on ${dueText}. Update payment details or cancel before that charge using the secure customer portal linked from your original order status page.`, `subscription-upcoming-${invoice.id}`);
+  // Mint a fresh signed link so long-running subscriptions do not depend on an expired original email.
+  const managementOrderId = data.initialOrderId || data.lastOrderId;
+  const orderStatusUrl = managementOrderId ? getOrderStatusUrl(managementOrderId) : "";
+  const managementUrl = orderStatusUrl;
+  const managementMessage = managementUrl
+    ? "Use the Manage Subscription link below to open your secure order page, then select Manage Subscription to update payment details or cancel before the charge."
+    : "Reply to this email if you need help updating payment details or canceling before the charge.";
+  await sendSubscriptionLifecycleEmail(normalizeCustomerEmail((invoice as any).customer_email || data.customerEmail), "Upcoming Boanerges subscription renewal", "Your next delivery is coming up.", `Stripe expects to process your recurring payment on ${dueText}. ${managementMessage}`, `subscription-upcoming-${invoice.id}`, managementUrl);
   await snap.ref.set({ lastUpcomingInvoiceId: invoice.id, upcomingEmailSentAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
 }
 

@@ -19,6 +19,7 @@
 - If renewal inventory is unavailable, the paid order is marked `requires_attention`; inventory is not decremented and the customer is notified.
 - Subscription lifecycle state is stored in `subscriptions/{stripeSubscriptionId}`. Initial and renewal orders carry `orderType`, `stripeSubscriptionId`, and cadence fields.
 - Customers enter Stripe Customer Portal only through a signed, expiring order-status token.
+- Upcoming-renewal emails include a Manage Subscription button and plain-text link to the secure order page. Each reminder generates a fresh signed link, so customers do not need to find the original confirmation email or rely on its older token.
 
 ## Test-mode verification
 
