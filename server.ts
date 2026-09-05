@@ -2795,33 +2795,46 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
     try { actor = await authenticateAdmin(req); } catch { return res.status(403).json({ error: "Admin access required." }); }
     const email = normalizeCustomerEmail(req.body?.email);
     if (!email || req.body?.confirmed !== true) return res.status(400).json({ error: "Confirm the subscriber deletion." });
+    const subscriberId = req.body?.subscriberId ?? email;
+    if (typeof subscriberId !== "string" || !subscriberId || subscriberId.includes("/") || subscriberId === "." || subscriberId === ".." || Buffer.byteLength(subscriberId) > 1500) return res.status(400).json({ error: "Invalid subscriber record." });
     const ref = db.collection("subscribers").doc(email);
+    const selectedRef = db.collection("subscribers").doc(subscriberId);
+    let claimed = false;
     try {
       const state = await db.runTransaction(async transaction => {
-        const snap = await transaction.get(ref);
-        if (!snap.exists) return "missing";
-        const data = snap.data()!;
-        if (data.deletionState === "deleted") return "deleted";
+        const snap = await transaction.get(selectedRef);
+        const canonical = selectedRef.path === ref.path ? snap : await transaction.get(ref);
+        if (!snap.exists) return canonical.data()?.deletionState === "deleted" ? "deleted" : "missing";
+        if (normalizeCustomerEmail(snap.data()?.email) !== email) return "mismatch";
+        const data = canonical.data() || snap.data()!;
+        if (data.deletionState === "deleted" && selectedRef.path === ref.path) return "deleted";
         if (data.deletionState === "deleting" && (data.deletionStartedAt?.toMillis?.() || 0) > Date.now() - 120000) return "busy";
         transaction.set(ref, { status: "unsubscribed", consent: false, unsubscribedAt: admin.firestore.FieldValue.serverTimestamp(),
           preferenceVersion: Number(data.preferenceVersion || 0) + 1, deletionState: "deleting", deletionError: "",
           deletionStartedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        if (selectedRef.path !== ref.path) transaction.set(selectedRef, { status: "unsubscribed", consent: false, deletionState: "deleting" }, { merge: true });
         return "delete";
       });
       if (state === "missing") return res.status(404).json({ error: "Subscriber not found." });
+      if (state === "mismatch") return res.status(409).json({ error: "The subscriber record has changed. Refresh Audience and try again." });
       if (state === "busy") return res.status(409).json({ error: "Deletion is already in progress. Retry in two minutes if it remains unfinished." });
       if (state === "deleted") return res.json({ success: true });
+      claimed = true;
       const removed = await resend.contacts.remove({ email });
       if (removed.error && !isMissingResendContact(removed.error)) throw new Error(removed.error.message);
       await db.runTransaction(async transaction => {
         const data = (await transaction.get(ref)).data()!;
         transaction.set(ref, { email, status: "unsubscribed", consent: false, unsubscribedAt: data.unsubscribedAt,
           preferenceVersion: data.preferenceVersion, deletionState: "deleted", deletedAt: admin.firestore.FieldValue.serverTimestamp() });
+        if (selectedRef.path !== ref.path) transaction.delete(selectedRef);
         transaction.create(db.collection("marketing_events").doc(), { email, action: "admin_delete", actorUid: actor.uid, createdAt: admin.firestore.FieldValue.serverTimestamp() });
       });
       return res.json({ success: true });
     } catch (error) {
-      await ref.set({ deletionState: "failed", deletionError: sanitizeResendError(error) }, { merge: true });
+      if (claimed) {
+        await ref.set({ deletionState: "failed", deletionError: sanitizeResendError(error) }, { merge: true });
+        if (selectedRef.path !== ref.path) await selectedRef.set({ deletionState: "failed", deletionError: sanitizeResendError(error) }, { merge: true });
+      }
       return res.status(502).json({ error: "Deletion could not finish. The subscriber remains opted out. Retry deletion to finish removing the Resend contact." });
     }
   });

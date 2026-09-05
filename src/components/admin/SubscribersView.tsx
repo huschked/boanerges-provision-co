@@ -40,7 +40,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({ subscribers })
     setRetrying(sub.email);
     try {
       const token = await auth.currentUser?.getIdToken();
-      const response = await fetch('/api/admin/marketing/delete-subscriber', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ email: sub.email, confirmed: true }) });
+      const response = await fetch('/api/admin/marketing/delete-subscriber', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ subscriberId: sub.id, email: sub.email, confirmed: true }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Deletion failed. Please retry.');
       setRemoved(previous => [...previous, sub.id]);

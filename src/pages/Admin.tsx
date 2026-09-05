@@ -60,7 +60,7 @@ export const Admin: React.FC = () => {
       setOrders(oData);
 
       const subSnap = await getDocs(query(collection(db, 'subscribers'), orderBy('createdAt', 'desc'), limit(300)));
-      setSubscribers(subSnap.docs.map((snapshot) => ({ id: snapshot.id, ...snapshot.data() } as Subscriber)));
+      setSubscribers(subSnap.docs.map((snapshot) => ({ ...snapshot.data(), id: snapshot.id } as Subscriber)));
 
       const msgSnap = await getDocs(query(collection(db, 'contact_messages'), orderBy('createdAt', 'desc'), limit(300)));
       setMessages(msgSnap.docs.map((snapshot) => ({ id: snapshot.id, ...snapshot.data() } as ContactMessage)));
