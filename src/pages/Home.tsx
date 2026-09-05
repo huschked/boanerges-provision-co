@@ -291,8 +291,7 @@ export const Home: React.FC = () => {
             <div className="space-y-6 max-w-xl">
               <h2 className="text-4xl md:text-5xl font-serif text-brand-parchment">Join the Inner Circle</h2>
               <p className="text-brand-parchment/60 text-lg font-light">
-                Be the first to know about limited flavor drops, artisan stories, and exclusive recipes. 
-                Receive 10% off your first provision.
+                Get new flavor announcements, restock updates, and pairing ideas.
               </p>
             </div>
             <div className="w-full max-w-md">
