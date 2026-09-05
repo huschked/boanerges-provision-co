@@ -1,4 +1,5 @@
 import express from "express";
+import { isMissingResendContact } from "./src/lib/resendContact.js";
 import { createHash, randomUUID, randomBytes, timingSafeEqual } from "crypto";
 import { mayActivateMarketing, validPreferenceToken, preferenceAction } from "./src/lib/marketingConsent.js";
 import path from "path";
@@ -924,7 +925,7 @@ async function syncMarketingPreference(email: string) {
     if (data.deletionState) {
       // An audience activation that was already in flight must not recreate a deleted contact.
       const removed = await resend.contacts.remove({ email });
-      return !removed.error || removed.error.name === "not_found";
+      return !removed.error || isMissingResendContact(removed.error);
     }
     const unsubscribed = data.status !== "active" || data.consent !== true;
     try {
@@ -2811,7 +2812,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       if (state === "busy") return res.status(409).json({ error: "Deletion is already in progress. Retry in two minutes if it remains unfinished." });
       if (state === "deleted") return res.json({ success: true });
       const removed = await resend.contacts.remove({ email });
-      if (removed.error && removed.error.name !== "not_found") throw new Error(removed.error.message);
+      if (removed.error && !isMissingResendContact(removed.error)) throw new Error(removed.error.message);
       await db.runTransaction(async transaction => {
         const data = (await transaction.get(ref)).data()!;
         transaction.set(ref, { email, status: "unsubscribed", consent: false, unsubscribedAt: data.unsubscribedAt,
