@@ -243,6 +243,11 @@ const MAX_CART_ITEMS = Number(process.env.MAX_CART_ITEMS || 30);
 const MAX_ITEM_QUANTITY = Number(process.env.MAX_ITEM_QUANTITY || 20);
 const FREE_SHIPPING_THRESHOLD = Number(process.env.FREE_SHIPPING_THRESHOLD || 50);
 const STANDARD_SHIPPING_AMOUNT = Number(process.env.STANDARD_SHIPPING_AMOUNT || 5.99);
+const SUBSCRIPTION_SHIPPING_PRICE_ENV: Record<SubscriptionCadence, string> = {
+  monthly: "STRIPE_SUBSCRIPTION_SHIPPING_PRICE_MONTHLY",
+  every_two_months: "STRIPE_SUBSCRIPTION_SHIPPING_PRICE_EVERY_TWO_MONTHS",
+  every_three_months: "STRIPE_SUBSCRIPTION_SHIPPING_PRICE_EVERY_THREE_MONTHS",
+};
 const DEFAULT_PRODUCT_TAX_CODE = process.env.STRIPE_PRODUCT_TAX_CODE || "txcd_99999999";
 const RESEND_AUDIENCE_ID = process.env.RESEND_AUDIENCE_ID || "";
 const ORDERS_EMAIL_FROM =
@@ -651,6 +656,32 @@ async function getValidatedSubscriptionPrice(product: FirebaseFirestore.Document
     throw new CheckoutProviderError("The recurring Stripe price does not match the selected cadence.", "subscription_configuration_error");
   }
   return { price, amount: toMoneyFromCents(price.unit_amount), label: expected.label };
+}
+
+async function getValidatedSubscriptionShippingPrice(cadence: SubscriptionCadence) {
+  const envName = SUBSCRIPTION_SHIPPING_PRICE_ENV[cadence];
+  const priceId = String(process.env[envName] || "").trim();
+  if (!priceId.startsWith("price_")) {
+    throw new CheckoutProviderError(
+      `Recurring shipping is not configured for ${SUBSCRIPTION_CADENCES[cadence].label.toLowerCase()}. Add ${envName} to the deployed environment.`,
+      "subscription_shipping_not_configured"
+    );
+  }
+  const price = await stripe.prices.retrieve(priceId);
+  const expected = SUBSCRIPTION_CADENCES[cadence];
+  if (
+    !price.active ||
+    price.currency !== CURRENCY ||
+    price.unit_amount !== toStripeAmount(STANDARD_SHIPPING_AMOUNT) ||
+    price.recurring?.interval !== "month" ||
+    price.recurring.interval_count !== expected.intervalCount
+  ) {
+    throw new CheckoutProviderError(
+      `The Stripe shipping Price in ${envName} must be active, ${CURRENCY.toUpperCase()} ${STANDARD_SHIPPING_AMOUNT.toFixed(2)}, and recur ${expected.label.toLowerCase()}.`,
+      "subscription_shipping_configuration_error"
+    );
+  }
+  return price;
 }
 
 function subscriptionStripeError(error: Stripe.errors.StripeError) {
@@ -2634,13 +2665,15 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       reservationId = reservation.reservationRef.id;
       const subtotal = Number((validated.amount * quantity).toFixed(2));
       const shippingCost = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : STANDARD_SHIPPING_AMOUNT;
+      const shippingPrice = shippingCost > 0 ? await getValidatedSubscriptionShippingPrice(cadence) : null;
       const subscriptionItems = reservation.orderItems.map(item => ({ ...item, price: validated.amount, purchaseType: "subscription", subscriptionCadence: cadence }));
-      await reservation.pendingOrderRef.set({ orderType: "subscription_initial", subscriptionCadence: cadence, subscriptionPriceId: validated.price.id, items: subscriptionItems, subtotalAmount: subtotal, shippingAmount: shippingCost, totalAmount: subtotal + shippingCost, pricingSource: "stripe_recurring_price", updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-      const shippingOptions: Stripe.Checkout.SessionCreateParams.ShippingOption[] = [{ shipping_rate_data: { type: "fixed_amount", fixed_amount: { amount: toStripeAmount(shippingCost), currency: CURRENCY }, display_name: shippingCost ? "Recurring Standard Shipping" : "Recurring Free Shipping", delivery_estimate: { minimum: { unit: "business_day", value: 3 }, maximum: { unit: "business_day", value: 7 } }, tax_behavior: "exclusive" } }];
+      await reservation.pendingOrderRef.set({ orderType: "subscription_initial", subscriptionCadence: cadence, subscriptionPriceId: validated.price.id, subscriptionShippingPriceId: shippingPrice?.id || "", items: subscriptionItems, subtotalAmount: subtotal, shippingAmount: shippingCost, totalAmount: subtotal + shippingCost, pricingSource: "stripe_recurring_price", updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
       const metadata = { pendingOrderId, reservationId, orderType: "subscription_initial", subscriptionCadence: cadence, productId, quantity: String(quantity) };
+      const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [{ price: validated.price.id, quantity }];
+      if (shippingPrice) lineItems.push({ price: shippingPrice.id, quantity: 1 });
       const session = await stripe.checkout.sessions.create({
-        mode: "subscription", line_items: [{ price: validated.price.id, quantity }], billing_address_collection: "required",
-        shipping_address_collection: { allowed_countries: ["US"] }, shipping_options: shippingOptions, automatic_tax: { enabled: true },
+        mode: "subscription", line_items: lineItems, billing_address_collection: "required",
+        shipping_address_collection: { allowed_countries: ["US"] }, automatic_tax: { enabled: true },
         subscription_data: { metadata }, metadata, expires_at: Math.floor(reservation.expiresAt.toMillis() / 1000),
         success_url: `${appUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${appUrl}/product/${encodeURIComponent(String(product.slug || productId))}`,
       }, { idempotencyKey: `subscription-checkout-${pendingOrderId}` });
@@ -3036,8 +3069,9 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session, event:
   const customerPhone = session.customer_details?.phone || "";
   const shippingAddress = getShippingAddress(session);
   const selectedShipping = getSelectedShipping(session);
-  const subtotalAmount = toMoneyFromCents(session.amount_subtotal);
-  const shippingAmount = selectedShipping.amountTotal || pendingOrderData.shippingAmount || 0;
+  const recurringShippingAmount = pendingOrderData.orderType === "subscription_initial" ? Number(pendingOrderData.shippingAmount || 0) : 0;
+  const shippingAmount = selectedShipping.amountTotal || recurringShippingAmount;
+  const subtotalAmount = Math.max(0, Number((toMoneyFromCents(session.amount_subtotal) - recurringShippingAmount).toFixed(2)));
   const taxAmount = toMoneyFromCents(session.total_details?.amount_tax);
   const total = toMoneyFromCents(session.amount_total);
   const orderBase = {
@@ -3148,6 +3182,8 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session, event:
       status: "active",
       cadence: pendingOrderData.subscriptionCadence || "",
       priceId: pendingOrderData.subscriptionPriceId || "",
+      shippingPriceId: pendingOrderData.subscriptionShippingPriceId || "",
+      shippingAmount,
       customerEmail,
       customerName,
       customerPhone,
@@ -3199,16 +3235,18 @@ async function handlePaidSubscriptionInvoice(invoice: Stripe.Invoice) {
       const demand = demands.get(refs[index].id)!;
       if (!snap.exists || Number(snap.data()?.currentInventory || 0) < demand.quantity) inventoryConflict = `${demand.name} does not have enough inventory for this renewal.`;
     });
-    const subtotalAmount = toMoneyFromCents((invoice as any).subtotal);
+    const invoiceSubtotal = toMoneyFromCents((invoice as any).subtotal);
+    const shippingAmount = Number(subscription.shippingAmount || 0);
+    const subtotalAmount = Math.max(0, Number((invoiceSubtotal - shippingAmount).toFixed(2)));
     const totalAmount = toMoneyFromCents((invoice as any).total);
-    const taxAmount = Array.isArray((invoice as any).total_taxes) ? toMoneyFromCents((invoice as any).total_taxes.reduce((sum: number, tax: any) => sum + Number(tax.amount || 0), 0)) : Math.max(0, totalAmount - subtotalAmount);
+    const taxAmount = Array.isArray((invoice as any).total_taxes) ? toMoneyFromCents((invoice as any).total_taxes.reduce((sum: number, tax: any) => sum + Number(tax.amount || 0), 0)) : Math.max(0, totalAmount - invoiceSubtotal);
     const order = {
       orderType: "subscription_renewal", stripeSubscriptionId: subscriptionId, stripeInvoiceId: invoice.id,
       stripeCustomerId: typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id || subscription.stripeCustomerId || "",
       stripePaymentIntentId: typeof (invoice as any).payment_intent === "string" ? (invoice as any).payment_intent : (invoice as any).payment_intent?.id || "",
       paymentStatus: "paid", fulfillmentStatus: inventoryConflict ? "requires_attention" : "pending", shipmentStatus: "not_shipped", lifecycleVersion: 2,
       customerEmail: normalizeCustomerEmail((invoice as any).customer_email || subscription.customerEmail), customerName: subscription.customerName || "", customerPhone: subscription.customerPhone || "", shippingAddress: subscription.shippingAddress || null,
-      currency: invoice.currency || CURRENCY, subtotalAmount, shippingAmount: Math.max(0, totalAmount - subtotalAmount - taxAmount), taxAmount, totalAmount,
+      currency: invoice.currency || CURRENCY, subtotalAmount, shippingAmount, taxAmount, totalAmount,
       items, subscriptionCadence: subscription.cadence || "", pricingSource: "stripe_recurring_price", ...(inventoryConflict ? { inventoryConflict } : {}),
       paidAt: admin.firestore.FieldValue.serverTimestamp(), createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
