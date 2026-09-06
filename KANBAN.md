@@ -136,20 +136,6 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Ready
 
-### WEB-039 - Repair Merchandising Navigation and CTA Destinations
-
-- **Priority:** High
-- **Area:** storefront
-- **Goal:** Ensure high-intent navigation and merchandising actions always lead to the promised product or collection.
-- **Acceptance Criteria:**
-  - Header and mobile navigation use consistent `Shop Salts`, `Bundles & Gifts`, `Pairing Guide`, and `Our Story` labels when their destinations are ready.
-  - Best Sellers resolves to a real curated collection and never produces an accidental empty page.
-  - Each Pairing Guide product CTA deep-links to the exact product; unused Instagram CTAs are removed or linked to a real profile.
-  - Add-to-cart produces visible and screen-reader-announced success feedback.
-  - Automated route/link checks cover customer-facing internal CTAs.
-- **Verification:**
-  - Exercise every header, footer, homepage, product, bundle, and Pairing Guide CTA on desktop and mobile.
-- **Notes / Links:** Do not promote Bundles & Gifts until WEB-036 makes bundle purchasing safe.
 
 ### WEB-040 - Complete a Mobile Commerce and Accessibility Pass
 
@@ -219,6 +205,24 @@ This board is the working queue for website development. Keep cards actionable e
 ## In Progress
 
 ## Review / Verify
+
+### WEB-039 - Repair Merchandising Navigation and CTA Destinations
+
+- **Priority:** High
+- **Area:** storefront
+- **Goal:** Ensure high-intent navigation and merchandising actions always lead to the promised product or collection.
+- **Acceptance Criteria:**
+  - Header and mobile navigation use consistent `Shop Salts`, `Bundles & Gifts`, `Pairing Guide`, and `Our Story` labels when their destinations are ready.
+  - Best Sellers resolves to a real curated collection and never produces an accidental empty page.
+  - Each Pairing Guide product CTA deep-links to the exact product; unused Instagram CTAs are removed or linked to a real profile.
+  - Add-to-cart produces visible and screen-reader-announced success feedback.
+  - Automated route/link checks cover customer-facing internal CTAs.
+- **Verification:**
+  - TypeScript validation, all 57 automated tests, and the production build pass; the existing large-chunk warning remains.
+  - Automated checks validate registered routes, Vercel rewrites, category links, featured collection fallback, and all Pairing Guide product mappings.
+  - Local browser verification confirmed the curated Featured Salts collection, consistent desktop navigation, exact Pairing Guide product destinations, disabled social placeholders, and screen-reader-visible add-to-cart feedback.
+  - Owner still needs to exercise header, mobile menu, footer, homepage, product, bundle, and Pairing Guide links on the deployed desktop/mobile storefront.
+- **Notes / Links:** Implemented consistent `Shop Salts`, `Bundles & Gifts`, `Pairing Guide`, and `Our Story` labels; replaced the unsupported Best Sellers claim with a real Featured Salts collection; deep-linked each available pairing; added honest unavailable states; and made Instagram/Facebook visible non-links marked Coming soon until profiles exist. Quick Add is now a valid separate button with visible/live confirmation. WEB-036 is complete, so bundle navigation is enabled.
 
 
 
