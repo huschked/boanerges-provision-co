@@ -8,6 +8,7 @@ import { ProductRating } from './ProductRating';
 import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
+import toast from 'react-hot-toast';
 
 export const ProductCard: React.FC<{ product: Product; className?: string; dark?: boolean }> = ({ product, className, dark }) => {
   const addItem = useCart((state) => state.addItem);
@@ -20,17 +21,17 @@ export const ProductCard: React.FC<{ product: Product; className?: string; dark?
       transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
       className={cn("group relative flex flex-col", className)}
     >
-      <Link to={`/product/${product.slug}`} className={cn(
+      <div className={cn(
         "relative aspect-[4/5] overflow-hidden bg-white rounded-sm border transition-all duration-700",
         dark ? "border-white/5 shadow-2xl" : "border-brand-earth/5 shadow-lg hover:shadow-2xl"
       )}>
-        <img 
+        <Link to={`/product/${product.slug}`} className="block w-full h-full"><img
           src={product.imageUrl} 
           alt={product.imageAlt || product.name}
           className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
           referrerPolicy="no-referrer"
-        />
-        <div className="absolute inset-0 bg-brand-black/0 group-hover:bg-brand-black/20 transition-colors duration-700" />
+        /></Link>
+        <div className="pointer-events-none absolute inset-0 bg-brand-black/0 group-hover:bg-brand-black/20 transition-colors duration-700" />
         {product.imageType === 'illustrative' && (
           <div className="absolute bottom-3 right-3 px-3 py-1 bg-brand-black/80 text-brand-parchment text-[8px] font-black uppercase tracking-[0.16em] rounded-full">
             Illustrative image
@@ -38,11 +39,13 @@ export const ProductCard: React.FC<{ product: Product; className?: string; dark?
         )}
         
         {/* Quick Add Overlay */}
-        <div className="absolute bottom-0 left-0 right-0 p-8 translate-y-6 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-700 ease-out">
+        <div className="absolute bottom-0 left-0 right-0 p-8 translate-y-0 opacity-100 md:translate-y-6 md:opacity-0 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100 transition-all duration-700 ease-out">
           <button 
+            type="button" aria-label={`Add ${product.name} to cart`} disabled={product.currentInventory <= 0}
             onClick={(e) => {
               e.preventDefault();
               addItem(product as any);
+              toast.success(`${product.name} added to your cart.`, { ariaProps: { role: 'status', 'aria-live': 'polite' } });
               trackAnalyticsEvent({
                 type: 'add_to_cart',
                 productId: product.id,
@@ -55,7 +58,7 @@ export const ProductCard: React.FC<{ product: Product; className?: string; dark?
             className="w-full py-5 bg-brand-black text-brand-gold text-[10px] uppercase tracking-[0.3em] font-black flex items-center justify-center gap-3 hover:bg-brand-gold hover:text-brand-black transition-all duration-500 shadow-2xl active:scale-95"
           >
             <Plus size={14} strokeWidth={3} />
-            Quick Add
+            {product.currentInventory <= 0 ? 'Sold Out' : 'Quick Add'}
           </button>
         </div>
 
@@ -65,7 +68,7 @@ export const ProductCard: React.FC<{ product: Product; className?: string; dark?
             Featured
           </div>
         )}
-      </Link>
+      </div>
 
       <div className="mt-10 space-y-5 flex-1 flex flex-col">
         <div className="flex justify-between items-start gap-6">

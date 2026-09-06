@@ -104,10 +104,10 @@ export const Home: React.FC = () => {
               Shop the Collection
             </Link>
             <Link 
-              to="/shop?category=Best Sellers" 
+              to="/shop?category=Featured"
               className="w-full sm:w-auto px-16 py-6 border border-brand-gold/50 text-brand-gold text-[13px] uppercase tracking-[0.3em] font-black hover:bg-brand-gold hover:text-brand-black transition-all duration-500 hover:-translate-y-1"
             >
-              Explore Best Sellers
+              Explore Featured Salts
             </Link>
           </motion.div>
         </div>

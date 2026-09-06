@@ -220,27 +220,13 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
-### WEB-043 - Add Verified-Buyer Review Requests and Moderated Reviews
 
-- **Priority:** Medium
-- **Area:** storefront/checkout/admin
-- **Goal:** Build credible social proof by requesting and publishing reviews only from customers who purchased the reviewed product.
-- **Acceptance Criteria:**
-  - An idempotent review-request email is scheduled from a documented post-delivery delay and sent only for eligible delivered orders.
-  - Each request uses a signed, expiring, single-purpose link tied to the order and purchased product without exposing customer or order data.
-  - A verified buyer can submit one rating and review per purchased product, with clear consent for public display and safe edit/support handling.
-  - Duplicate, forged, expired, cross-product, abusive, and rate-limited submissions are handled safely.
-  - Reviews enter a moderation queue with publish/reject controls, audit history, and protection against silently changing the customer's meaning.
-  - PDP aggregates are calculated only from published verified reviews and display honest zero-review states.
-  - Review emails include unsubscribe/preferences handling appropriate to transactional review requests, and any incentive is disclosed prominently.
-- **Verification:**
-  - Passed TypeScript, production build, and all 53 automated tests, including HTTP review workflow tests with in-memory database/email adapters. Existing large-bundle warning remains.
-  - Tests cover seven-day eligibility, signed-link tampering/expiry, bundle eligibility, concurrent duplicate submission, cross-product input, moderation/audit, published-only aggregates, opt-outs, replay/uncertain email sends, authorization, and rate limiting.
-  - Owner still needs to deploy/configure and submit/publish/unpublish a review from a sandbox order, verify actual email/opt-out delivery, and check desktop/mobile/keyboard behavior.
-- **Notes / Links:** Implemented seven-day delay, daily capped worker, 60-day private links, one review per buyer/product, Admin Reviews queue and invitation visibility, public ratings, and separate review-email opt-out. Customer wording remains immutable in Admin; corrections use verified support handling. Sending defaults off and requires an approved postal address, `REVIEW_LINK_SECRET`, `CRON_SECRET`, and `REVIEW_REQUESTS_ENABLED=true`. Setup, limits, recovery, and sandbox checklist: `docs/verified-buyer-reviews.md`. No live data or emails were changed by implementation tests.
+
+## Done
 
 ### WEB-042 - Implement Subscribe & Save with Stripe Billing
 
+- **Status:** Done — owner confirmed complete and verified.
 - **Priority:** High
 - **Area:** checkout/admin
 - **Goal:** Offer a trustworthy recurring-purchase option that creates, bills, fulfills, and lets customers manage subscriptions end to end.
@@ -256,11 +242,12 @@ This board is the working queue for website development. Keep cards actionable e
   - Stripe test clocks cover signup, trial if offered, renewal, duplicate webhook, failed/retried payment, cancellation, pause/resume, price change, inventory shortage, refund, and portal access.
   - Complete a production-readiness review of webhook secrets, customer communication, policy copy, and recurring-payment disclosures.
 - **Progress:** Stripe-owned recurring cadence prices, separate subscription Checkout, initial inventory reservation, idempotent paid-renewal orders, failed-payment and inventory-attention handling, lifecycle email hooks, signed customer-portal access, Admin subscription state, product configuration, consent copy, and recurring terms are implemented.
-- **Verification results:** TypeScript validation, all 39 existing automated tests, and the production build pass; the existing large-chunk warning remains. Stripe test clocks and production configuration remain owner verification steps.
+- **Verification results:** TypeScript validation, all 39 existing automated tests, and the production build pass; the existing large-chunk warning remains. Owner confirmed this story is complete and verified.
 - **Notes / Links:** Setup and the test matrix are documented in `docs/subscribe-and-save.md`. Depends on accurate product data from WEB-035 and consistent fulfillment promises from WEB-021.
 
 ### WEB-035 - Enforce Complete and Consistent Product Data
 
+- **Status:** Done — owner confirmed complete and verified.
 - **Priority:** High
 - **Area:** storefront/checkout/admin
 - **Goal:** Make Firestore the authoritative, publish-safe source for accurate food-product information on every customer and operational surface.
@@ -273,10 +260,29 @@ This board is the working queue for website development. Keep cards actionable e
 - **Verification:**
   - Shared publication validation, storefront filtering, server checkout enforcement, complete order snapshots, and the Admin catalog report are implemented.
   - TypeScript validation, all 33 automated tests, and the production build pass; the existing large-chunk warning remains.
-  - Owner must enter approved facts for each real SKU, deploy `firestore.rules`, confirm incomplete active records are reported/hidden, and compare one complete test SKU across Shop, PDP, cart, Stripe Checkout, confirmation email, order status, and packing slip.
+  - Owner confirmed product-data configuration and verification are complete.
 - **Notes / Links:** Migration and verification instructions are in `docs/product-catalog-readiness.md`. No ingredient, allergen, cross-contact, storage, shelf-life, or dietary values were invented.
 
-## Done
+### WEB-043 - Add Verified-Buyer Review Requests and Moderated Reviews
+
+- **Priority:** Medium
+- **Area:** storefront/checkout/admin
+- **Goal:** Build credible social proof by requesting and publishing reviews only from customers who purchased the reviewed product.
+- **Acceptance Criteria:**
+  - An idempotent review-request email is scheduled from a documented post-delivery delay and sent only for eligible delivered orders.
+  - Each request uses a signed, expiring, single-purpose link tied to the order and purchased product without exposing customer or order data.
+  - A verified buyer can submit one rating and review per purchased product, with clear consent for public display and safe edit/support handling.
+  - Duplicate, forged, expired, cross-product, abusive, and rate-limited submissions are handled safely.
+  - Reviews enter a moderation queue with publish/reject controls, audit history, and protection against silently changing the customer's meaning.
+  - PDP aggregates are calculated only from published verified reviews and display honest zero-review states.
+  - Review emails include unsubscribe/preferences handling appropriate to transactional review requests, and any incentive is disclosed prominently.
+- **Verification:**
+  - Passed TypeScript, production build, and all 54 automated tests, including HTTP review workflow tests with in-memory database/email adapters. Existing large-bundle warning remains.
+  - Tests cover seven-day eligibility, signed-link tampering/expiry, bundle eligibility, concurrent duplicate submission, cross-product input, moderation/audit, published-only aggregates, opt-outs, replay/uncertain email sends, authorization, and rate limiting.
+  - Owner confirmed receipt of the review invitation, the published review on its product page, and the updated rating/heat-scale presentation; subsequently confirmed story verification complete.
+  - Follow-up UI checks covered desktop and phone-width local previews. Product cards and detail-page price areas now show published-review averages/counts, fractional stars, honest empty states, and readable pepper-style heat scales.
+- **Status:** Done — owner verified and accepted.
+- **Notes / Links:** Implemented seven-day delay, daily capped worker, 60-day private links, one review per buyer/product, Admin Reviews queue and invitation visibility, public ratings, and separate review-email opt-out. Customer wording remains immutable in Admin; corrections use verified support handling. Sending defaults off and requires an approved postal address, `REVIEW_LINK_SECRET`, `CRON_SECRET`, and `REVIEW_REQUESTS_ENABLED=true`. Setup, limits, recovery, and sandbox checklist: `docs/verified-buyer-reviews.md`. No live data or emails were changed by implementation tests.
 
 ### WEB-044 - Add Compliant Marketing Email Preferences
 

@@ -4,17 +4,20 @@ import { Search, SlidersHorizontal, X, Loader2 } from 'lucide-react';
 import { getProducts, Product } from '@/src/services/productService';
 import { ProductCard } from '@/src/components/ProductCard';
 import { cn } from '@/src/lib/utils';
+import { SHOP_CATEGORIES, shopCategory, inCollection } from '@/src/lib/merchandising';
 
 export const Shop: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
-  const activeCategory = searchParams.get('category') || 'All';
+  const activeCategory = shopCategory(searchParams.get('category'));
   const activeSort = searchParams.get('sort') || 'featured';
 
-  const categories = ['All', 'Spicy', 'Savory', 'Herbal', 'Citrus'];
+  const categories = SHOP_CATEGORIES;
+  const featuredFallback = activeCategory === 'Featured' && !products.some(p => p.featured);
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -23,6 +26,7 @@ export const Shop: React.FC = () => {
         const data = await getProducts();
         setProducts(data);
       } catch (error) {
+        setFailed(true);
         console.error("Error fetching products:", error);
       } finally {
         setLoading(false);
@@ -34,9 +38,7 @@ export const Shop: React.FC = () => {
   const filteredProducts = useMemo(() => {
     return products
       .filter((p) => {
-        const matchesCategory = activeCategory === 'All' || 
-          p.tags.some(t => t.toLowerCase() === activeCategory.toLowerCase()) ||
-          (p.category && p.category.toLowerCase() === activeCategory.toLowerCase());
+        const matchesCategory = inCollection(p, activeCategory, featuredFallback);
         const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                              p.shortDescription.toLowerCase().includes(searchQuery.toLowerCase());
         return matchesCategory && matchesSearch;
@@ -46,9 +48,9 @@ export const Shop: React.FC = () => {
         if (activeSort === 'price-high') return b.price - a.price;
         if (activeSort === 'heat-low') return a.heatLevel - b.heatLevel;
         if (activeSort === 'heat-high') return b.heatLevel - a.heatLevel;
-        return 0; // featured/default
+        return Number(!!b.featured) - Number(!!a.featured);
       });
-  }, [products, activeCategory, searchQuery, activeSort]);
+  }, [products, activeCategory, searchQuery, activeSort, featuredFallback]);
 
   return (
     <div className="pt-40 pb-32 animate-fade-in editorial-surface-dark relative overflow-hidden">
@@ -57,7 +59,7 @@ export const Shop: React.FC = () => {
         {/* Header */}
         <div className="text-center space-y-6 mb-20">
           <span className="text-brand-gold text-[12px] uppercase tracking-[0.4em] font-bold block">The Provisions</span>
-          <h1 className="text-5xl md:text-7xl font-serif text-brand-parchment">Shop the Collection</h1>
+          <h1 className="text-5xl md:text-7xl font-serif text-brand-parchment">{activeCategory === 'Featured' ? 'Featured Salts' : 'Shop the Collection'}</h1>
           <p className="text-brand-parchment/60 max-w-2xl mx-auto text-lg font-light">
             Small-batch finishing salts crafted with sacred intent and bold flavor. 
             Find the perfect companion for your next culinary creation.
@@ -67,11 +69,12 @@ export const Shop: React.FC = () => {
         {/* Controls */}
         <div className="flex flex-col md:flex-row gap-8 items-center justify-between mb-12 border-y border-white/10 py-8">
           {/* Categories */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar w-full md:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
             {categories.map((cat) => (
               <button
                 key={cat}
-                onClick={() => setSearchParams({ category: cat })}
+                onClick={() => setSearchParams({ ...Object.fromEntries(searchParams), category: cat })}
+                aria-pressed={activeCategory === cat}
                 className={cn(
                   "px-6 py-2 rounded-full text-[11px] uppercase tracking-widest font-bold transition-all whitespace-nowrap",
                   activeCategory === cat 
@@ -90,7 +93,8 @@ export const Shop: React.FC = () => {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-parchment/40" size={16} />
               <input 
                 type="text" 
-                placeholder="Search salts..." 
+                placeholder="Search salts..."
+                aria-label="Search salts"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-white/5 border-none py-3 pl-12 pr-4 text-sm rounded-sm focus:ring-1 focus:ring-brand-gold outline-none transition-all text-brand-parchment placeholder:text-brand-parchment/20"
@@ -98,6 +102,7 @@ export const Shop: React.FC = () => {
             </div>
             <select 
               value={activeSort}
+              aria-label="Sort salts"
               onChange={(e) => setSearchParams({ ...Object.fromEntries(searchParams), sort: e.target.value })}
               className="bg-white/5 border-none py-3 px-6 text-[11px] uppercase tracking-widest font-bold rounded-sm focus:ring-1 focus:ring-brand-gold outline-none cursor-pointer text-brand-parchment"
             >
@@ -136,7 +141,8 @@ export const Shop: React.FC = () => {
         )}
 
         {/* Grid */}
-        {filteredProducts.length > 0 ? (
+        {!loading && !failed && featuredFallback && <p role="status" className="mb-8 text-brand-parchment/75">Our featured selection is being refreshed. Browse all available salts below.</p>}
+        {loading ? <div role="status" className="py-20 flex justify-center gap-3 text-brand-parchment"><Loader2 className="animate-spin" aria-hidden="true" />Loading salts…</div> : failed ? <div role="alert" className="py-20 text-center text-brand-parchment">Salts could not be loaded. Please refresh to try again.</div> : filteredProducts.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-12 gap-y-20">
             {filteredProducts.map((product) => (
               <ProductCard key={product.id} product={product} dark />

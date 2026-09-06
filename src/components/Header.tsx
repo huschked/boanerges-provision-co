@@ -6,6 +6,8 @@ import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
 import logo from '@/src/assets/BoanergesLogoTransparent-v2.png';
 import monogram from '@/src/assets/brand/boanerges-monogram.png';
+import { STOREFRONT_NAV } from '@/src/lib/merchandising';
+import { SocialLinks } from './SocialLinks';
 
 export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -23,14 +25,7 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
     setIsMobileMenuOpen(false);
   }, [location]);
 
-  const navLinks = [
-    { name: 'Shop All', path: '/shop' },
-    { name: 'Bundles', path: '/bundles' },
-    { name: 'Our Story', path: '/about' },
-    { name: 'Recipes', path: '/recipes' },
-    { name: 'Contact', path: '/contact' },
-    { name: 'FAQ', path: '/faq' },
-  ];
+  const navLinks = STOREFRONT_NAV;
 
   // Pages that have a dark hero/background at the top
   const isDarkHeroPage =
@@ -56,22 +51,23 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
           {/* Mobile Menu Toggle */}
           <button 
             className={cn(
-              "md:hidden transition-colors duration-300",
+              "xl:hidden transition-colors duration-300 min-w-11 min-h-11 flex items-center justify-center",
               showDarkText ? "text-brand-black" : "text-brand-parchment"
             )}
             onClick={() => setIsMobileMenuOpen(true)}
+            aria-label="Open navigation menu" aria-expanded={isMobileMenuOpen} aria-controls="mobile-navigation"
           >
             <Menu size={24} />
           </button>
 
           {/* Navigation */}
-          <nav className="hidden md:flex items-center gap-6 xl:gap-12">
+          <nav aria-label="Shop navigation" className="hidden xl:flex items-center gap-5">
             {navLinks.slice(0, 3).map((link) => (
               <Link
                 key={link.name}
                 to={link.path}
                 className={cn(
-                  "text-[12px] xl:text-[14px] uppercase tracking-[0.18em] xl:tracking-[0.2em] transition-all duration-300 font-black",
+                  "text-[11px] uppercase tracking-[0.1em] whitespace-nowrap transition-all duration-300 font-black",
                   showDarkText 
                     ? "text-brand-black hover:text-brand-gold" 
                     : "text-brand-parchment hover:text-brand-gold"
@@ -88,7 +84,7 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
               src={monogram}
               alt="Boanerges Provisions Co."
               className={cn(
-                "md:hidden w-auto object-contain group-hover:scale-105 transition-all duration-500 drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]",
+                "xl:hidden w-auto object-contain group-hover:scale-105 transition-all duration-500 drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]",
                 isScrolled ? "h-12" : "h-16"
               )}
             />
@@ -96,8 +92,7 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
               src={logo} 
               alt="Boanerges Provisions Co."
               className={cn(
-                "hidden md:block w-auto max-w-[380px] object-contain group-hover:scale-105 transition-all duration-500 drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]",
-                isScrolled ? "h-16" : "h-20"
+                "hidden xl:block w-[210px] h-auto object-contain group-hover:scale-105 transition-all duration-500 drop-shadow-[0_10px_24px_rgba(0,0,0,0.35)]"
               )}
               referrerPolicy="no-referrer"
             />
@@ -105,13 +100,13 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
 
           {/* Right Actions */}
           <div className="flex items-center gap-8 md:gap-6 xl:gap-12">
-            <nav className="hidden md:flex items-center gap-6 xl:gap-12">
+            <nav aria-label="Company navigation" className="hidden xl:flex items-center gap-5">
               {navLinks.slice(3).map((link) => (
                 <Link
                   key={link.name}
                   to={link.path}
                   className={cn(
-                    "text-[12px] xl:text-[14px] uppercase tracking-[0.18em] xl:tracking-[0.2em] transition-all duration-300 font-black",
+                    "text-[11px] uppercase tracking-[0.1em] whitespace-nowrap transition-all duration-300 font-black",
                     showDarkText 
                       ? "text-brand-black hover:text-brand-gold" 
                       : "text-brand-parchment hover:text-brand-gold"
@@ -123,6 +118,7 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
             </nav>
             <button 
               onClick={onCartClick}
+              aria-label={`Open cart, ${itemCount} ${itemCount === 1 ? 'item' : 'items'}`}
               className={cn(
                 "relative transition-all duration-300 group/cart",
                 showDarkText ? "text-brand-black hover:text-brand-gold" : "text-brand-parchment hover:text-brand-gold"
@@ -147,16 +143,18 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: '-100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed inset-0 z-50 editorial-surface-dark flex flex-col p-12"
+            id="mobile-navigation"
+            className="fixed inset-0 z-50 editorial-surface-dark flex flex-col p-6 sm:p-12 overflow-y-auto"
           >
             <button 
               className="absolute top-8 right-8 text-brand-gold"
               onClick={() => setIsMobileMenuOpen(false)}
+              aria-label="Close navigation menu"
             >
               <X size={32} />
             </button>
             
-            <div className="mt-20 flex flex-col gap-8">
+            <nav aria-label="Mobile navigation" className="mt-14 flex flex-col gap-5">
               <Link to="/" className="mb-4 inline-flex justify-center">
                 <img
                   src={monogram}
@@ -169,20 +167,17 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
                 <Link
                   key={link.name}
                   to={link.path}
-                  className="text-4xl font-serif text-brand-parchment hover:text-brand-gold transition-colors flex items-center justify-between group font-black"
+                  className="text-3xl sm:text-4xl min-h-11 font-serif text-brand-parchment hover:text-brand-gold transition-colors flex items-center justify-between group font-black"
                 >
                   {link.name}
                   <ChevronRight className="opacity-0 group-hover:opacity-100 transition-opacity" />
                 </Link>
               ))}
-            </div>
+            </nav>
 
             <div className="mt-auto pt-12 border-t border-brand-earth/20">
-              <p className="text-brand-gold text-[10px] uppercase tracking-widest mb-4">Follow our journey</p>
-              <div className="flex gap-6 text-brand-parchment">
-                <span className="text-sm">Instagram</span>
-                <span className="text-sm">Facebook</span>
-              </div>
+              <p className="text-brand-gold text-[10px] uppercase tracking-widest mb-4">Our social profiles · Coming soon</p>
+              <SocialLinks />
             </div>
           </motion.div>
         )}

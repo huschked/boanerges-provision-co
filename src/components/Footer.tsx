@@ -48,11 +48,12 @@ export const Footer: React.FC = () => {
           <div>
             <h4 className="text-brand-gold text-[11px] uppercase tracking-[0.2em] font-black mb-8">Provisions</h4>
             <ul className="space-y-4">
-              <li><Link to="/shop" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Shop All Salts</Link></li>
+              <li><Link to="/shop" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Shop Salts</Link></li>
               <li><Link to="/shop?category=Spicy" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Heat Collection</Link></li>
               <li><Link to="/shop?category=Savory" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Savory Blends</Link></li>
-              <li><Link to="/shop?category=Citrus" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Citrus & Herbal</Link></li>
-              <li><Link to="/bundles" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Gift Bundles</Link></li>
+              <li><Link to="/shop?category=Citrus" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Citrus Salts</Link></li>
+              <li><Link to="/shop?category=Herbal" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Herbal Salts</Link></li>
+              <li><Link to="/bundles" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Bundles & Gifts</Link></li>
             </ul>
           </div>
 

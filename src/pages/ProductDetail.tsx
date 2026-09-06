@@ -179,9 +179,8 @@ export const ProductDetail: React.FC = () => {
                 </div>
                 <button 
                   onClick={() => {
-                    for(let i = 0; i < quantity; i++) {
-                      addItem(product as any);
-                    }
+                    addItem(product, quantity);
+                    toast.success(`${quantity} × ${product.name} added to your cart.`, { ariaProps: { role: 'status', 'aria-live': 'polite' } });
                     trackAnalyticsEvent({
                       type: 'add_to_cart',
                       productId: product.id,
