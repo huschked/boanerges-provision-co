@@ -7,6 +7,7 @@ import { createSubscriptionCheckout, getSubscriptionOptions, type SubscriptionOp
 import { HeatScale } from '@/src/components/HeatScale';
 import { ProductCard } from '@/src/components/ProductCard';
 import { ProductReviews } from '@/src/components/ProductReviews';
+import { ProductRating } from '@/src/components/ProductRating';
 import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
@@ -125,17 +126,15 @@ export const ProductDetail: React.FC = () => {
             <div className="space-y-4">
               <span className="text-brand-gold text-[11px] uppercase tracking-[0.3em] font-black">{product.category} Collection</span>
               <h1 className="text-4xl md:text-6xl font-serif text-brand-parchment leading-tight">{product.name}</h1>
-              <div className="flex items-center gap-6">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
                 <span className="text-3xl font-serif text-brand-gold">${product.price.toFixed(2)}</span>
                 <span className="text-[10px] text-brand-parchment/40 font-black uppercase tracking-[0.2em]">{product.sizeOz} oz</span>
+                <ProductRating productId={product.id} slug={product.slug} dark />
               </div>
             </div>
 
             <div className="space-y-6">
-              <div className="flex items-center gap-4">
-                <HeatScale level={product.heatLevel} className="scale-110 origin-left" />
-                <span className="text-[10px] uppercase tracking-widest font-black text-brand-gold">{product.heatLabel}</span>
-              </div>
+              <HeatScale level={product.heatLevel} dark className="max-w-sm" />
               <p className="text-lg text-brand-parchment/60 leading-relaxed font-light">
                 {product.shortDescription}
               </p>

@@ -4,6 +4,7 @@ import { Plus, ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Product } from '@/src/services/productService';
 import { HeatScale } from './HeatScale';
+import { ProductRating } from './ProductRating';
 import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
@@ -71,12 +72,13 @@ export const ProductCard: React.FC<{ product: Product; className?: string; dark?
           <Link to={`/product/${product.slug}`} className={cn("hover:text-brand-gold transition-colors duration-500", dark ? "text-brand-parchment" : "text-brand-black")}>
             <h3 className="font-serif text-3xl md:text-4xl leading-[1.05] tracking-tight">{product.name}</h3>
           </Link>
-          <div className="flex flex-col items-end">
+          <div className="flex flex-col items-end shrink-0">
             <span className={cn("font-bold text-xl tracking-tighter", dark ? "text-brand-gold" : "text-brand-black")}>${product.price.toFixed(2)}</span>
             <span className={cn("text-[9px] uppercase tracking-widest opacity-40 font-black", dark ? "text-brand-parchment" : "text-brand-black")}>{product.sizeOz} oz</span>
           </div>
         </div>
         
+        <ProductRating productId={product.id} slug={product.slug} dark={dark} />
         <div className="flex flex-wrap gap-2.5">
           {product.tags.map((tag) => (
             <span 
@@ -94,7 +96,7 @@ export const ProductCard: React.FC<{ product: Product; className?: string; dark?
         </div>
         
         <div className="py-2">
-          <HeatScale level={product.heatLevel} />
+          <HeatScale level={product.heatLevel} dark={dark} />
         </div>
         
         <p className={cn("text-[15px] line-clamp-2 leading-relaxed font-light italic opacity-80", dark ? "text-brand-parchment/60" : "text-brand-earth/70")}>

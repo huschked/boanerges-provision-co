@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 type Reviews = { count: number; average: number | null; reviews: { id: string; displayName: string; rating: number; text: string; date: string }[] };
 export function ProductReviews({ productId }: { productId: string }) {
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash !== '#reviews') return;
+    const frame = requestAnimationFrame(() => document.getElementById('reviews')?.scrollIntoView({ block: 'start' }));
+    return () => cancelAnimationFrame(frame);
+  }, [hash, productId]);
   const [data, setData] = useState<Reviews | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
@@ -13,7 +20,7 @@ export function ProductReviews({ productId }: { productId: string }) {
     }).catch(e => { if (e.name !== 'AbortError') setError(true); });
     return () => controller.abort();
   }, [productId]);
-  return <section className="mt-20 border-t border-white/10 pt-10 text-brand-parchment" aria-labelledby="reviews-heading">
+  return <section id="reviews" className="mt-20 scroll-mt-28 border-t border-white/10 pt-10 text-brand-parchment" aria-labelledby="reviews-heading">
     <h2 id="reviews-heading" className="font-serif text-3xl mb-4">Verified Buyer Reviews</h2>
     <p className="text-brand-parchment/70 mb-6">Reviews come from verified purchases and are moderated for safety and relevance, not rating. No incentives are offered.</p>
     {error ? <p role="status">Reviews could not be loaded. Please refresh to try again.</p> : !data ? <p role="status">Loading reviews…</p> : <>

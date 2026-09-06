@@ -75,6 +75,15 @@ export function registerReviewRoutes(app: Express, deps: Dependencies) {
       .map((r, index) => ({ id: r.publicId || String(index), displayName: r.displayName, rating: r.rating, text: r.text, date: r.createdAt?.toDate().toISOString().slice(0, 10) || '' }));
     res.json({ ...aggregate, reviews });
   }));
+  app.get('/api/reviews/summaries', limit, wrap(async (req, res) => {
+    let ids: unknown;
+    try { ids = JSON.parse(String(req.query.ids || '')); } catch { return fail('Invalid product list.'); }
+    if (!Array.isArray(ids) || !ids.length || ids.length > 30 || ids.some(id => typeof id !== 'string' || !id || id.length > 200 || id.includes('/'))) return fail('Choose between 1 and 30 valid products.');
+    const productIds = [...new Set(ids)] as string[];
+    const snap = await db.collection('reviews').where('productId', 'in', productIds).get();
+    const rows = snap.docs.map(d => d.data());
+    res.json({ summaries: Object.fromEntries(productIds.map(id => [id, reviewAggregate(rows.filter(r => r.productId === id) as any[])])) });
+  }));
   app.get('/api/admin/reviews', wrap(async (req, res) => {
     await deps.authenticateAdmin(req);
     const status = String(req.query.status || 'pending');

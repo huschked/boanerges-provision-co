@@ -29,7 +29,7 @@ function memoryDb() {
     limit: (n: number) => collection(name, filters, n, after),
     get: async () => {
       const paths = [...rows.keys()].filter(path => path.startsWith(`${name}/`) && (!after || path.split('/').at(-1)! > after)
-        && filters.every(([field, op, value]) => op === '==' ? rows.get(path)[field] === value : rows.get(path)[field] <= value)).sort().slice(0, max);
+        && filters.every(([field, op, value]) => op === '==' ? rows.get(path)[field] === value : op === 'in' ? value.includes(rows.get(path)[field]) : rows.get(path)[field] <= value)).sort().slice(0, max);
       return { docs: await Promise.all(paths.map(p => ref(p).get())), empty: paths.length === 0, size: paths.length };
     },
   });
@@ -93,6 +93,9 @@ test('HTTP review workflow: delayed sending, replay, buyer uniqueness, opt-out, 
     assert.equal((await request(`/api/admin/reviews/${review.id}/moderate`, { status: 'published', reason: 'Relevant honest feedback', expectedStatus: 'pending', text: 'Changed!' }, 'Bearer admin-test')).status, 200);
     let published = (await request('/api/reviews/product/salt')).body;
     assert.equal(published.count, 1); assert.equal(published.average, 1);
+    const summaryUrl = `/api/reviews/summaries?ids=${encodeURIComponent(JSON.stringify(['salt', 'no-reviews']))}`;
+    assert.deepEqual((await request(summaryUrl)).body, { summaries: { salt: { count: 1, average: 1 }, 'no-reviews': { count: 0, average: null } } });
+    assert.equal((await request('/api/reviews/summaries?ids=invalid')).status, 400);
     assert.equal(published.reviews[0].text, content.text);
     assert.notEqual(published.reviews[0].id, review.id, 'public identifiers must not expose buyer-derived dedupe keys');
     assert.equal(JSON.stringify(published).includes('buyer@example.com'), false);
@@ -100,6 +103,7 @@ test('HTTP review workflow: delayed sending, replay, buyer uniqueness, opt-out, 
     await request(`/api/admin/reviews/${review.id}/moderate`, { status: 'rejected', reason: 'Buyer requested removal', expectedStatus: 'published' }, 'Bearer admin-test');
     assert.equal((await request('/api/reviews/product/salt')).body.count, 0);
     assert.equal([...rows.keys()].filter(k => k.startsWith('review_audit/')).length, 3);
+    assert.equal((await request(summaryUrl)).body.summaries.salt.count, 0);
     await request('/api/reviews/unsubscribe', { token });
     rows.set('orders/order-2', { ...order, items: [{ productId: 'pepper', name: 'Pepper', quantity: 1 }] });
     await request('/api/cron/review-requests', undefined, cron);
