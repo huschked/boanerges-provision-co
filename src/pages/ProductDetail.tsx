@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Plus, Minus, ShieldCheck, Truck, RotateCcw, ChevronRight, Heart, ShoppingBag, Flame, Loader2 } from 'lucide-react';
+import { Plus, Minus, ShieldCheck, Truck, RotateCcw, ChevronRight, ShoppingBag, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getProductBySlug, getProducts, Product, type SubscriptionCadence } from '@/src/services/productService';
 import { createSubscriptionCheckout, getSubscriptionOptions, type SubscriptionOption } from '@/src/services/subscriptionService';
@@ -26,6 +26,20 @@ export const ProductDetail: React.FC = () => {
   const [subscriptionConsent, setSubscriptionConsent] = useState(false);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const addItem = useCart((state) => state.addItem);
+
+  const handleAddToCart = () => {
+    if (!product || product.currentInventory <= 0) return;
+    addItem(product, quantity);
+    toast.success(`${quantity} × ${product.name} added to your cart.`, { ariaProps: { role: 'status', 'aria-live': 'polite' } });
+    trackAnalyticsEvent({
+      type: 'add_to_cart',
+      productId: product.id,
+      productName: product.name,
+      category: product.category,
+      quantity,
+      value: product.price * quantity,
+    });
+  };
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -90,15 +104,15 @@ export const ProductDetail: React.FC = () => {
   const selectedMedia = media[selectedImageIndex] || media[0];
 
   return (
-    <div className="pt-40 pb-32 animate-fade-in editorial-surface-dark relative overflow-hidden">
+    <div className="pt-40 pb-48 lg:pb-32 animate-fade-in editorial-surface-dark relative overflow-hidden">
       <div className="absolute inset-0 opacity-70 surface-vignette-dark" />
       <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
         {/* Breadcrumbs */}
         <nav className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-black text-brand-parchment/30 mb-12">
           <Link to="/" className="hover:text-brand-gold transition-colors">Home</Link>
-          <ChevronRight size={12} />
+          <ChevronRight size={12} aria-hidden="true" />
           <Link to="/shop" className="hover:text-brand-gold transition-colors">Shop</Link>
-          <ChevronRight size={12} />
+          <ChevronRight size={12} aria-hidden="true" />
           <span className="text-brand-parchment/60">{product.name}</span>
         </nav>
 
@@ -118,7 +132,7 @@ export const ProductDetail: React.FC = () => {
               />
               {selectedMedia.type === 'illustrative' && <span className="absolute bottom-4 right-4 bg-brand-black/85 text-brand-parchment px-4 py-2 text-[9px] uppercase tracking-widest font-black">Illustrative image</span>}
             </motion.div>
-            {media.length > 1 && <div className="grid grid-cols-4 gap-4">{media.map((item, index) => <button key={`${item.url}-${index}`} type="button" onClick={() => setSelectedImageIndex(index)} className={cn('aspect-square overflow-hidden border bg-white', selectedImageIndex === index ? 'border-brand-gold' : 'border-white/10')}><img src={item.url} alt={item.alt} className="w-full h-full object-cover" /></button>)}</div>}
+            {media.length > 1 && <div className="grid grid-cols-4 gap-4">{media.map((item, index) => <button key={`${item.url}-${index}`} type="button" onClick={() => setSelectedImageIndex(index)} aria-label={`View image ${index + 1} of ${media.length}: ${item.alt}`} aria-pressed={selectedImageIndex === index} className={cn('aspect-square min-h-11 overflow-hidden border bg-white', selectedImageIndex === index ? 'border-brand-gold' : 'border-white/20')}><img src={item.url} alt="" className="w-full h-full object-cover" /></button>)}</div>}
           </div>
 
           {/* Product Info */}
@@ -155,54 +169,45 @@ export const ProductDetail: React.FC = () => {
                 {subscriptionOptions.length > 0 && <div className="p-6 border border-white/15 bg-white/[0.03] rounded-sm space-y-5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"><div><p className="text-[11px] font-black uppercase tracking-widest text-brand-parchment">Subscribe &amp; Save</p><p className="text-xs text-brand-parchment/45">Recurring delivery in a separate secure checkout</p></div><select aria-label="Delivery cadence" value={selectedCadence} onChange={event => setSelectedCadence(event.target.value as SubscriptionCadence)} className="input-premium"><option value="" disabled>Select cadence</option>{subscriptionOptions.map(option => <option key={option.cadence} value={option.cadence}>{option.label} · ${option.amount.toFixed(2)}{option.savingsPercent > 0 ? ` · Save ${option.savingsPercent}%` : ''}</option>)}</select></div>
                   <p className="text-xs leading-relaxed text-brand-parchment/55">Your selected quantity ships and bills automatically on this cadence. Shipping and applicable tax are calculated in Stripe at signup and on renewals. Cancel or update payment details anytime through the secure customer portal; changes must be made before the next invoice to avoid that renewal.</p>
-                  <label className="flex items-start gap-3 text-xs text-brand-parchment/70 leading-relaxed"><input type="checkbox" checked={subscriptionConsent} onChange={event => setSubscriptionConsent(event.target.checked)} className="mt-1 accent-brand-gold" /><span>I authorize recurring charges for this product and cadence until I cancel. I understand food orders are final sale once fulfilled.</span></label>
-                  <button type="button" disabled={!subscriptionConsent || subscriptionLoading || product.currentInventory < quantity} onClick={async () => { setSubscriptionLoading(true); try { const result = await createSubscriptionCheckout({ productId: product.id, quantity, cadence: selectedCadence, origin: window.location.origin }); window.location.href = result.url; } catch (error) { console.error(error); toast.error(error instanceof Error ? error.message : 'Subscription checkout is unavailable.'); } finally { setSubscriptionLoading(false); } }} className="w-full py-4 border border-brand-gold text-brand-gold hover:bg-brand-gold hover:text-brand-black disabled:opacity-35 disabled:cursor-not-allowed text-[10px] uppercase tracking-[0.25em] font-black transition-colors">{subscriptionLoading ? 'Opening secure checkout…' : 'Subscribe in Stripe'}</button>
-                  <p className="text-[10px] text-brand-parchment/35">This subscription checkout is separate; items already in your cart will remain there.</p>
+                  <label className="min-h-11 flex items-start gap-3 text-xs text-brand-parchment/75 leading-relaxed cursor-pointer"><input type="checkbox" checked={subscriptionConsent} onChange={event => setSubscriptionConsent(event.target.checked)} className="mt-1 w-5 h-5 shrink-0 accent-brand-gold" /><span>I authorize recurring charges for this product and cadence until I cancel. I understand food orders are final sale once fulfilled.</span></label>
+                  <button type="button" disabled={!subscriptionConsent || subscriptionLoading || product.currentInventory < quantity} onClick={async () => { setSubscriptionLoading(true); try { const result = await createSubscriptionCheckout({ productId: product.id, quantity, cadence: selectedCadence, origin: window.location.origin }); window.location.href = result.url; } catch (error) { console.error(error); toast.error(error instanceof Error ? error.message : 'Subscription checkout is unavailable.'); } finally { setSubscriptionLoading(false); } }} className="w-full min-h-11 py-4 border border-brand-gold text-brand-gold hover:bg-brand-gold hover:text-brand-black disabled:opacity-35 disabled:cursor-not-allowed text-[10px] uppercase tracking-[0.25em] font-black transition-colors">{subscriptionLoading ? 'Opening secure checkout…' : 'Subscribe in Stripe'}</button>
+                  <p className="text-[10px] text-brand-parchment/65">This subscription checkout is separate; items already in your cart will remain there.</p>
                 </div>}
               </div>
 
               <div className="flex gap-4">
                 <div className="flex items-center border border-white/10 rounded-sm bg-white/5">
                   <button 
+                    type="button"
                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    className="px-4 py-4 hover:bg-white/5 transition-colors text-brand-parchment"
+                    aria-label={`Decrease ${product.name} quantity`}
+                    disabled={quantity <= 1}
+                    className="touch-target px-4 py-4 hover:bg-white/5 transition-colors text-brand-parchment disabled:opacity-40"
                   >
-                    <Minus size={16} />
+                    <Minus size={16} aria-hidden="true" />
                   </button>
-                  <span className="w-12 text-center font-black text-brand-parchment">{quantity}</span>
+                  <span className="w-12 text-center font-black text-brand-parchment" role="status" aria-live="polite" aria-label={`Quantity ${quantity}`}>{quantity}</span>
                   <button 
+                    type="button"
                     onClick={() => setQuantity(quantity + 1)}
-                    className="px-4 py-4 hover:bg-white/5 transition-colors text-brand-parchment"
+                    aria-label={`Increase ${product.name} quantity`}
+                    className="touch-target px-4 py-4 hover:bg-white/5 transition-colors text-brand-parchment"
                   >
-                    <Plus size={16} />
+                    <Plus size={16} aria-hidden="true" />
                   </button>
                 </div>
                 <button 
-                  onClick={() => {
-                    addItem(product, quantity);
-                    toast.success(`${quantity} × ${product.name} added to your cart.`, { ariaProps: { role: 'status', 'aria-live': 'polite' } });
-                    trackAnalyticsEvent({
-                      type: 'add_to_cart',
-                      productId: product.id,
-                      productName: product.name,
-                      category: product.category,
-                      quantity,
-                      value: product.price * quantity,
-                    });
-                  }}
+                  onClick={handleAddToCart}
                   disabled={product.currentInventory <= 0}
                   className={cn(
-                    "flex-1 text-[11px] uppercase tracking-[0.3em] font-black transition-all shadow-xl flex items-center justify-center gap-3",
+                    "min-h-11 flex-1 text-[11px] uppercase tracking-[0.24em] sm:tracking-[0.3em] font-black transition-all shadow-xl flex items-center justify-center gap-3",
                     product.currentInventory > 0 
                       ? "bg-brand-gold text-brand-black hover:bg-brand-parchment" 
                       : "bg-white/10 text-brand-parchment/20 cursor-not-allowed"
                   )}
                 >
-                  <ShoppingBag size={18} />
+                  <ShoppingBag size={18} aria-hidden="true" />
                   {product.currentInventory > 0 ? 'Add to Provisions' : 'Out of Stock'}
-                </button>
-                <button className="px-5 border border-white/10 rounded-sm hover:bg-white/5 transition-colors text-brand-parchment/40 hover:text-red-500">
-                  <Heart size={20} />
                 </button>
               </div>
             </div>
@@ -210,16 +215,16 @@ export const ProductDetail: React.FC = () => {
             {/* Trust Badges */}
             <div className="grid grid-cols-3 gap-6 pt-6 border-t border-white/10">
               <div className="flex flex-col items-center text-center gap-2">
-                <Truck size={20} className="text-brand-gold" strokeWidth={1.5} />
-                <span className="text-[9px] uppercase tracking-widest font-black text-brand-parchment/40">Free Shipping $50+</span>
+                <Truck size={20} aria-hidden="true" className="text-brand-gold" strokeWidth={1.5} />
+                <span className="text-[9px] uppercase tracking-widest font-black text-brand-parchment/70">Free Shipping $50+</span>
               </div>
               <div className="flex flex-col items-center text-center gap-2">
-                <ShieldCheck size={20} className="text-brand-gold" strokeWidth={1.5} />
-                <span className="text-[9px] uppercase tracking-widest font-black text-brand-parchment/40">Secure Checkout</span>
+                <ShieldCheck size={20} aria-hidden="true" className="text-brand-gold" strokeWidth={1.5} />
+                <span className="text-[9px] uppercase tracking-widest font-black text-brand-parchment/70">Secure Checkout</span>
               </div>
               <Link to="/returns" className="flex flex-col items-center text-center gap-2 hover:text-brand-gold transition-colors">
-                <RotateCcw size={20} className="text-brand-gold" strokeWidth={1.5} />
-                <span className="text-[9px] uppercase tracking-widest font-black text-brand-parchment/40">Final Sale · Damage Support</span>
+                <RotateCcw size={20} aria-hidden="true" className="text-brand-gold" strokeWidth={1.5} />
+                <span className="text-[9px] uppercase tracking-widest font-black text-brand-parchment/70">Final Sale · Damage Support</span>
               </Link>
             </div>
 
@@ -235,9 +240,9 @@ export const ProductDetail: React.FC = () => {
                 ...(dietaryClaims.length ? [{ title: 'Dietary Claims', content: dietaryClaims.join(', ') }] : []),
               ].map((item, i) => (
                 <details key={i} className="group border-b border-white/10 pb-4">
-                  <summary className="flex items-center justify-between cursor-pointer list-none">
+                  <summary className="min-h-11 flex items-center justify-between cursor-pointer list-none">
                     <span className="text-[11px] uppercase tracking-widest font-black text-brand-parchment">{item.title}</span>
-                    <Plus size={14} className="group-open:rotate-45 transition-transform text-brand-gold" />
+                    <Plus size={14} aria-hidden="true" className="group-open:rotate-45 transition-transform text-brand-gold" />
                   </summary>
                   <div className="pt-4 text-sm text-brand-parchment/60 leading-relaxed font-light">
                     {item.content}
@@ -263,6 +268,17 @@ export const ProductDetail: React.FC = () => {
             </div>
           </section>
         )}
+      </div>
+      <div className="lg:hidden fixed inset-x-0 bottom-0 z-30 border-t border-brand-gold/25 bg-brand-black/95 backdrop-blur-xl px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-12px_30px_rgba(0,0,0,0.45)]">
+        <div className="max-w-7xl mx-auto flex items-center gap-4">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold text-brand-parchment">{product.name}</p>
+            <p className="text-xs text-brand-parchment/70">Qty {quantity} · ${(product.price * quantity).toFixed(2)}</p>
+          </div>
+          <button type="button" onClick={handleAddToCart} disabled={product.currentInventory <= 0} className="ml-auto min-h-11 shrink-0 bg-brand-gold px-5 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-brand-black disabled:bg-white/10 disabled:text-brand-parchment/60">
+            {product.currentInventory > 0 ? 'Add to cart' : 'Out of stock'}
+          </button>
+        </div>
       </div>
     </div>
   );

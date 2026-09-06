@@ -137,23 +137,6 @@ This board is the working queue for website development. Keep cards actionable e
 ## Ready
 
 
-### WEB-040 - Complete a Mobile Commerce and Accessibility Pass
-
-- **Priority:** High
-- **Area:** storefront/accessibility
-- **Goal:** Make browsing and purchasing efficient for touch, keyboard, and assistive-technology users.
-- **Acceptance Criteria:**
-  - Icon-only controls, sort/filter controls, heat scales, cart changes, and dynamic confirmations have meaningful accessible names or live text.
-  - Contact and signup labels are programmatically associated with their inputs and validation/status feedback is announced.
-  - Interactive targets meet a practical 44-by-44-pixel minimum without making compact mobile cards unusable.
-  - Product add controls remain discoverable on touch; PDP purchase actions remain accessible after the primary controls scroll away.
-  - Cart content scrolls clearly without being hidden behind its summary, and Shop shows a loading skeleton rather than a false empty state.
-  - Small low-opacity utility copy and focus indicators meet appropriate readability and contrast expectations.
-- **Verification:**
-  - Keyboard and screen-reader smoke-test the complete browse, cart, contact, and checkout path.
-  - Browser-check mobile, tablet, desktop, zoom, reduced-motion, loading, empty, and error states.
-- **Notes / Links:** Prefer responsive card behavior based on available width instead of forcing two columns on every small phone.
-
 ### WEB-001 - Storefront Polish Pass
 
 - **Priority:** High
@@ -205,6 +188,25 @@ This board is the working queue for website development. Keep cards actionable e
 ## In Progress
 
 ## Review / Verify
+
+### WEB-040 - Complete a Mobile Commerce and Accessibility Pass
+
+- **Priority:** High
+- **Area:** storefront/accessibility
+- **Goal:** Make browsing and purchasing efficient for touch, keyboard, and assistive-technology users.
+- **Acceptance Criteria:**
+  - Icon-only controls, sort/filter controls, heat scales, cart changes, and dynamic confirmations have meaningful accessible names or live text.
+  - Contact and signup labels are programmatically associated with their inputs and validation/status feedback is announced.
+  - Interactive targets meet a practical 44-by-44-pixel minimum without making compact mobile cards unusable.
+  - Product add controls remain discoverable on touch; PDP purchase actions remain accessible after the primary controls scroll away.
+  - Cart content scrolls clearly without being hidden behind its summary, and Shop shows a loading skeleton rather than a false empty state.
+  - Small low-opacity utility copy and focus indicators meet appropriate readability and contrast expectations.
+- **Verification:**
+  - Keyboard and screen-reader smoke-test the complete browse, cart, contact, and checkout path.
+  - Browser-check mobile, tablet, desktop, zoom, reduced-motion, loading, empty, and error states.
+- **Verification results:** TypeScript validation, all 57 automated tests, and the production build pass; the existing large-chunk warning remains. Local browser checks confirmed accessible Shop controls/results, 44-pixel filter and header targets, persistent touch Quick Add, mobile sticky PDP purchase action, live add/quantity announcements, cart dialog focus and Escape behavior, and associated contact/newsletter labels.
+- **Owner verification:** After deployment, check a narrow phone and desktop browser for Shop loading/filtering, PDP sticky Add to Cart, a cart with enough lines to scroll, contact validation, newsletter success/error feedback, keyboard focus, browser zoom, and reduced-motion behavior.
+- **Notes / Links:** Implemented responsive auto-fit product grids, Shop skeleton/error/result states, coarse-pointer Quick Add behavior, mobile PDP purchase bar, modal focus management, readable utility copy, shared focus styling, and reduced-motion support.
 
 ### WEB-039 - Repair Merchandising Navigation and CTA Destinations
 

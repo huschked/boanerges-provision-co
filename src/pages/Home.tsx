@@ -4,7 +4,6 @@ import { ArrowRight, Flame, ShieldCheck, Zap, Award, Loader2, CheckCircle2 } fro
 import { Link } from 'react-router-dom';
 import { getProducts, Product } from '@/src/services/productService';
 import { ProductCard } from '@/src/components/ProductCard';
-import toast from 'react-hot-toast';
 import heroImage from '@/src/assets/HeroImage.png';
 import brandStoryImage from '@/src/assets/brand-story-image.png';
 import spicyCategoryImage from '@/src/assets/category-spicy.png';
@@ -18,6 +17,7 @@ export const Home: React.FC = () => {
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [subscribeError, setSubscribeError] = useState('');
 
   useEffect(() => {
     const fetchFeatured = async () => {
@@ -37,14 +37,14 @@ export const Home: React.FC = () => {
     e.preventDefault();
     if (!email) return;
     setSubmitting(true);
+    setSubscribeError('');
     try {
-      const result = await subscribeToNewsletter(email, 'home_newsletter');
-      if (result.message) { toast.success(result.message); setEmail(''); return; }
+      await subscribeToNewsletter(email, 'home_newsletter');
       setSubmitted(true);
       setEmail('');
     } catch (error) {
       console.error("Newsletter error:", error);
-      toast.error(error instanceof Error ? error.message : 'Unable to subscribe right now.');
+      setSubscribeError(error instanceof Error ? error.message : 'Unable to subscribe right now.');
     } finally {
       setSubmitting(false);
     }
@@ -300,33 +300,40 @@ export const Home: React.FC = () => {
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   className="text-center p-8 bg-brand-gold/10 border border-brand-gold/30 rounded-sm space-y-4"
+                  role="status"
+                  aria-live="polite"
                 >
-                  <CheckCircle2 className="mx-auto text-brand-gold" size={48} />
+                  <CheckCircle2 className="mx-auto text-brand-gold" size={48} aria-hidden="true" />
                   <div className="space-y-2">
                     <h3 className="text-xl font-serif text-brand-parchment">Welcome to the Circle</h3>
-                    <p className="text-sm text-brand-parchment/60 font-light">Check your inbox for your exclusive welcome gift.</p>
+                    <p className="text-sm text-brand-parchment/75 font-light">You’re subscribed. Watch your inbox for new flavors, restocks, and pairing ideas.</p>
                   </div>
                 </motion.div>
               ) : (
                 <form onSubmit={handleSubscribe} className="space-y-4">
                   <div className="relative">
+                    <label htmlFor="home-newsletter-email" className="sr-only">Email address</label>
                     <input 
+                      id="home-newsletter-email"
                       type="email" 
                       placeholder="Enter your email" 
+                      autoComplete="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
-                      className="w-full bg-brand-parchment/5 border border-brand-parchment/10 py-5 px-6 text-brand-parchment outline-none focus:border-brand-gold transition-colors placeholder:text-brand-parchment/20"
+                      aria-describedby={`home-newsletter-consent${subscribeError ? ' home-newsletter-error' : ''}`}
+                      className="w-full min-h-11 bg-brand-parchment/5 border border-brand-parchment/20 py-5 pl-6 pr-32 text-brand-parchment focus:border-brand-gold transition-colors placeholder:text-brand-parchment/55"
                     />
                     <button 
                       type="submit"
                       disabled={submitting}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-gold text-[11px] uppercase tracking-widest font-bold hover:translate-x-1 transition-transform disabled:opacity-50"
+                      className="touch-target absolute right-2 top-1/2 -translate-y-1/2 px-2 text-brand-gold text-[11px] uppercase tracking-widest font-bold transition-transform disabled:opacity-50"
                     >
-                      {submitting ? <Loader2 className="animate-spin" size={16} /> : 'Subscribe'}
+                      {submitting ? <><Loader2 className="animate-spin" size={16} aria-hidden="true" /><span className="sr-only">Subscribing…</span></> : 'Subscribe'}
                     </button>
                   </div>
-                  <p className="text-xs text-brand-parchment/50 text-center leading-5">
+                  {subscribeError && <p id="home-newsletter-error" role="alert" aria-live="assertive" className="border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-200">{subscribeError}</p>}
+                  <p id="home-newsletter-consent" className="text-xs text-brand-parchment/70 text-center leading-5">
                     By subscribing, you agree to receive marketing email. Unsubscribe anytime. See our <Link to="/privacy" className="text-brand-gold hover:text-brand-parchment underline underline-offset-4">Privacy Policy</Link>.
                   </p>
                 </form>

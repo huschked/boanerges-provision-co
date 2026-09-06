@@ -2,24 +2,25 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Mail } from 'lucide-react';
 import logo from '@/src/assets/brand/boanerges-stacked-lockup.png';
-import toast from 'react-hot-toast';
 import { subscribeToNewsletter } from '@/src/lib/newsletter';
 
 export const Footer: React.FC = () => {
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!email.trim()) return;
 
     setSubmitting(true);
+    setStatus(null);
     try {
       const result = await subscribeToNewsletter(email.trim(), 'footer_newsletter');
-      toast.success(result.message || 'You are subscribed to the table.');
+      setStatus({ type: 'success', message: result.message || 'You are subscribed to the table.' });
       setEmail('');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Unable to subscribe right now.');
+      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to subscribe right now.' });
     } finally {
       setSubmitting(false);
     }
@@ -77,20 +78,29 @@ export const Footer: React.FC = () => {
             <p className="text-sm text-brand-parchment/80 leading-relaxed">
               Subscribe for exclusive flavor releases, recipes, and artisan stories.
             </p>
-            <form className="relative" onSubmit={handleSubmit}>
-              <input 
-                type="email" 
-                placeholder="Email Address" 
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-                className="w-full bg-transparent border-b border-brand-parchment/40 py-3 text-sm focus:border-brand-gold outline-none transition-colors placeholder:text-brand-parchment/40"
-              />
-              <button type="submit" disabled={submitting} className="absolute right-0 bottom-3 text-brand-gold text-[10px] uppercase tracking-widest font-black hover:translate-x-1 transition-transform disabled:opacity-50">
-                {submitting ? 'Saving...' : 'Sign Up'}
-              </button>
+            <form className="space-y-3" onSubmit={handleSubmit}>
+              <div className="relative">
+                <label htmlFor="footer-newsletter-email" className="sr-only">Email address</label>
+                <input
+                  id="footer-newsletter-email"
+                  type="email"
+                  placeholder="Email Address"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                  aria-describedby="footer-newsletter-consent footer-newsletter-status"
+                  className="w-full min-h-11 bg-transparent border-b border-brand-parchment/50 py-3 pr-24 text-sm focus:border-brand-gold transition-colors placeholder:text-brand-parchment/60"
+                />
+                <button type="submit" disabled={submitting} className="touch-target absolute right-0 top-1/2 -translate-y-1/2 px-2 text-brand-gold text-[10px] uppercase tracking-widest font-black transition-transform disabled:opacity-50">
+                  {submitting ? 'Saving…' : 'Sign Up'}
+                </button>
+              </div>
+              <p id="footer-newsletter-status" role={status?.type === 'error' ? 'alert' : 'status'} aria-live="polite" className={status ? `text-xs ${status.type === 'error' ? 'text-red-200' : 'text-brand-gold'}` : 'sr-only'}>
+                {status?.message || 'Enter your email address to subscribe.'}
+              </p>
             </form>
-            <p className="text-xs leading-5 text-brand-parchment/50">
+            <p id="footer-newsletter-consent" className="text-xs leading-5 text-brand-parchment/70">
               By signing up, you agree to receive marketing email. Unsubscribe anytime. See our <Link to="/privacy" className="text-brand-gold hover:text-brand-parchment underline underline-offset-4">Privacy Policy</Link>.
             </p>
           </div>

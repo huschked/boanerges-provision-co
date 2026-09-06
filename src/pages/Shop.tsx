@@ -1,10 +1,30 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, Loader2 } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { getProducts, Product } from '@/src/services/productService';
 import { ProductCard } from '@/src/components/ProductCard';
 import { cn } from '@/src/lib/utils';
 import { SHOP_CATEGORIES, shopCategory, inCollection } from '@/src/lib/merchandising';
+
+const ProductGridSkeleton = () => (
+  <div role="status" aria-live="polite" aria-label="Loading salts">
+    <span className="sr-only">Loading salts…</span>
+    <div aria-hidden="true" className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-x-8 xl:gap-x-12 gap-y-16">
+      {[0, 1, 2, 3].map((item) => (
+        <div key={item} className="space-y-5">
+          <div className="aspect-[4/5] rounded-sm skeleton-shimmer" />
+          <div className="flex items-start justify-between gap-5">
+            <div className="h-8 w-2/3 rounded-sm skeleton-shimmer" />
+            <div className="h-6 w-16 rounded-sm skeleton-shimmer" />
+          </div>
+          <div className="h-4 w-36 rounded-sm skeleton-shimmer" />
+          <div className="flex gap-2"><div className="h-6 w-16 rounded-full skeleton-shimmer" /><div className="h-6 w-20 rounded-full skeleton-shimmer" /></div>
+          <div className="h-5 w-44 rounded-sm skeleton-shimmer" />
+        </div>
+      ))}
+    </div>
+  </div>
+);
 
 export const Shop: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -22,6 +42,7 @@ export const Shop: React.FC = () => {
   useEffect(() => {
     const fetchProducts = async () => {
       setLoading(true);
+      setFailed(false);
       try {
         const data = await getProducts();
         setProducts(data);
@@ -76,7 +97,7 @@ export const Shop: React.FC = () => {
                 onClick={() => setSearchParams({ ...Object.fromEntries(searchParams), category: cat })}
                 aria-pressed={activeCategory === cat}
                 className={cn(
-                  "px-6 py-2 rounded-full text-[11px] uppercase tracking-widest font-bold transition-all whitespace-nowrap",
+                  "min-h-11 px-5 py-2 rounded-full text-[11px] uppercase tracking-widest font-bold transition-all whitespace-nowrap",
                   activeCategory === cat 
                     ? "bg-brand-gold text-brand-black" 
                     : "bg-white/5 text-brand-parchment hover:bg-white/10"
@@ -90,21 +111,24 @@ export const Shop: React.FC = () => {
           {/* Search & Sort */}
           <div className="flex items-center gap-4 w-full md:w-auto">
             <div className="relative flex-1 md:w-64">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-parchment/40" size={16} />
+              <label htmlFor="shop-search" className="sr-only">Search salts</label>
+              <Search aria-hidden="true" className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-parchment/65" size={16} />
               <input 
+                id="shop-search"
                 type="text" 
                 placeholder="Search salts..."
-                aria-label="Search salts"
+                aria-describedby="shop-results-status"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white/5 border-none py-3 pl-12 pr-4 text-sm rounded-sm focus:ring-1 focus:ring-brand-gold outline-none transition-all text-brand-parchment placeholder:text-brand-parchment/20"
+                className="w-full min-h-11 bg-white/5 border border-white/10 py-3 pl-12 pr-4 text-sm rounded-sm transition-all text-brand-parchment placeholder:text-brand-parchment/50"
               />
             </div>
+            <label htmlFor="shop-sort" className="sr-only">Sort salts</label>
             <select 
+              id="shop-sort"
               value={activeSort}
-              aria-label="Sort salts"
               onChange={(e) => setSearchParams({ ...Object.fromEntries(searchParams), sort: e.target.value })}
-              className="bg-white/5 border-none py-3 px-6 text-[11px] uppercase tracking-widest font-bold rounded-sm focus:ring-1 focus:ring-brand-gold outline-none cursor-pointer text-brand-parchment"
+              className="min-h-11 bg-white/5 border border-white/10 py-3 px-4 sm:px-6 text-[11px] uppercase tracking-widest font-bold rounded-sm cursor-pointer text-brand-parchment"
             >
               <option value="featured" className="bg-brand-black">Featured</option>
               <option value="price-low" className="bg-brand-black">Price: Low to High</option>
@@ -118,22 +142,24 @@ export const Shop: React.FC = () => {
         {/* Active Filters */}
         {(activeCategory !== 'All' || searchQuery) && (
           <div className="flex items-center gap-4 mb-12">
-            <span className="text-[10px] uppercase tracking-widest text-brand-parchment/40 font-bold">Active Filters:</span>
+            <span className="text-[10px] uppercase tracking-widest text-brand-parchment/70 font-bold">Active Filters:</span>
             <div className="flex flex-wrap gap-2">
               {activeCategory !== 'All' && (
                 <button 
                   onClick={() => setSearchParams({ category: 'All' })}
-                  className="flex items-center gap-2 bg-brand-gold/10 text-brand-gold px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest"
+                  aria-label={`Remove ${activeCategory} category filter`}
+                  className="min-h-11 flex items-center gap-2 bg-brand-gold/10 text-brand-gold px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest"
                 >
-                  {activeCategory} <X size={12} />
+                  {activeCategory} <X size={12} aria-hidden="true" />
                 </button>
               )}
               {searchQuery && (
                 <button 
                   onClick={() => setSearchQuery('')}
-                  className="flex items-center gap-2 bg-brand-gold/10 text-brand-gold px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest"
+                  aria-label={`Clear search for ${searchQuery}`}
+                  className="min-h-11 flex items-center gap-2 bg-brand-gold/10 text-brand-gold px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest"
                 >
-                  "{searchQuery}" <X size={12} />
+                  "{searchQuery}" <X size={12} aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -141,9 +167,12 @@ export const Shop: React.FC = () => {
         )}
 
         {/* Grid */}
+        <p id="shop-results-status" className="sr-only" role="status" aria-live="polite">
+          {!loading && !failed ? `${filteredProducts.length} ${filteredProducts.length === 1 ? 'salt' : 'salts'} shown.` : ''}
+        </p>
         {!loading && !failed && featuredFallback && <p role="status" className="mb-8 text-brand-parchment/75">Our featured selection is being refreshed. Browse all available salts below.</p>}
-        {loading ? <div role="status" className="py-20 flex justify-center gap-3 text-brand-parchment"><Loader2 className="animate-spin" aria-hidden="true" />Loading salts…</div> : failed ? <div role="alert" className="py-20 text-center text-brand-parchment">Salts could not be loaded. Please refresh to try again.</div> : filteredProducts.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-12 gap-y-20">
+        {loading ? <ProductGridSkeleton /> : failed ? <div role="alert" className="py-20 text-center text-brand-parchment space-y-5"><p>Salts could not be loaded. Please refresh to try again.</p><button type="button" onClick={() => window.location.reload()} className="btn-secondary min-h-11">Retry</button></div> : filteredProducts.length > 0 ? (
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-x-8 xl:gap-x-12 gap-y-16 xl:gap-y-20">
             {filteredProducts.map((product) => (
               <ProductCard key={product.id} product={product} dark />
             ))}
@@ -162,7 +191,7 @@ export const Shop: React.FC = () => {
                 setSearchParams({ category: 'All' });
                 setSearchQuery('');
               }}
-              className="px-8 py-3 bg-brand-gold text-brand-black text-[10px] uppercase tracking-widest font-bold hover:bg-brand-parchment transition-colors"
+              className="min-h-11 px-8 py-3 bg-brand-gold text-brand-black text-[10px] uppercase tracking-widest font-bold hover:bg-brand-parchment transition-colors"
             >
               Clear All Filters
             </button>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ShoppingBag, Menu, X, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useLocation } from 'react-router-dom';
@@ -12,6 +12,8 @@ import { SocialLinks } from './SocialLinks';
 export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuCloseRef = useRef<HTMLButtonElement>(null);
   const itemCount = useCart((state) => state.itemCount());
   const location = useLocation();
 
@@ -24,6 +26,38 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [location]);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.requestAnimationFrame(() => mobileMenuCloseRef.current?.focus());
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
+  }, [isMobileMenuOpen]);
+
+  const handleMobileMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setIsMobileMenuOpen(false);
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = mobileMenuRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    if (!focusable?.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   const navLinks = STOREFRONT_NAV;
 
@@ -67,7 +101,7 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
                 key={link.name}
                 to={link.path}
                 className={cn(
-                  "text-[11px] uppercase tracking-[0.1em] whitespace-nowrap transition-all duration-300 font-black",
+                  "min-h-11 flex items-center text-[11px] uppercase tracking-[0.1em] whitespace-nowrap transition-all duration-300 font-black",
                   showDarkText 
                     ? "text-brand-black hover:text-brand-gold" 
                     : "text-brand-parchment hover:text-brand-gold"
@@ -79,7 +113,7 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
           </nav>
 
           {/* Logo */}
-          <Link to="/" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group z-50">
+          <Link to="/" aria-label="Boanerges Provisions Co. home" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group z-50">
             <img
               src={monogram}
               alt="Boanerges Provisions Co."
@@ -106,7 +140,7 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
                   key={link.name}
                   to={link.path}
                   className={cn(
-                    "text-[11px] uppercase tracking-[0.1em] whitespace-nowrap transition-all duration-300 font-black",
+                    "min-h-11 flex items-center text-[11px] uppercase tracking-[0.1em] whitespace-nowrap transition-all duration-300 font-black",
                     showDarkText 
                       ? "text-brand-black hover:text-brand-gold" 
                       : "text-brand-parchment hover:text-brand-gold"
@@ -120,7 +154,7 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
               onClick={onCartClick}
               aria-label={`Open cart, ${itemCount} ${itemCount === 1 ? 'item' : 'items'}`}
               className={cn(
-                "relative transition-all duration-300 group/cart",
+                "touch-target flex items-center justify-center relative transition-all duration-300 group/cart",
                 showDarkText ? "text-brand-black hover:text-brand-gold" : "text-brand-parchment hover:text-brand-gold"
               )}
             >
@@ -139,15 +173,21 @@ export const Header: React.FC<{ onCartClick: () => void }> = ({ onCartClick }) =
       <AnimatePresence>
         {isMobileMenuOpen && (
           <motion.div
+            ref={mobileMenuRef}
             initial={{ opacity: 0, x: '-100%' }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: '-100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             id="mobile-navigation"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation menu"
+            onKeyDown={handleMobileMenuKeyDown}
             className="fixed inset-0 z-50 editorial-surface-dark flex flex-col p-6 sm:p-12 overflow-y-auto"
           >
             <button 
-              className="absolute top-8 right-8 text-brand-gold"
+              ref={mobileMenuCloseRef}
+              className="touch-target absolute top-6 right-6 sm:top-8 sm:right-8 flex items-center justify-center text-brand-gold"
               onClick={() => setIsMobileMenuOpen(false)}
               aria-label="Close navigation menu"
             >

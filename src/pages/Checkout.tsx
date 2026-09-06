@@ -118,18 +118,21 @@ export const Checkout: React.FC = () => {
             <div className="space-y-8">
               <section className="space-y-6">
                 <h2 className="text-3xl font-serif text-brand-parchment">Contact Information</h2>
+                <label htmlFor="checkout-email" className="sr-only">Email address (optional)</label>
                 <input 
+                  id="checkout-email"
                   type="email" 
                   placeholder="Email Address (optional — Stripe will confirm it)"
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-white/10 border-b border-brand-gold/30 py-4 px-4 text-brand-parchment outline-none focus:border-brand-gold transition-colors placeholder:text-brand-parchment/40"
                 />
                 <div className="flex items-start gap-3 pt-2">
                   <div className="pt-1">
-                    <input type="checkbox" id="newsletter" checked={newsletterOptIn} onChange={(e) => setNewsletterOptIn(e.target.checked)} className="accent-brand-gold w-4 h-4 cursor-pointer" />
+                    <input type="checkbox" id="newsletter" checked={newsletterOptIn} onChange={(e) => setNewsletterOptIn(e.target.checked)} className="accent-brand-gold w-5 h-5 cursor-pointer" />
                   </div>
-                  <label htmlFor="newsletter" className="text-[11px] uppercase tracking-widest text-brand-parchment/60 font-black cursor-pointer leading-relaxed">
+                  <label htmlFor="newsletter" className="min-h-11 flex items-center text-[11px] uppercase tracking-widest text-brand-parchment/75 font-black cursor-pointer leading-relaxed">
                     Email me with news and limited flavor drops
                   </label>
                 </div>
@@ -152,23 +155,24 @@ export const Checkout: React.FC = () => {
               <button 
                 onClick={handleCheckout}
                 disabled={loading}
-                className="w-full py-6 bg-brand-gold text-brand-black text-[13px] uppercase tracking-[0.3em] font-black hover:bg-brand-parchment transition-all shadow-2xl flex items-center justify-center gap-3"
+                className="w-full min-h-11 py-6 bg-brand-gold text-brand-black text-[13px] uppercase tracking-[0.24em] sm:tracking-[0.3em] font-black hover:bg-brand-parchment transition-all shadow-2xl flex items-center justify-center gap-3"
+                aria-describedby={checkoutError ? 'checkout-error' : undefined}
               >
-                {loading ? <Loader2 className="animate-spin" size={20} /> : 'Proceed to Secure Payment'}
+                {loading ? <><Loader2 className="animate-spin" size={20} aria-hidden="true" /> Opening secure payment…</> : 'Proceed to Secure Payment'}
               </button>
               <p className="text-center text-xs leading-relaxed text-brand-parchment/45">
                 Food products are final sale and physical returns are not accepted. Damaged, incorrect, or missing items may qualify for a replacement or refund. <Link to="/returns" className="text-brand-gold hover:text-brand-parchment underline underline-offset-4">Read the Returns & Refunds Policy</Link>.
               </p>
 
               {unavailableItems.length > 0 && (
-                <div className="border border-red-400/30 bg-red-400/5 p-6 space-y-4">
+                <div role="alert" className="border border-red-400/30 bg-red-400/5 p-6 space-y-4">
                   <p className="text-sm text-red-200 font-black">Update your cart to continue</p>
                   {unavailableItems.map(item => (
                     <div key={item.productId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm">
                       <p className="text-brand-parchment/70"><strong className="text-brand-parchment">{item.name}</strong> — {item.reason || `requested ${item.requested}, ${item.available} available`}</p>
                       <div className="flex gap-2">
-                        {item.available > 0 && <button onClick={() => { updateQuantity(item.productId, item.available); setUnavailableItems(current => current.filter(entry => entry.productId !== item.productId)); }} className="px-3 py-2 border border-brand-gold/30 text-brand-gold text-[9px] uppercase tracking-wider font-black">Use {item.available}</button>}
-                        <button onClick={() => { removeItem(item.productId); setUnavailableItems(current => current.filter(entry => entry.productId !== item.productId)); }} className="px-3 py-2 border border-red-400/30 text-red-200 text-[9px] uppercase tracking-wider font-black">Remove</button>
+                        {item.available > 0 && <button onClick={() => { updateQuantity(item.productId, item.available); setUnavailableItems(current => current.filter(entry => entry.productId !== item.productId)); }} className="min-h-11 px-3 py-2 border border-brand-gold/30 text-brand-gold text-[9px] uppercase tracking-wider font-black">Use {item.available}</button>}
+                        <button onClick={() => { removeItem(item.productId); setUnavailableItems(current => current.filter(entry => entry.productId !== item.productId)); }} className="min-h-11 px-3 py-2 border border-red-400/30 text-red-200 text-[9px] uppercase tracking-wider font-black">Remove</button>
                       </div>
                     </div>
                   ))}
@@ -177,7 +181,7 @@ export const Checkout: React.FC = () => {
               )}
 
               {checkoutError && (
-                <div role="alert" className="border border-amber-400/30 bg-amber-400/[0.06] p-6 space-y-4">
+                <div id="checkout-error" role="alert" className="border border-amber-400/30 bg-amber-400/[0.06] p-6 space-y-4">
                   <div className="flex items-start gap-3">
                     <AlertTriangle size={18} className="text-amber-300 mt-0.5 shrink-0" />
                     <div>
@@ -186,13 +190,13 @@ export const Checkout: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-3">
-                    <button onClick={handleCheckout} disabled={loading} className="inline-flex items-center gap-2 px-4 py-2 bg-brand-gold text-brand-black text-[9px] uppercase tracking-wider font-black disabled:opacity-50"><RotateCcw size={12} /> Try again</button>
-                    <Link to="/shop" className="px-4 py-2 border border-brand-gold/30 text-brand-gold text-[9px] uppercase tracking-wider font-black">Review cart in shop</Link>
+                    <button onClick={handleCheckout} disabled={loading} className="min-h-11 inline-flex items-center gap-2 px-4 py-2 bg-brand-gold text-brand-black text-[9px] uppercase tracking-wider font-black disabled:opacity-50"><RotateCcw size={12} aria-hidden="true" /> Try again</button>
+                    <Link to="/shop" className="min-h-11 inline-flex items-center px-4 py-2 border border-brand-gold/30 text-brand-gold text-[9px] uppercase tracking-wider font-black">Review cart in shop</Link>
                   </div>
                 </div>
               )}
               
-              <div className="flex flex-wrap items-center justify-center gap-6 text-[10px] uppercase tracking-widest text-brand-parchment/30 font-black">
+              <div className="flex flex-wrap items-center justify-center gap-6 text-[10px] uppercase tracking-widest text-brand-parchment/65 font-black">
                 <div className="flex items-center gap-2"><ShieldCheck size={14} /> Secure Checkout</div>
                 <div className="flex items-center gap-2"><Zap size={14} /> Fast Shipping</div>
                 <div className="flex items-center gap-2"><Award size={14} /> Free Shipping Over $50</div>

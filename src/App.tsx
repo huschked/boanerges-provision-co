@@ -23,6 +23,7 @@ import { EmailPreferences } from './pages/EmailPreferences';
 import { Review } from './pages/Review';
 import { TermsOfService } from './pages/TermsOfService';
 import { auth } from './lib/firebase';
+import { MotionConfig } from 'motion/react';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -46,6 +47,7 @@ export default function App() {
   }, [isAdminPage]);
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="min-h-screen flex flex-col">
       <Toaster position="bottom-right" />
       <ScrollToTop />
@@ -79,5 +81,6 @@ export default function App() {
 
       {!isAdminPage && <Footer />}
     </div>
+    </MotionConfig>
   );
 }
