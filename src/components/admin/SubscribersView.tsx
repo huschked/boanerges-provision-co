@@ -80,8 +80,8 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({ subscribers })
           <button disabled={!!retrying} onClick={() => deleteSubscriber(deleteTarget)} className="inline-flex items-center gap-2 px-5 py-3 min-h-11 bg-red-400/10 text-red-300 border border-red-400/30 text-[10px] uppercase tracking-[0.15em] font-black hover:bg-red-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-gold disabled:opacity-50"><Trash2 size={14} aria-hidden="true" />{retrying ? 'Deleting…' : 'Delete subscriber'}</button>
         </div>
       </dialog>}
-      <div className="card-premium overflow-hidden">
-        <table className="w-full text-left">
+      <div className="card-premium overflow-x-auto">
+        <table className="w-full min-w-[760px] text-left">
           <thead>
             <tr className="border-b border-white/5 bg-white/[0.01]">
               <th className="px-10 py-8 text-[9px] uppercase tracking-[0.3em] text-brand-parchment/30 font-black">Email Address</th>

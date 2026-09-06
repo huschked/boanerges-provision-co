@@ -21,6 +21,7 @@ interface OrdersViewProps {
   queueFilter: OrderQueueFilter;
   onQueueFilterChange: (value: OrderQueueFilter) => void;
   initialSelectedOrderId?: string;
+  refreshRevision?: number;
 }
 
 const formatAddress = (address: Order['shippingAddress']) => {
@@ -31,7 +32,7 @@ const formatAddress = (address: Order['shippingAddress']) => {
     .join('\n');
 };
 
-export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searchTerm, onSearchTermChange, queueFilter, onQueueFilterChange, initialSelectedOrderId }) => {
+export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searchTerm, onSearchTermChange, queueFilter, onQueueFilterChange, initialSelectedOrderId, refreshRevision = 0 }) => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(initialSelectedOrderId || null);
   const [notesDraft, setNotesDraft] = useState('');
   const [trackingNumberDraft, setTrackingNumberDraft] = useState('');
@@ -202,7 +203,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
   return (
     <div className="min-w-0 space-y-10">
       <FulfillmentPrintDocuments job={printJob} />
-      <ReservationPanel />
+      <ReservationPanel refreshRevision={refreshRevision} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="space-y-1">
           <h3 className="text-2xl font-serif text-brand-parchment">Order Fulfillment</h3>

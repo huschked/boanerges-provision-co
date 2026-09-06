@@ -136,38 +136,6 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Ready
 
-
-### WEB-001 - Storefront Polish Pass
-
-- **Priority:** High
-- **Area:** storefront
-- **Goal:** Perform the final public-storefront visual and interaction regression after the audit remediation cards are complete.
-- **Acceptance Criteria:**
-  - Home, shop, product detail, bundles, recipes, FAQ, contact, header, footer, and cart drawer are visually consistent on desktop and mobile.
-  - Product cards, recipe content, bundle sections, and navigation states have no obvious broken links, clipped text, empty states, or layout overlap.
-  - Add-to-cart interactions remain clear and stable from product listing and product detail pages.
-  - Any content or design gaps discovered during review are either fixed or added as follow-up cards.
-- **Verification:**
-  - Run `npm run lint` and `npm run build`.
-  - Browser-check `/`, `/shop`, `/product/:slug`, `/bundles`, `/recipes`, `/faq`, `/contact`, and cart drawer interactions.
-- **Notes / Links:** Run after WEB-034 through WEB-040 and any customer-facing portion of WEB-042/WEB-043 that is enabled for launch. Relevant files include `src/pages/*`, `src/components/Header.tsx`, `src/components/Footer.tsx`, `src/components/CartDrawer.tsx`, and `src/components/ProductCard.tsx`.
-
-### WEB-003 - Admin Portal End-to-End Regression Verification
-
-- **Priority:** High
-- **Area:** admin
-- **Goal:** Perform final end-to-end admin regression verification after the focused fulfillment cards are complete; this card does not own their implementation.
-- **Acceptance Criteria:**
-  - Dashboard, analytics, inventory, orders, audience, and inquiries tabs render correctly with loaded, empty, loading, and error states.
-  - Search and refresh behavior works across all admin views without stale or misleading results.
-  - Product edit/create flows preserve Stripe fields, inventory values, category data, and display state.
-  - Order detail workflows for notes, tracking, fulfillment, refunds, and disputes are understandable and recover gracefully from failed saves.
-  - Any required Firestore indexes, rules, or data shape assumptions are documented as follow-up cards.
-- **Verification:**
-  - Run `npm run lint` and `npm run build`.
-  - Browser-check `/admin` sign-in, tab navigation, search, refresh, and core edit/detail flows with seeded or live test data.
-- **Notes / Links:** Run after the applicable WEB-009 through WEB-019 implementation cards. Relevant files include `src/pages/Admin.tsx` and `src/components/admin/*`.
-
 ### WEB-004 - Analytics and Event Tracking Review
 
 - **Priority:** Medium
@@ -189,27 +157,46 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
-### WEB-040 - Complete a Mobile Commerce and Accessibility Pass
+### WEB-003 - Admin Portal End-to-End Regression Verification
 
 - **Priority:** High
-- **Area:** storefront/accessibility
-- **Goal:** Make browsing and purchasing efficient for touch, keyboard, and assistive-technology users.
+- **Area:** admin
+- **Goal:** Perform final end-to-end admin regression verification after the focused fulfillment cards are complete; this card does not own their implementation.
 - **Acceptance Criteria:**
-  - Icon-only controls, sort/filter controls, heat scales, cart changes, and dynamic confirmations have meaningful accessible names or live text.
-  - Contact and signup labels are programmatically associated with their inputs and validation/status feedback is announced.
-  - Interactive targets meet a practical 44-by-44-pixel minimum without making compact mobile cards unusable.
-  - Product add controls remain discoverable on touch; PDP purchase actions remain accessible after the primary controls scroll away.
-  - Cart content scrolls clearly without being hidden behind its summary, and Shop shows a loading skeleton rather than a false empty state.
-  - Small low-opacity utility copy and focus indicators meet appropriate readability and contrast expectations.
+  - Dashboard, analytics, inventory, orders, audience, and inquiries tabs render correctly with loaded, empty, loading, and error states.
+  - Search and refresh behavior works across all admin views without stale or misleading results.
+  - Product edit/create flows preserve Stripe fields, inventory values, category data, and display state.
+  - Order detail workflows for notes, tracking, fulfillment, refunds, and disputes are understandable and recover gracefully from failed saves.
+  - Any required Firestore indexes, rules, or data shape assumptions are documented as follow-up cards.
 - **Verification:**
-  - Keyboard and screen-reader smoke-test the complete browse, cart, contact, and checkout path.
-  - Browser-check mobile, tablet, desktop, zoom, reduced-motion, loading, empty, and error states.
-- **Verification results:** TypeScript validation, all 57 automated tests, and the production build pass; the existing large-chunk warning remains. Local browser checks confirmed accessible Shop controls/results, 44-pixel filter and header targets, persistent touch Quick Add, mobile sticky PDP purchase action, live add/quantity announcements, cart dialog focus and Escape behavior, and associated contact/newsletter labels.
-- **Owner verification:** After deployment, check a narrow phone and desktop browser for Shop loading/filtering, PDP sticky Add to Cart, a cart with enough lines to scroll, contact validation, newsletter success/error feedback, keyboard focus, browser zoom, and reduced-motion behavior.
-- **Notes / Links:** Implemented responsive auto-fit product grids, Shop skeleton/error/result states, coarse-pointer Quick Add behavior, mobile PDP purchase bar, modal focus management, readable utility copy, shared focus styling, and reduced-motion support.
+  - Run `npm run lint` and `npm run build`.
+  - Browser-check `/admin` sign-in, tab navigation, search, refresh, and core edit/detail flows with seeded or live test data.
+- **Verification results:** TypeScript validation, all 57 automated tests, and the production build pass. Current desktop and 390px mobile builds render the secure `/admin` sign-in and authentication-error states without horizontal overflow. Static regression confirmed that product payloads preserve inventory, category, active/featured state, the one-time Stripe Price ID, all recurring Stripe Price IDs, and approved product facts. Order operations retain explicit failure and partial-save messaging.
+- **Owner verification:** After deployment, sign in manually and verify every admin tab with live test data. Confirm Dashboard and Analytics totals; Inventory search plus opening an existing product without saving; Bundle, Subscription, Review, and reservation refresh; Order search, selection, notes/tracking save and one safe fulfillment transition; Audience and Inquiry search; and a failed or offline refresh showing a visible retry state. Avoid creating, deleting, refunding, or shipping records solely for this regression unless using disposable test data.
+- **Notes / Links:** Fixed cross-tab search leakage, removed non-functional global search fields, added separate responsive Audience and Inquiry search, made global refresh propagate to independently loaded admin views, surfaced core/bundle/subscription/reservation load failures, synchronized filtered inquiry details, and made Inventory/Audience tables horizontally scrollable on narrow screens. No new Firestore index or rule requirement was introduced; existing queries assume `createdAt` on orders/subscribers/contact messages and `updatedAt` on subscription records. The local full-stack server could not be used without the intentionally absent Stripe secret, and Google authentication must be completed manually. Relevant files include `src/pages/Admin.tsx` and `src/components/admin/*`.
+
+## Done
+
+### WEB-001 - Storefront Polish Pass
+
+- **Status:** Done — owner confirmed complete and verified.
+- **Priority:** High
+- **Area:** storefront
+- **Goal:** Perform the final public-storefront visual and interaction regression after the audit remediation cards are complete.
+- **Acceptance Criteria:**
+  - Home, shop, product detail, bundles, recipes, FAQ, contact, header, footer, and cart drawer are visually consistent on desktop and mobile.
+  - Product cards, recipe content, bundle sections, and navigation states have no obvious broken links, clipped text, empty states, or layout overlap.
+  - Add-to-cart interactions remain clear and stable from product listing and product detail pages.
+  - Any content or design gaps discovered during review are either fixed or added as follow-up cards.
+- **Verification:**
+  - Run `npm run lint` and `npm run build`.
+  - Browser-check `/`, `/shop`, `/product/:slug`, `/bundles`, `/recipes`, `/faq`, `/contact`, and cart drawer interactions.
+- **Verification results:** TypeScript validation, all 57 automated tests, and the production build pass. Desktop and 390px mobile browser checks covered the required storefront routes, responsive header/navigation, product cards, PDP heat/rating/purchase controls, empty bundle state, contact fields, and cart drawer. No horizontal overflow or broken loaded images were found. Add to Cart successfully updated the cart count and announced the result. The existing large JavaScript chunk warning remains tracked by WEB-023. Owner confirmed the deployed storefront and active production bundle flow work as expected.
+- **Notes / Links:** Final regression found no new storefront blocker. Relevant files include `src/pages/*`, `src/components/Header.tsx`, `src/components/Footer.tsx`, `src/components/CartDrawer.tsx`, and `src/components/ProductCard.tsx`.
 
 ### WEB-039 - Repair Merchandising Navigation and CTA Destinations
 
+- **Status:** Done — owner confirmed complete and verified.
 - **Priority:** High
 - **Area:** storefront
 - **Goal:** Ensure high-intent navigation and merchandising actions always lead to the promised product or collection.
@@ -223,12 +210,27 @@ This board is the working queue for website development. Keep cards actionable e
   - TypeScript validation, all 57 automated tests, and the production build pass; the existing large-chunk warning remains.
   - Automated checks validate registered routes, Vercel rewrites, category links, featured collection fallback, and all Pairing Guide product mappings.
   - Local browser verification confirmed the curated Featured Salts collection, consistent desktop navigation, exact Pairing Guide product destinations, disabled social placeholders, and screen-reader-visible add-to-cart feedback.
-  - Owner still needs to exercise header, mobile menu, footer, homepage, product, bundle, and Pairing Guide links on the deployed desktop/mobile storefront.
+  - Owner confirmed deployed header, mobile menu, footer, homepage, product, bundle, and Pairing Guide links work as expected.
 - **Notes / Links:** Implemented consistent `Shop Salts`, `Bundles & Gifts`, `Pairing Guide`, and `Our Story` labels; replaced the unsupported Best Sellers claim with a real Featured Salts collection; deep-linked each available pairing; added honest unavailable states; and made Instagram/Facebook visible non-links marked Coming soon until profiles exist. Quick Add is now a valid separate button with visible/live confirmation. WEB-036 is complete, so bundle navigation is enabled.
 
+### WEB-040 - Complete a Mobile Commerce and Accessibility Pass
 
-
-## Done
+- **Status:** Done — owner confirmed complete and verified.
+- **Priority:** High
+- **Area:** storefront/accessibility
+- **Goal:** Make browsing and purchasing efficient for touch, keyboard, and assistive-technology users.
+- **Acceptance Criteria:**
+  - Icon-only controls, sort/filter controls, heat scales, cart changes, and dynamic confirmations have meaningful accessible names or live text.
+  - Contact and signup labels are programmatically associated with their inputs and validation/status feedback is announced.
+  - Interactive targets meet a practical 44-by-44-pixel minimum without making compact mobile cards unusable.
+  - Product add controls remain discoverable on touch; PDP purchase actions remain accessible after the primary controls scroll away.
+  - Cart content scrolls clearly without being hidden behind its summary, and Shop shows a loading skeleton rather than a false empty state.
+  - Small low-opacity utility copy and focus indicators meet appropriate readability and contrast expectations.
+- **Verification:**
+  - Keyboard and screen-reader smoke-test the complete browse, cart, contact, and checkout path.
+  - Browser-check mobile, tablet, desktop, zoom, reduced-motion, loading, empty, and error states.
+- **Verification results:** TypeScript validation, all 57 automated tests, and the production build pass; the existing large-chunk warning remains. Local browser checks confirmed accessible Shop controls/results, 44-pixel filter and header targets, persistent touch Quick Add, mobile sticky PDP purchase action, live add/quantity announcements, cart dialog focus and Escape behavior, associated contact/newsletter labels, and clear Add to Cart language. Owner confirmed the deployed story is complete and verified.
+- **Notes / Links:** Implemented responsive auto-fit product grids, Shop skeleton/error/result states, coarse-pointer Quick Add behavior, mobile PDP purchase bar, modal focus management, readable utility copy, shared focus styling, and reduced-motion support.
 
 ### WEB-042 - Implement Subscribe & Save with Stripe Billing
 

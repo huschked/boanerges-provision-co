@@ -29,20 +29,27 @@ export const Admin: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshRevision, setRefreshRevision] = useState(0);
   const [activeTab, setActiveTab] = useState<AdminTab>(() => initialParams.get('tab') === 'orders' || initialOrderId ? 'orders' : 'dashboard');
   const [orderQueue, setOrderQueue] = useState<OrderQueueFilter>('all');
   const [isAdmin, setIsAdmin] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState(initialOrderId);
+  const [orderSearchTerm, setOrderSearchTerm] = useState(initialOrderId);
+  const [audienceSearchTerm, setAudienceSearchTerm] = useState('');
+  const [inquirySearchTerm, setInquirySearchTerm] = useState('');
+  const [adminDataError, setAdminDataError] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [messages, setMessages] = useState<ContactMessage[]>([]);
   const [stats, setStats] = useState({ revenue: 0, orderCount: 0, productCount: 0, lowStock: 0 });
   const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasLoadedAdminDataRef = useRef(false);
 
   const fetchData = async () => {
     setIsRefreshing(true);
+    setAdminDataError(null);
+    setRefreshRevision((current) => current + 1);
     try {
       const pData = await getAllProducts();
       setProducts(pData);
@@ -72,8 +79,14 @@ export const Admin: React.FC = () => {
         productCount: pData.length,
         lowStock: pData.filter((product) => product.currentInventory < (product.reorderThreshold || 10)).length,
       });
+      hasLoadedAdminDataRef.current = true;
     } catch (error) {
       console.error('Error fetching admin data:', error);
+      setAdminDataError(
+        hasLoadedAdminDataRef.current
+          ? 'Admin data could not be refreshed. Previously loaded information remains on screen and may be stale.'
+          : 'Admin data could not be loaded. Check the connection, Firestore rules, and required indexes, then retry.'
+      );
       toast.error('Failed to fetch admin data.');
     } finally {
       setIsRefreshing(false);
@@ -201,40 +214,43 @@ export const Admin: React.FC = () => {
     await signOut(auth);
   };
 
-  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
-  const filteredProducts = products.filter((product) =>
-    !normalizedSearchTerm ||
-    product.name.toLowerCase().includes(normalizedSearchTerm) ||
-    (product.category || '').toLowerCase().includes(normalizedSearchTerm) ||
-    product.slug.toLowerCase().includes(normalizedSearchTerm)
-  );
+  const normalizedOrderSearchTerm = orderSearchTerm.trim().toLowerCase();
   const filteredOrders = orders.filter((order) =>
-    !normalizedSearchTerm ||
-    order.id.toLowerCase().includes(normalizedSearchTerm) ||
-    order.customerEmail.toLowerCase().includes(normalizedSearchTerm) ||
-    (order.customerName || '').toLowerCase().includes(normalizedSearchTerm) ||
-    (order.customerPhone || '').toLowerCase().includes(normalizedSearchTerm) ||
-    (order.paymentStatus || '').toLowerCase().includes(normalizedSearchTerm) ||
-    (order.fulfillmentStatus || '').toLowerCase().includes(normalizedSearchTerm) ||
-    (order.shipmentStatus || '').toLowerCase().includes(normalizedSearchTerm) ||
+    !normalizedOrderSearchTerm ||
+    (order.id || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
+    (order.customerEmail || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
+    (order.customerName || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
+    (order.customerPhone || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
+    (order.paymentStatus || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
+    (order.fulfillmentStatus || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
+    (order.shipmentStatus || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
     [order.shippingAddress?.line1, order.shippingAddress?.city, order.shippingAddress?.state, order.shippingAddress?.postalCode]
       .filter(Boolean)
       .join(' ')
       .toLowerCase()
-      .includes(normalizedSearchTerm)
+      .includes(normalizedOrderSearchTerm)
   );
+  const normalizedAudienceSearchTerm = audienceSearchTerm.trim().toLowerCase();
   const filteredSubscribers = subscribers.filter((subscriber) =>
-    !normalizedSearchTerm ||
-    subscriber.email.toLowerCase().includes(normalizedSearchTerm) ||
-    (subscriber.source || '').toLowerCase().includes(normalizedSearchTerm)
+    !normalizedAudienceSearchTerm ||
+    (subscriber.email || '').toLowerCase().includes(normalizedAudienceSearchTerm) ||
+    (subscriber.source || '').toLowerCase().includes(normalizedAudienceSearchTerm)
   );
+  const normalizedInquirySearchTerm = inquirySearchTerm.trim().toLowerCase();
   const filteredMessages = messages.filter((message) =>
-    !normalizedSearchTerm ||
-    message.name.toLowerCase().includes(normalizedSearchTerm) ||
-    message.email.toLowerCase().includes(normalizedSearchTerm) ||
-    (message.subject || '').toLowerCase().includes(normalizedSearchTerm) ||
-    message.message.toLowerCase().includes(normalizedSearchTerm)
+    !normalizedInquirySearchTerm ||
+    (message.name || '').toLowerCase().includes(normalizedInquirySearchTerm) ||
+    (message.email || '').toLowerCase().includes(normalizedInquirySearchTerm) ||
+    (message.subject || '').toLowerCase().includes(normalizedInquirySearchTerm) ||
+    (message.message || '').toLowerCase().includes(normalizedInquirySearchTerm)
   );
+  const hasResourceSearch = activeTab === 'subscribers' || activeTab === 'contact';
+  const resourceSearchTerm = activeTab === 'subscribers' ? audienceSearchTerm : inquirySearchTerm;
+  const resourceSearchLabel = activeTab === 'subscribers' ? 'Search audience' : 'Search inquiries';
+  const updateResourceSearch = (value: string) => {
+    if (activeTab === 'subscribers') setAudienceSearchTerm(value);
+    if (activeTab === 'contact') setInquirySearchTerm(value);
+  };
 
   if (loading) {
     return (
@@ -340,32 +356,46 @@ export const Admin: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-8">
-            {activeTab !== 'orders' && <div className="relative group hidden lg:block">
+            {hasResourceSearch && <div className="relative group hidden lg:block">
               <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-brand-parchment/20 group-focus-within:text-brand-gold transition-colors" size={14} />
-              <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} type="text" placeholder="Search resources..." className="bg-white/5 border border-white/10 rounded-full py-3 pl-14 pr-8 text-[11px] uppercase tracking-widest text-brand-parchment outline-none focus:border-brand-gold/50 focus:bg-white/10 transition-all duration-500 w-56 xl:w-80 placeholder:text-brand-parchment/10" />
+              <input aria-label={resourceSearchLabel} value={resourceSearchTerm} onChange={(e) => updateResourceSearch(e.target.value)} type="search" placeholder={`${resourceSearchLabel}...`} className="bg-white/5 border border-white/10 rounded-full py-3 pl-14 pr-8 text-[11px] uppercase tracking-widest text-brand-parchment outline-none focus:border-brand-gold/50 focus:bg-white/10 transition-all duration-500 w-56 xl:w-80 placeholder:text-brand-parchment/30" />
             </div>}
-            <button onClick={fetchData} className="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center text-brand-parchment/40 hover:text-brand-gold hover:border-brand-gold/50 hover:bg-white/5 transition-all duration-500 group">
+            <button type="button" onClick={fetchData} disabled={isRefreshing} aria-label={isRefreshing ? 'Refreshing admin data' : 'Refresh admin data'} className="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center text-brand-parchment/40 hover:text-brand-gold hover:border-brand-gold/50 hover:bg-white/5 transition-all duration-500 group disabled:cursor-wait disabled:opacity-60">
               {isRefreshing ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} className="group-hover:rotate-180 transition-transform duration-700" />}
             </button>
           </div>
         </header>
 
         <div className="min-w-0 p-6 lg:p-10 xl:p-12">
+          {adminDataError && (
+            <div role="alert" className="mb-6 flex flex-col gap-4 border border-red-400/25 bg-red-400/10 p-5 text-sm text-red-200 sm:flex-row sm:items-center sm:justify-between">
+              <p>{adminDataError}</p>
+              <button type="button" onClick={fetchData} disabled={isRefreshing} className="min-h-11 shrink-0 border border-red-300/30 px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] hover:bg-red-300/10 disabled:opacity-50">
+                {isRefreshing ? 'Retrying…' : 'Retry loading data'}
+              </button>
+            </div>
+          )}
+          {hasResourceSearch && (
+            <div className="relative mb-6 lg:hidden">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-parchment/35" size={16} aria-hidden="true" />
+              <input aria-label={resourceSearchLabel} value={resourceSearchTerm} onChange={(e) => updateResourceSearch(e.target.value)} type="search" placeholder={`${resourceSearchLabel}...`} className="input-premium min-h-11 w-full pl-12" />
+            </div>
+          )}
           {activeTab === 'dashboard' && (
             <DashboardView
               stats={stats}
-              orders={filteredOrders}
-              products={filteredProducts}
+              orders={orders}
+              products={products}
               onViewOrders={(queue = 'all') => { setOrderQueue(queue); setActiveTab('orders'); }}
               onManageInventory={() => setActiveTab('products')}
             />
           )}
           {activeTab === 'analytics' && <AnalyticsView orders={orders} products={products} subscribers={subscribers} messages={messages} />}
-          {activeTab === 'products' && <ProductsView products={filteredProducts} onRefresh={fetchData} />}
-          {activeTab === 'bundles' && <BundlesView products={products} />}
-          {activeTab === 'subscriptions' && <SubscriptionsView />}
-          {activeTab === 'reviews' && <ReviewsView />}
-          {activeTab === 'orders' && <OrdersView orders={filteredOrders} onRefresh={fetchData} searchTerm={searchTerm} onSearchTermChange={setSearchTerm} queueFilter={orderQueue} onQueueFilterChange={setOrderQueue} initialSelectedOrderId={initialOrderId} />}
+          {activeTab === 'products' && <ProductsView products={products} onRefresh={fetchData} />}
+          {activeTab === 'bundles' && <BundlesView products={products} refreshRevision={refreshRevision} />}
+          {activeTab === 'subscriptions' && <SubscriptionsView refreshRevision={refreshRevision} />}
+          {activeTab === 'reviews' && <ReviewsView refreshRevision={refreshRevision} />}
+          {activeTab === 'orders' && <OrdersView orders={filteredOrders} onRefresh={fetchData} searchTerm={orderSearchTerm} onSearchTermChange={setOrderSearchTerm} queueFilter={orderQueue} onQueueFilterChange={setOrderQueue} initialSelectedOrderId={initialOrderId} refreshRevision={refreshRevision} />}
           {activeTab === 'subscribers' && <SubscribersView subscribers={filteredSubscribers} />}
           {activeTab === 'contact' && <MessagesView messages={filteredMessages} onRefresh={fetchData} />}
         </div>

@@ -723,8 +723,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ products, onRefresh 
         )}
       </AnimatePresence>
 
-      <div className="card-premium overflow-hidden">
-        <table className="w-full text-left">
+      <div className="card-premium overflow-x-auto">
+        <table className="w-full min-w-[760px] text-left">
           <thead>
             <tr className="border-b border-white/5 bg-white/[0.01]">
               <th className="px-10 py-8 text-[9px] uppercase tracking-[0.3em] text-brand-parchment/30 font-black">Provision</th>

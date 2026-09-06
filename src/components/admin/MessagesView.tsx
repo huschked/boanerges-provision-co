@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Mail, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { db, doc, updateDoc, deleteDoc } from '@/src/lib/firebase';
@@ -22,6 +22,10 @@ interface MessagesViewProps {
 
 export const MessagesView: React.FC<MessagesViewProps> = ({ messages, onRefresh }) => {
   const [selectedMsg, setSelectedMsg] = useState<ContactMessage | null>(null);
+
+  useEffect(() => {
+    setSelectedMsg((current) => current ? messages.find((message) => message.id === current.id) || null : null);
+  }, [messages]);
 
   const updateStatus = async (id: string, status: string) => {
     try {

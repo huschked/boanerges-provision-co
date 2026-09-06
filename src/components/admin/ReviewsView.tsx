@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { auth } from '../../lib/firebase';
 
 type Review = { id: string; productName: string; displayName: string; text: string; rating: number; status: string; moderationReason?: string };
-export function ReviewsView() {
+export function ReviewsView({ refreshRevision = 0 }: { refreshRevision?: number }) {
   const [status, setStatus] = useState('pending');
   const [rows, setRows] = useState<Review[]>([]);
   const [error, setError] = useState('');
@@ -21,7 +21,7 @@ export function ReviewsView() {
       const data = await r.json(); if (!r.ok) throw new Error(data.error); setRows(data.reviews); setInvitations(data.invitations); setSendingEnabled(data.sendingEnabled);
     })().catch(e => { if (!controller.signal.aborted) setError(e.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [status, revision]);
+  }, [status, revision, refreshRevision]);
   const moderate = async (review: Review, next: string) => {
     setBusy(true); setError('');
     try {

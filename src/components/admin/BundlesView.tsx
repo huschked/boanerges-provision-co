@@ -24,11 +24,12 @@ const firestoreWriteError = (error: unknown, action: string) => {
   return `${action} failed${code ? ` (${code})` : ''}. Check the browser console for details.`;
 };
 
-export const BundlesView: React.FC<{ products: Product[] }> = ({ products }) => {
+export const BundlesView: React.FC<{ products: Product[]; refreshRevision?: number }> = ({ products, refreshRevision = 0 }) => {
   const [bundles, setBundles] = useState<BundleRecord[]>([]);
   const [form, setForm] = useState<BundleRecord>(emptyForm);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const productIds = useMemo(() => new Set(products.map(product => product.id)), [products]);
   const productMap = useMemo(() => new Map(products.filter(product => product.active && isProductPublishReady(product as unknown as Record<string, unknown>)).map(product => [product.id, product])), [products]);
   const staleComponents = useMemo(() => form.components.filter(component => !productIds.has(component.productId)), [form.components, productIds]);
@@ -36,13 +37,14 @@ export const BundlesView: React.FC<{ products: Product[] }> = ({ products }) => 
 
   const load = async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const snapshot = await getDocs(collection(db, 'bundles'));
       setBundles(snapshot.docs.map(item => ({ id: item.id, ...item.data() } as BundleRecord)));
-    } catch (error) { console.error(error); toast.error('Unable to load bundle definitions.'); }
+    } catch (error) { console.error(error); setLoadError('Bundle definitions could not be loaded. Existing results may be incomplete.'); toast.error('Unable to load bundle definitions.'); }
     finally { setLoading(false); }
   };
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [refreshRevision]);
 
   const update = (field: keyof BundleRecord, value: unknown) => setForm(current => ({ ...current, [field]: value }));
   const toggleProduct = (productId: string, checked: boolean) => update('components', checked ? [...form.components, { productId, quantity: 1 }] : form.components.filter(component => component.productId !== productId));
@@ -74,7 +76,14 @@ export const BundlesView: React.FC<{ products: Product[] }> = ({ products }) => 
 
   const remove = async (bundle: BundleRecord) => {
     if (!window.confirm(`Delete ${text(bundle.name)}?`)) return;
-    await deleteDoc(doc(db, 'bundles', bundle.id)); await load();
+    try {
+      await deleteDoc(doc(db, 'bundles', bundle.id));
+      toast.success('Bundle deleted.');
+      await load();
+    } catch (error) {
+      console.error(error);
+      toast.error(firestoreWriteError(error, 'Deleting the bundle'));
+    }
   };
 
   const createTemplates = async () => {
@@ -94,6 +103,7 @@ export const BundlesView: React.FC<{ products: Product[] }> = ({ products }) => 
   if (loading) return <div className="py-24 flex justify-center"><Loader2 className="animate-spin text-brand-gold" /></div>;
   return <div className="space-y-8">
     <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6"><div><h3 className="text-3xl font-serif text-brand-parchment">Bundle Commerce</h3><p className="mt-2 text-sm text-brand-parchment/45">Selling value, savings, and stock are recalculated from live component records.</p></div><div className="flex flex-wrap gap-3"><button onClick={() => void createTemplates()} className="px-5 py-3 border border-brand-gold/30 text-brand-gold text-[10px] uppercase tracking-widest font-black">Create Starter Templates</button><button onClick={() => { setForm(emptyForm); setEditing(true); }} className="btn-primary flex items-center gap-2"><Plus size={16} /> New Bundle</button></div></div>
+    {loadError && <div role="alert" className="flex flex-col gap-4 border border-red-400/25 bg-red-400/10 p-5 text-sm text-red-200 sm:flex-row sm:items-center sm:justify-between"><p>{loadError}</p><button type="button" onClick={() => void load()} className="min-h-11 shrink-0 border border-red-300/30 px-5 py-3 text-[10px] font-black uppercase tracking-widest">Retry</button></div>}
     {editing && <section className="card-premium p-6 lg:p-10 space-y-8 border-brand-gold/20">
       <div className="flex justify-between"><h4 className="text-2xl font-serif text-brand-parchment">{form.id ? 'Edit Bundle' : 'New Bundle'}</h4><button onClick={() => setEditing(false)}><X className="text-brand-parchment/40" /></button></div>
       <div className="grid md:grid-cols-2 gap-5"><input className="input-premium" placeholder="Bundle name" value={text(form.name)} onChange={event => { update('name', event.target.value); if (!form.id) update('slug', slugify(event.target.value)); }} /><input className="input-premium" placeholder="URL slug" value={text(form.slug)} onChange={event => update('slug', slugify(event.target.value))} /><textarea className="input-premium md:col-span-2" placeholder="Customer-facing description" value={text(form.description)} onChange={event => update('description', event.target.value)} /><input type="number" min="0.01" step="0.01" className="input-premium" placeholder="Selling price" value={String(form.sellingPrice || '')} onChange={event => update('sellingPrice', event.target.value)} /><input className="input-premium" placeholder="Stripe tax code (optional default override)" value={text(form.stripeTaxCode)} onChange={event => update('stripeTaxCode', event.target.value)} /><input className="input-premium md:col-span-2" placeholder="Bundle image URL" value={text(form.imageUrl)} onChange={event => update('imageUrl', event.target.value)} /><input className="input-premium" placeholder="Specific image description" value={text(form.imageAlt)} onChange={event => update('imageAlt', event.target.value)} /><select className="input-premium" value={text(form.imageType) || 'illustrative'} onChange={event => update('imageType', event.target.value)}><option value="illustrative">Illustrative</option><option value="photograph">Photograph</option></select></div>
