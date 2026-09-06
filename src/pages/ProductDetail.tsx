@@ -207,7 +207,7 @@ export const ProductDetail: React.FC = () => {
                   )}
                 >
                   <ShoppingBag size={18} aria-hidden="true" />
-                  {product.currentInventory > 0 ? 'Add to Provisions' : 'Out of Stock'}
+                  {product.currentInventory > 0 ? 'Add to Cart' : 'Out of Stock'}
                 </button>
               </div>
             </div>
@@ -276,7 +276,7 @@ export const ProductDetail: React.FC = () => {
             <p className="text-xs text-brand-parchment/70">Qty {quantity} · ${(product.price * quantity).toFixed(2)}</p>
           </div>
           <button type="button" onClick={handleAddToCart} disabled={product.currentInventory <= 0} className="ml-auto min-h-11 shrink-0 bg-brand-gold px-5 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-brand-black disabled:bg-white/10 disabled:text-brand-parchment/60">
-            {product.currentInventory > 0 ? 'Add to cart' : 'Out of stock'}
+            {product.currentInventory > 0 ? 'Add to Cart' : 'Out of Stock'}
           </button>
         </div>
       </div>
