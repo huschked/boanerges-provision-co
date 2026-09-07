@@ -97,7 +97,8 @@ service cloud.firestore {
     // Collection Rules
 
     match /products/{productId} {
-      allow read: if true;
+      // The public catalog is served through the prelaunch-aware server API.
+      allow read: if isAdmin();
       allow create, update: if isAdmin() &&
         request.resource.data.active is bool &&
         (request.resource.data.active == false || hasApprovedProductFacts(request.resource.data));

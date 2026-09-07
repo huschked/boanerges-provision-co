@@ -140,6 +140,27 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
+### WEB-045 - Add a Secure Prelaunch Storefront Gate
+
+- **Status:** Review / Verify — implementation and local checks are complete; awaiting deployed production-domain verification.
+- **Priority:** High
+- **Area:** storefront | infra | security
+- **Goal:** Let the production domain collect interest and support private stakeholder review without exposing unfinished catalog or commerce flows.
+- **Acceptance Criteria:**
+  - Unauthenticated visitors see a responsive, branded Coming Soon page with accurate launch copy, newsletter signup, legal links, and a private-preview password form.
+  - The password is validated only on the server and never shipped in browser code; successful access uses a signed, HTTP-only, expiring cookie and failed attempts are rate-limited.
+  - Catalog and commerce APIs fail closed while locked, including protection against CDN-cached bundle or subscription responses.
+  - Public Firestore product reads cannot bypass the gate; the storefront receives publish-ready products through guarded server endpoints while authenticated Admin access continues.
+  - Stripe, Shippo, and Resend webhooks, cron workers, Admin, legal pages, newsletter signup, and signed customer-service links remain operational.
+  - Search engines receive a noindex directive while the public gate is displayed.
+  - Disabling the gate requires only deployment configuration and a redeploy.
+- **Verification:**
+  - Run `pnpm run lint`, automated prelaunch/API tests, `pnpm run build`, and `git diff --check`.
+  - Browser-check locked, invalid-password, valid-password, session persistence, separate-incognito-session, newsletter, legal, Admin, and direct product URL behavior.
+  - After deployment, confirm operational webhook and cron deliveries remain successful and run a Stripe test-mode checkout through an unlocked session.
+- **Implementation Results:** Added the branded gate, server-side session and rate limiting, guarded product APIs, prelaunch-safe caching, Admin/customer route exceptions, Firestore read hardening, and `docs/prelaunch-storefront.md`.
+- **Notes / Links:** Configure server-only `PRELAUNCH_MODE` and `PRELAUNCH_PASSWORD`; never use a `VITE_` prefix for the password. Deploy the application before the accompanying Firestore rules as documented.
+
 ### WEB-004 - Storefront Analytics and Ad Tracking
 
 - **Status:** Review / Verify — implementation and local checks are complete; awaiting deployed GA4/Meta configuration and provider test-event verification.

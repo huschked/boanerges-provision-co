@@ -21,6 +21,7 @@ import { createOrderStatusToken, verifyOrderStatusToken } from "./src/lib/orderS
 import { buildPublicOrderStatus } from "./src/lib/orderStatusView.js";
 import { createProductSnapshot, isProductPublishReady } from "./src/lib/productCatalog.js";
 import { resolveBundle, type BundleDefinition, type BundleProduct } from "./src/lib/bundleCommerce.js";
+import { isPrelaunchEnabled, registerPrelaunchProtection } from "./src/server/prelaunch.js";
 
 dotenv.config();
 
@@ -2397,6 +2398,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
 
   // Standard JSON parsing for other routes
   app.use(express.json());
+  registerPrelaunchProtection(app);
   registerReviewRoutes(app, {
     db, authenticateAdmin, appUrl: () => getPublicAppUrl(),
     send: async (message, idempotencyKey) => {
@@ -2452,7 +2454,9 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
 
   app.get("/api/bundles", orderStatusLimiter, async (_req, res) => {
     try {
-      res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+      res.set("Cache-Control", isPrelaunchEnabled()
+        ? "private, no-store, max-age=0"
+        : "public, max-age=30, stale-while-revalidate=60");
       res.json({ bundles: await getActiveResolvedBundles() });
     } catch (error) {
       console.error("Bundle Fetch Error:", error);
@@ -2476,7 +2480,9 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
           return { cadence, label: validated.label, amount: validated.amount, currency: validated.price.currency, savingsAmount, savingsPercent: Number(product.price) > 0 ? Math.round((savingsAmount / Number(product.price)) * 100) : 0 };
         } catch { return null; }
       }))).filter(Boolean);
-      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
+      res.set("Cache-Control", isPrelaunchEnabled()
+        ? "private, no-store, max-age=0"
+        : "public, max-age=60, stale-while-revalidate=120");
       return res.json({ options });
     } catch (error) {
       console.error("Subscription options error:", error);
@@ -2622,10 +2628,10 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       }
 
       const snapshot = await productsQuery.get();
-      const products = snapshot.docs.map((productDoc) => ({
-        id: productDoc.id,
-        ...productDoc.data(),
-      }));
+      const products = snapshot.docs.flatMap((productDoc) => {
+        const data = productDoc.data();
+        return isProductPublishReady(data) ? [{ id: productDoc.id, ...data }] : [];
+      });
 
       res.json(products);
     } catch (error: any) {
@@ -2638,7 +2644,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
     try {
       const productSnap = await db.collection("products").doc(req.params.slug).get();
 
-      if (!productSnap.exists) {
+      if (!productSnap.exists || productSnap.data()?.active !== true || !isProductPublishReady(productSnap.data())) {
         return res.status(404).json({ error: "Product not found" });
       }
 

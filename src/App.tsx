@@ -26,6 +26,7 @@ import { auth } from './lib/firebase';
 import { MotionConfig } from 'motion/react';
 import { CookiePreferences } from './components/CookiePreferences';
 import { trackPageView } from './lib/analytics';
+import { PrelaunchBoundary } from './components/PrelaunchGate';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -47,6 +48,7 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const location = useLocation();
   const isAdminPage = location.pathname.startsWith('/admin');
+  const bypassPrelaunch = isAdminPage || ['/order-status', '/email-preferences', '/review', '/privacy', '/terms'].includes(location.pathname);
   const wasAdminPage = useRef(isAdminPage);
 
   useEffect(() => {
@@ -57,6 +59,7 @@ export default function App() {
   }, [isAdminPage]);
 
   return (
+    <PrelaunchBoundary bypass={bypassPrelaunch}>
     <MotionConfig reducedMotion="user">
     <div className="min-h-screen flex flex-col">
       <Toaster position="bottom-right" />
@@ -94,5 +97,6 @@ export default function App() {
       {!isAdminPage && <CookiePreferences />}
     </div>
     </MotionConfig>
+    </PrelaunchBoundary>
   );
 }

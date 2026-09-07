@@ -1,4 +1,4 @@
-import { db, collection, getDocs, query, where, doc, getDoc } from '../lib/firebase';
+import { db, collection, getDocs } from '../lib/firebase';
 import { isProductPublishReady } from '../lib/productCatalog';
 
 export type ProductImageType = 'photograph' | 'illustrative';
@@ -56,16 +56,12 @@ export interface Product {
 }
 
 export const getProducts = async (category?: string) => {
-  let q = query(collection(db, 'products'), where('active', '==', true));
-  
-  if (category && category !== 'All') {
-    q = query(q, where('tags', 'array-contains', category));
-  }
-
-  const snapshot = await getDocs(q);
-  return snapshot.docs
-    .map(doc => ({ id: doc.id, ...doc.data() } as Product))
-    .filter((product) => isProductPublishReady(product as unknown as Record<string, unknown>));
+  const params = new URLSearchParams();
+  if (category && category !== 'All') params.set('category', category);
+  const response = await fetch(`/api/products${params.size ? `?${params}` : ''}`);
+  if (!response.ok) throw new Error('Products are temporarily unavailable.');
+  const products = await response.json() as Product[];
+  return products.filter((product) => isProductPublishReady(product as unknown as Record<string, unknown>));
 };
 
 export const getAllProducts = async () => {
@@ -75,19 +71,14 @@ export const getAllProducts = async () => {
 
 export const getProductsByIds = async (ids: string[]) => {
   const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
-  const snapshots = await Promise.all(uniqueIds.map((id) => getDoc(doc(db, 'products', id))));
-  return snapshots
-    .filter((snapshot) => snapshot.exists())
-    .map((snapshot) => ({ id: snapshot.id, ...snapshot.data() } as Product))
-    .filter((product) => product.active && isProductPublishReady(product as unknown as Record<string, unknown>));
+  const responses = await Promise.all(uniqueIds.map((id) => fetch(`/api/products/${encodeURIComponent(id)}`)));
+  const products = await Promise.all(responses.map(async response => response.ok ? await response.json() as Product : null));
+  return products.filter((product): product is Product => Boolean(product));
 };
 
 export const getProductBySlug = async (slug: string) => {
-  const docRef = doc(db, 'products', slug);
-  const snapshot = await getDoc(docRef);
-  if (snapshot.exists()) {
-    const product = { id: snapshot.id, ...snapshot.data() } as Product;
-    return product.active && isProductPublishReady(product as unknown as Record<string, unknown>) ? product : null;
-  }
-  return null;
+  const response = await fetch(`/api/products/${encodeURIComponent(slug)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error('This product is temporarily unavailable.');
+  return await response.json() as Product;
 };
