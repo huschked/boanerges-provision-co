@@ -51,7 +51,7 @@ declare global {
   interface Window {
     dataLayer?: unknown[];
     gtag?: (...args: unknown[]) => void;
-    fbq?: ((...args: unknown[]) => void) & { callMethod?: (...args: unknown[]) => void; queue?: unknown[][]; loaded?: boolean; version?: string };
+    fbq?: ((...args: unknown[]) => void) & { callMethod?: (...args: unknown[]) => void; queue?: unknown[]; loaded?: boolean; version?: string };
     _fbq?: Window['fbq'];
   }
 }
@@ -138,7 +138,7 @@ function googleConsentParameters(consent: TrackingConsent) {
 function ensureGoogleAnalytics(consent: TrackingConsent) {
   if (!GA_MEASUREMENT_ID || !consent.analytics || typeof window === 'undefined') return;
   window.dataLayer = window.dataLayer || [];
-  window.gtag = window.gtag || function (...args: unknown[]) { window.dataLayer!.push(args); };
+  window.gtag = window.gtag || function () { window.dataLayer!.push(arguments); };
   window.gtag('consent', googleInitialized ? 'update' : 'default', googleConsentParameters(consent));
   if (googleInitialized) return;
   appendScript('boanerges-ga4', `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(GA_MEASUREMENT_ID)}`);
@@ -156,7 +156,7 @@ function ensureMetaPixel(consent: TrackingConsent) {
   if (!window.fbq) {
     const fbq = function (...args: unknown[]) {
       if (fbq.callMethod) fbq.callMethod(...args);
-      else fbq.queue!.push(args);
+      else fbq.queue!.push(arguments);
     } as Window['fbq'];
     fbq.queue = [];
     fbq.loaded = true;
