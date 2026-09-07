@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { trackAnalyticsEvent } from '@/src/lib/analytics';
 
 export function Review() {
   const [params] = useState(() => new URLSearchParams(window.location.hash.slice(1)));
@@ -21,7 +22,9 @@ export function Review() {
     const form = new FormData(event.currentTarget);
     try {
       const r = await fetch(`/api/reviews/${optOut ? 'unsubscribe' : 'submit'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, rating: Number(form.get('rating')), displayName: form.get('displayName'), text: form.get('text'), consent: form.get('consent') === 'on', website: form.get('website') }) });
-      const body = await r.json(); if (!r.ok) throw new Error(body.error || 'Please try again.'); setDone(true);
+      const body = await r.json(); if (!r.ok) throw new Error(body.error || 'Please try again.');
+      if (!optOut) void trackAnalyticsEvent({ type: 'review_submission', productName: data?.productName, metadata: { rating: Number(form.get('rating')) } });
+      setDone(true);
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
   const field = 'block w-full mt-2 p-3 border border-white/20 bg-white/5 text-brand-parchment';

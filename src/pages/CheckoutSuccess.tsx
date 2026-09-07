@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, Loader2, PackageCheck, Mail, ArrowRight, Sparkles } from 'lucide-react';
 import { useCart } from '@/src/store';
+import { trackPurchaseOnce } from '@/src/lib/analytics';
 
 type CheckoutSessionStatus = {
   id: string;
@@ -11,6 +12,8 @@ type CheckoutSessionStatus = {
   orderId?: string;
   orderStatus?: string;
   orderStatusUrl?: string;
+  orderType?: string;
+  items?: Array<{ id: string; name: string; category?: string; price?: number; quantity?: number }>;
   amounts?: {
     subtotal: number;
     shipping: number;
@@ -22,13 +25,18 @@ type CheckoutSessionStatus = {
 
 export const CheckoutSuccess: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const sessionId = searchParams.get('session_id');
+  const querySessionId = searchParams.get('session_id');
+  const sessionId = querySessionId || window.sessionStorage.getItem('boanerges-latest-checkout-session');
   const clearCart = useCart((state) => state.clearCart);
   const [sessionStatus, setSessionStatus] = React.useState<CheckoutSessionStatus | null>(null);
   const [isVerifying, setIsVerifying] = React.useState(Boolean(sessionId));
   const [verificationError, setVerificationError] = React.useState('');
 
   useEffect(() => {
+    if (querySessionId) {
+      window.sessionStorage.setItem('boanerges-latest-checkout-session', querySessionId);
+      window.history.replaceState(window.history.state, '', window.location.pathname);
+    }
     if (!sessionId) {
       setIsVerifying(false);
       setVerificationError('Checkout session reference is missing.');
@@ -50,6 +58,18 @@ export const CheckoutSuccess: React.FC = () => {
         setSessionStatus(data);
 
         if (data.status === 'complete' && data.paymentStatus === 'paid') {
+          const fallbackItems = useCart.getState().items.map(item => ({
+            id: item.product.id, name: item.product.name, category: item.product.category,
+            price: item.product.price, quantity: item.quantity,
+          }));
+          trackPurchaseOnce({
+            type: 'purchase',
+            transactionId: data.orderId || data.id,
+            value: data.amounts?.total,
+            currency: data.amounts?.currency || 'USD',
+            items: data.items?.length ? data.items : fallbackItems,
+            metadata: { orderType: data.orderType || 'one_time' },
+          });
           clearCart();
         } else {
           setVerificationError('Payment has not been confirmed yet.');
@@ -69,7 +89,7 @@ export const CheckoutSuccess: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [clearCart, sessionId]);
+  }, [clearCart, querySessionId, sessionId]);
 
   const isPaid = sessionStatus?.status === 'complete' && sessionStatus.paymentStatus === 'paid';
   const formattedTotal = sessionStatus?.amounts

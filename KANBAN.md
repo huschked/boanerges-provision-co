@@ -136,29 +136,41 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Ready
 
-### WEB-004 - Analytics and Event Tracking Review
-
-- **Priority:** Medium
-- **Area:** analytics
-- **Goal:** Confirm analytics events are collected and displayed consistently for the storefront and admin analytics views.
-- **Acceptance Criteria:**
-  - Hero/merchandising CTA, collection/filter use, product view, product-detail engagement, bundle selection, add-to-cart outcome, checkout start, inventory error, subscription, review request/submission, and newsletter signup events send the expected payload shape when their features are enabled.
-  - Failed analytics requests do not break the storefront experience.
-  - Admin analytics summaries are clear about current data coverage and missing attribution/conversion data.
-  - Daily aggregation behavior in the server matches the event types displayed in the admin portal.
-  - Any missing events or reporting blind spots are added as separate follow-up cards.
-- **Verification:**
-  - Run `npm run lint` and `npm run build`.
-  - Inspect `src/lib/analytics.ts`, analytics calls in storefront components, `server.ts`, and `src/components/admin/AnalyticsView.tsx`.
-  - Browser-check product detail, add-to-cart, checkout start, and newsletter signup while monitoring network requests.
-- **Notes / Links:** Current analytics view already notes missing traffic, conversion rate, ad attribution, and abandoned cart reporting.
-
 ## In Progress
 
 ## Review / Verify
 
+### WEB-004 - Storefront Analytics and Ad Tracking
+
+- **Status:** Review / Verify — implementation and local checks are complete; awaiting deployed GA4/Meta configuration and provider test-event verification.
+- **Priority:** High
+- **Area:** analytics | privacy | marketing
+- **Goal:** Preserve the internal operational analytics while adding consent-aware Google Analytics 4 and Meta Pixel measurement for traffic, ecommerce behavior, advertising attribution, and campaign optimization.
+- **Acceptance Criteria:**
+  - GA4 and Meta Pixel are independently enabled through deployment configuration; leaving either public ID blank prevents that provider from loading without affecting the storefront or internal analytics.
+  - A clear cookie preference control separates necessary storage, analytics, and advertising. Optional tags do not load before the applicable choice, the choice persists, and customers can reopen and change it.
+  - SPA navigation records one page view per meaningful route change without duplicate initial-page events.
+  - A shared event adapter maps storefront behavior to both the existing internal event endpoint and provider-standard ecommerce events, including product view, add to cart, checkout start, completed purchase, subscription checkout, and newsletter signup where applicable.
+  - Commerce payloads use stable product IDs, product names, quantities, currency, and numeric values. Purchase events use the verified order/transaction ID and are protected from firing again on refresh or repeat webhook delivery.
+  - Browser analytics never receive customer email, name, phone, street address, Stripe secrets, or other unnecessary personal data.
+  - Hero/merchandising CTA, collection/filter use, product-detail engagement, bundle selection, inventory errors, review request/submission, and other useful internal events retain a consistent documented payload shape.
+  - Failed internal, GA4, or Meta analytics requests do not break navigation, cart, checkout, subscription, newsletter, or review flows.
+  - The Privacy Policy identifies Google Analytics and Meta Pixel, the purposes of analytics/advertising cookies, and how visitors can change their preferences.
+  - Admin analytics summaries clearly distinguish first-party operational totals from GA4 traffic/conversion reporting and Meta advertising attribution; no cross-provider totals are presented as interchangeable.
+  - Daily aggregation behavior in the server matches the internal event types displayed in the admin portal, and any remaining reporting blind spots are captured as follow-up cards.
+- **Verification:**
+  - Run `npm run lint`, automated analytics/consent tests, and `npm run build`.
+  - Inspect `src/lib/analytics.ts`, storefront call sites, route handling, `server.ts`, `src/components/admin/AnalyticsView.tsx`, deployment variables, and the Privacy Policy.
+  - Browser-check consent defaults and preference changes, SPA page views, product view, add to cart, checkout start, completed purchase, subscription checkout, and newsletter signup while monitoring network requests.
+  - Confirm GA4 events and consent state with Google Tag Assistant/DebugView and confirm Meta browser events in Events Manager Test Events (or Meta Pixel Helper) using test transactions only.
+- **Implementation Results:** Added independent GA4/Meta configuration, consent controls, sanitized shared ecommerce events, verified-purchase deduplication, first-party daily counters, privacy disclosures, admin reporting guidance, automated adapter tests, and `docs/analytics-and-ad-tracking.md`.
+- **Notes / Links:** Use `VITE_GA_MEASUREMENT_ID` and `VITE_META_PIXEL_ID` as public identifiers, not secrets. Start with browser-side GA4 and Meta Pixel; evaluate Meta Conversions API as a separate hardening story after baseline tracking is verified. The current admin analytics view intentionally lacks traffic, conversion-rate, ad-attribution, and abandoned-cart reporting.
+
+## Done
+
 ### WEB-003 - Admin Portal End-to-End Regression Verification
 
+- **Status:** Done — owner confirmed complete and verified.
 - **Priority:** High
 - **Area:** admin
 - **Goal:** Perform final end-to-end admin regression verification after the focused fulfillment cards are complete; this card does not own their implementation.
@@ -171,11 +183,8 @@ This board is the working queue for website development. Keep cards actionable e
 - **Verification:**
   - Run `npm run lint` and `npm run build`.
   - Browser-check `/admin` sign-in, tab navigation, search, refresh, and core edit/detail flows with seeded or live test data.
-- **Verification results:** TypeScript validation, all 57 automated tests, and the production build pass. Current desktop and 390px mobile builds render the secure `/admin` sign-in and authentication-error states without horizontal overflow. Static regression confirmed that product payloads preserve inventory, category, active/featured state, the one-time Stripe Price ID, all recurring Stripe Price IDs, and approved product facts. Order operations retain explicit failure and partial-save messaging.
-- **Owner verification:** After deployment, sign in manually and verify every admin tab with live test data. Confirm Dashboard and Analytics totals; Inventory search plus opening an existing product without saving; Bundle, Subscription, Review, and reservation refresh; Order search, selection, notes/tracking save and one safe fulfillment transition; Audience and Inquiry search; and a failed or offline refresh showing a visible retry state. Avoid creating, deleting, refunding, or shipping records solely for this regression unless using disposable test data.
-- **Notes / Links:** Fixed cross-tab search leakage, removed non-functional global search fields, added separate responsive Audience and Inquiry search, made global refresh propagate to independently loaded admin views, surfaced core/bundle/subscription/reservation load failures, synchronized filtered inquiry details, and made Inventory/Audience tables horizontally scrollable on narrow screens. No new Firestore index or rule requirement was introduced; existing queries assume `createdAt` on orders/subscribers/contact messages and `updatedAt` on subscription records. The local full-stack server could not be used without the intentionally absent Stripe secret, and Google authentication must be completed manually. Relevant files include `src/pages/Admin.tsx` and `src/components/admin/*`.
-
-## Done
+- **Verification results:** TypeScript validation, all 57 automated tests, and the production build pass. Current desktop and 390px mobile builds render the secure `/admin` sign-in and authentication-error states without horizontal overflow. Static regression confirmed that product payloads preserve inventory, category, active/featured state, the one-time Stripe Price ID, all recurring Stripe Price IDs, and approved product facts. Order operations retain explicit failure and partial-save messaging. Owner confirmed the deployed admin regression works as expected.
+- **Notes / Links:** Fixed cross-tab search leakage, removed non-functional global search fields, added separate responsive Audience and Inquiry search, made global refresh propagate to independently loaded admin views, surfaced core/bundle/subscription/reservation load failures, synchronized filtered inquiry details, and made Inventory/Audience tables horizontally scrollable on narrow screens. No new Firestore index or rule requirement was introduced; existing queries assume `createdAt` on orders/subscribers/contact messages and `updatedAt` on subscription records. Relevant files include `src/pages/Admin.tsx` and `src/components/admin/*`.
 
 ### WEB-001 - Storefront Polish Pass
 

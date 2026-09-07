@@ -16,6 +16,13 @@ export const Checkout: React.FC = () => {
   const [checkoutError, setCheckoutError] = useState<{ message: string; code?: string } | null>(null);
   const productIds = items.filter((item) => item.product.commerceType !== 'bundle').map((item) => item.product.id).sort().join('|');
   const bundleIds = items.filter((item) => item.product.commerceType === 'bundle').map((item) => item.product.id).sort().join('|');
+  const analyticsItems = items.map(item => ({
+    id: item.product.id,
+    name: item.product.name,
+    category: item.product.category,
+    price: item.product.price,
+    quantity: item.quantity,
+  }));
 
   useEffect(() => {
     if (!productIds && !bundleIds) return;
@@ -35,6 +42,8 @@ export const Checkout: React.FC = () => {
         type: 'checkout_start',
         quantity: items.reduce((sum, item) => sum + item.quantity, 0),
         value: total(),
+        currency: 'USD',
+        items: analyticsItems,
         metadata: {
           itemCount: items.length,
           newsletterOptIn,
@@ -68,10 +77,12 @@ export const Checkout: React.FC = () => {
       if (!response.ok) {
         if (data.code === 'inventory_unavailable' && Array.isArray(data.unavailableItems)) {
           setUnavailableItems(data.unavailableItems);
+          void trackAnalyticsEvent({ type: 'inventory_error', value: total(), currency: 'USD', items: analyticsItems, metadata: { unavailableCount: data.unavailableItems.length, stage: 'checkout' } });
           toast.error(data.error || 'Some quantities are no longer available.');
           return;
         }
         setCheckoutError({ message: data.error || 'Secure checkout could not be started. Your cart is still here.', code: data.code });
+        void trackAnalyticsEvent({ type: 'checkout_error', value: total(), currency: 'USD', items: analyticsItems, metadata: { code: data.code || 'checkout_unavailable' } });
         return;
       }
 
@@ -84,6 +95,7 @@ export const Checkout: React.FC = () => {
     } catch (error) {
       console.error('Checkout error:', error);
       setCheckoutError({ message: error instanceof Error ? error.message : 'Secure checkout could not be started. Your cart is still here.', code: 'network_error' });
+      void trackAnalyticsEvent({ type: 'checkout_error', value: total(), currency: 'USD', items: analyticsItems, metadata: { code: 'network_error' } });
     } finally {
       setLoading(false);
     }

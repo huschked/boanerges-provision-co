@@ -5,6 +5,7 @@ import type { ResolvedBundle } from '@/src/lib/bundleCommerce';
 import { bundleToCartProduct, getBundles } from '@/src/services/bundleService';
 import { Plus, Check, Loader2, PackageX } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { trackAnalyticsEvent } from '@/src/lib/analytics';
 
 export const Bundles: React.FC = () => {
   const addItem = useCart((state) => state.addItem);
@@ -27,6 +28,17 @@ export const Bundles: React.FC = () => {
     if (bundle.availableStock <= 0) return;
     addItem(bundleToCartProduct(bundle));
     toast.success(`${bundle.name} added to your provisions.`);
+    void trackAnalyticsEvent({
+      type: 'bundle_selection', productId: bundle.id, productName: bundle.name, category: 'Bundles',
+      quantity: 1, value: bundle.sellingPrice, currency: 'USD',
+      items: [{ id: bundle.id, name: bundle.name, category: 'Bundles', price: bundle.sellingPrice, quantity: 1 }],
+    });
+    void trackAnalyticsEvent({
+      type: 'add_to_cart', productId: bundle.id, productName: bundle.name, category: 'Bundles',
+      quantity: 1, value: bundle.sellingPrice, currency: 'USD',
+      items: [{ id: bundle.id, name: bundle.name, category: 'Bundles', price: bundle.sellingPrice, quantity: 1 }],
+      metadata: { itemType: 'bundle' },
+    });
   };
 
   return (

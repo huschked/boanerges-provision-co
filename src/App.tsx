@@ -24,12 +24,22 @@ import { Review } from './pages/Review';
 import { TermsOfService } from './pages/TermsOfService';
 import { auth } from './lib/firebase';
 import { MotionConfig } from 'motion/react';
+import { CookiePreferences } from './components/CookiePreferences';
+import { trackPageView } from './lib/analytics';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
   React.useEffect(() => {
     window.scrollTo(0, 0);
   }, [pathname]);
+  return null;
+}
+
+function AnalyticsRouteTracker() {
+  const { pathname, search } = useLocation();
+  useEffect(() => {
+    trackPageView(`${pathname}${search}`);
+  }, [pathname, search]);
   return null;
 }
 
@@ -51,6 +61,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col">
       <Toaster position="bottom-right" />
       <ScrollToTop />
+      <AnalyticsRouteTracker />
       {!isAdminPage && <Header onCartClick={() => setIsCartOpen(true)} />}
       {!isAdminPage && <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />}
       
@@ -80,6 +91,7 @@ export default function App() {
       </main>
 
       {!isAdminPage && <Footer />}
+      {!isAdminPage && <CookiePreferences />}
     </div>
     </MotionConfig>
   );

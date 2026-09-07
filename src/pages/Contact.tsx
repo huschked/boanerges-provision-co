@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Mail, Send, Loader2, CheckCircle2 } from 'lucide-react';
+import { trackAnalyticsEvent } from '@/src/lib/analytics';
 
 export const Contact: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -30,6 +31,7 @@ export const Contact: React.FC = () => {
       });
 
       if (response.ok) {
+        void trackAnalyticsEvent({ type: 'contact_submission', metadata: { subject: formData.subject } });
         setSubmitted(true);
         setFormData({ name: '', email: '', subject: 'General Inquiry', message: '' });
       } else {

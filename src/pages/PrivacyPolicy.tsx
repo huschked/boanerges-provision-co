@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { openCookiePreferences } from '@/src/lib/analytics';
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <section className="space-y-4">
@@ -15,7 +16,7 @@ export const PrivacyPolicy: React.FC = () => (
       <header className="space-y-5 pb-12 border-b border-white/10">
         <span className="text-brand-gold text-[11px] uppercase tracking-[0.35em] font-black">Customer Privacy</span>
         <h1 className="text-5xl md:text-7xl font-serif text-brand-parchment">Privacy Policy</h1>
-        <p className="text-brand-parchment/50">Effective September 3, 2026</p>
+        <p className="text-brand-parchment/50">Effective September 6, 2026</p>
         <p className="text-lg leading-8 text-brand-parchment/70">
           This policy explains how Boanerges Provisions Co. collects, uses, and shares information when you shop with us, contact us, subscribe to email, or use this website.
         </p>
@@ -25,7 +26,13 @@ export const PrivacyPolicy: React.FC = () => (
         <Section title="Information we collect">
           <p><strong className="text-brand-parchment">Orders and fulfillment.</strong> We receive contact, shipping, and order information such as your name, email, phone number when provided, shipping address, purchased items, amounts, and order status. Stripe processes payment-card details; we do not store your full card number.</p>
           <p><strong className="text-brand-parchment">Messages and email signup.</strong> We collect the information you submit through our contact and newsletter forms, including your name, email, subject, message, consent choice, source, and relevant timestamps.</p>
-          <p><strong className="text-brand-parchment">Website activity.</strong> We collect limited events such as product views, add-to-cart actions, checkout starts, and newsletter signups. Our hosting and security providers may also process request information such as IP address, browser details, and timestamps. Your cart is saved in your browser so it can survive navigation and a cancelled checkout.</p>
+          <p><strong className="text-brand-parchment">Website activity.</strong> We collect limited first-party events such as page and product views, add-to-cart actions, checkout starts, completed-purchase confirmations, and newsletter signups. These operational events do not intentionally include your name, email, phone number, or street address. Our hosting and security providers may also process request information such as IP address, browser details, and timestamps. Your cart is saved in your browser so it can survive navigation and a cancelled checkout.</p>
+        </Section>
+
+        <Section title="Cookies, analytics, and advertising">
+          <p>Necessary browser storage supports the cart, checkout continuity, security, and your privacy choices. With your permission, Google Analytics measures visits and shopping behavior so we can understand and improve the storefront. If you separately allow advertising, Meta Pixel measures Facebook and Instagram campaign results and may support advertising audiences.</p>
+          <p>Analytics and advertising technologies are optional and are not loaded before the applicable choice. You can accept, decline, or change these settings at any time. Declining them does not prevent you from shopping.</p>
+          <button type="button" onClick={openCookiePreferences} className="min-h-11 px-6 py-3 border border-brand-gold/40 text-brand-gold text-[10px] uppercase tracking-widest font-black hover:bg-brand-gold/10">Review Cookie Choices</button>
         </Section>
 
         <Section title="Product reviews">
@@ -44,8 +51,8 @@ export const PrivacyPolicy: React.FC = () => (
         </Section>
 
         <Section title="Service providers and sharing">
-          <p>We disclose information only as needed to operate the business, including to Stripe for payment and tax, Firebase and Google Cloud for application data and authentication, Shippo and carriers for shipping, Resend for email delivery, and Vercel for website hosting.</p>
-          <p>We may also disclose information when required by law, to protect customers or the business, or as part of a business reorganization. We do not sell personal information or use it for cross-context behavioral advertising.</p>
+          <p>We disclose information only as needed to operate the business, including to Stripe for payment and tax, Firebase and Google Cloud for application data and authentication, Shippo and carriers for shipping, Resend for email delivery, and Vercel for website hosting. When you grant the applicable cookie choice, Google Analytics and Meta may also process limited website and commerce-event information for measurement and advertising purposes.</p>
+          <p>We may also disclose information when required by law, to protect customers or the business, or as part of a business reorganization. We do not sell personal information for money.</p>
         </Section>
 
         <Section title="Your choices and privacy requests">

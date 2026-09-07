@@ -38,6 +38,8 @@ export const ProductDetail: React.FC = () => {
       category: product.category,
       quantity,
       value: product.price * quantity,
+      currency: 'USD',
+      items: [{ id: product.id, name: product.name, category: product.category, price: product.price, quantity }],
     });
   };
 
@@ -64,6 +66,9 @@ export const ProductDetail: React.FC = () => {
             productId: data.id,
             productName: data.name,
             category: data.category,
+            value: data.price,
+            currency: 'USD',
+            items: [{ id: data.id, name: data.name, category: data.category, price: data.price, quantity: 1 }],
           });
           // Fetch related products (same category)
           const allProducts = await getProducts();
@@ -132,7 +137,7 @@ export const ProductDetail: React.FC = () => {
               />
               {selectedMedia.type === 'illustrative' && <span className="absolute bottom-4 right-4 bg-brand-black/85 text-brand-parchment px-4 py-2 text-[9px] uppercase tracking-widest font-black">Illustrative image</span>}
             </motion.div>
-            {media.length > 1 && <div className="grid grid-cols-4 gap-4">{media.map((item, index) => <button key={`${item.url}-${index}`} type="button" onClick={() => setSelectedImageIndex(index)} aria-label={`View image ${index + 1} of ${media.length}: ${item.alt}`} aria-pressed={selectedImageIndex === index} className={cn('aspect-square min-h-11 overflow-hidden border bg-white', selectedImageIndex === index ? 'border-brand-gold' : 'border-white/20')}><img src={item.url} alt="" className="w-full h-full object-cover" /></button>)}</div>}
+            {media.length > 1 && <div className="grid grid-cols-4 gap-4">{media.map((item, index) => <button key={`${item.url}-${index}`} type="button" onClick={() => { setSelectedImageIndex(index); void trackAnalyticsEvent({ type: 'product_detail_engagement', productId: product.id, productName: product.name, metadata: { interaction: 'gallery_image', imageIndex: index } }); }} aria-label={`View image ${index + 1} of ${media.length}: ${item.alt}`} aria-pressed={selectedImageIndex === index} className={cn('aspect-square min-h-11 overflow-hidden border bg-white', selectedImageIndex === index ? 'border-brand-gold' : 'border-white/20')}><img src={item.url} alt="" className="w-full h-full object-cover" /></button>)}</div>}
           </div>
 
           {/* Product Info */}
@@ -167,10 +172,10 @@ export const ProductDetail: React.FC = () => {
                   </div>
                 </div>
                 {subscriptionOptions.length > 0 && <div className="p-6 border border-white/15 bg-white/[0.03] rounded-sm space-y-5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"><div><p className="text-[11px] font-black uppercase tracking-widest text-brand-parchment">Subscribe &amp; Save</p><p className="text-xs text-brand-parchment/45">Recurring delivery in a separate secure checkout</p></div><select aria-label="Delivery cadence" value={selectedCadence} onChange={event => setSelectedCadence(event.target.value as SubscriptionCadence)} className="input-premium"><option value="" disabled>Select cadence</option>{subscriptionOptions.map(option => <option key={option.cadence} value={option.cadence}>{option.label} · ${option.amount.toFixed(2)}{option.savingsPercent > 0 ? ` · Save ${option.savingsPercent}%` : ''}</option>)}</select></div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"><div><p className="text-[11px] font-black uppercase tracking-widest text-brand-parchment">Subscribe &amp; Save</p><p className="text-xs text-brand-parchment/45">Recurring delivery in a separate secure checkout</p></div><select aria-label="Delivery cadence" value={selectedCadence} onChange={event => { const cadence = event.target.value as SubscriptionCadence; setSelectedCadence(cadence); void trackAnalyticsEvent({ type: 'product_detail_engagement', productId: product.id, productName: product.name, metadata: { interaction: 'subscription_cadence', cadence } }); }} className="input-premium"><option value="" disabled>Select cadence</option>{subscriptionOptions.map(option => <option key={option.cadence} value={option.cadence}>{option.label} · ${option.amount.toFixed(2)}{option.savingsPercent > 0 ? ` · Save ${option.savingsPercent}%` : ''}</option>)}</select></div>
                   <p className="text-xs leading-relaxed text-brand-parchment/55">Your selected quantity ships and bills automatically on this cadence. Shipping and applicable tax are calculated in Stripe at signup and on renewals. Cancel or update payment details anytime through the secure customer portal; changes must be made before the next invoice to avoid that renewal.</p>
                   <label className="min-h-11 flex items-start gap-3 text-xs text-brand-parchment/75 leading-relaxed cursor-pointer"><input type="checkbox" checked={subscriptionConsent} onChange={event => setSubscriptionConsent(event.target.checked)} className="mt-1 w-5 h-5 shrink-0 accent-brand-gold" /><span>I authorize recurring charges for this product and cadence until I cancel. I understand food orders are final sale once fulfilled.</span></label>
-                  <button type="button" disabled={!subscriptionConsent || subscriptionLoading || product.currentInventory < quantity} onClick={async () => { setSubscriptionLoading(true); try { const result = await createSubscriptionCheckout({ productId: product.id, quantity, cadence: selectedCadence, origin: window.location.origin }); window.location.href = result.url; } catch (error) { console.error(error); toast.error(error instanceof Error ? error.message : 'Subscription checkout is unavailable.'); } finally { setSubscriptionLoading(false); } }} className="w-full min-h-11 py-4 border border-brand-gold text-brand-gold hover:bg-brand-gold hover:text-brand-black disabled:opacity-35 disabled:cursor-not-allowed text-[10px] uppercase tracking-[0.25em] font-black transition-colors">{subscriptionLoading ? 'Opening secure checkout…' : 'Subscribe in Stripe'}</button>
+                  <button type="button" disabled={!subscriptionConsent || subscriptionLoading || product.currentInventory < quantity} onClick={async () => { setSubscriptionLoading(true); try { const result = await createSubscriptionCheckout({ productId: product.id, quantity, cadence: selectedCadence, origin: window.location.origin }); const option = subscriptionOptions.find(entry => entry.cadence === selectedCadence); void trackAnalyticsEvent({ type: 'subscription_checkout_start', productId: product.id, productName: product.name, category: product.category, quantity, value: option ? option.amount * quantity : product.price * quantity, currency: 'USD', items: [{ id: product.id, name: product.name, category: product.category, price: option?.amount || product.price, quantity }], metadata: { cadence: selectedCadence } }); window.location.href = result.url; } catch (error) { console.error(error); toast.error(error instanceof Error ? error.message : 'Subscription checkout is unavailable.'); } finally { setSubscriptionLoading(false); } }} className="w-full min-h-11 py-4 border border-brand-gold text-brand-gold hover:bg-brand-gold hover:text-brand-black disabled:opacity-35 disabled:cursor-not-allowed text-[10px] uppercase tracking-[0.25em] font-black transition-colors">{subscriptionLoading ? 'Opening secure checkout…' : 'Subscribe in Stripe'}</button>
                   <p className="text-[10px] text-brand-parchment/65">This subscription checkout is separate; items already in your cart will remain there.</p>
                 </div>}
               </div>

@@ -53,6 +53,8 @@ export const ProductCard: React.FC<{ product: Product; className?: string; dark?
                 category: product.category,
                 quantity: 1,
                 value: product.price,
+                currency: 'USD',
+                items: [{ id: product.id, name: product.name, category: product.category, price: product.price, quantity: 1 }],
               });
             }}
             className="w-full min-h-11 py-3 sm:py-5 bg-brand-black text-brand-gold text-[10px] uppercase tracking-[0.22em] sm:tracking-[0.3em] font-black flex items-center justify-center gap-3 hover:bg-brand-gold hover:text-brand-black transition-all duration-500 shadow-2xl active:scale-95"

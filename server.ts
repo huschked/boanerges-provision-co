@@ -135,11 +135,28 @@ const SUBSCRIPTION_CADENCES: Record<SubscriptionCadence, { label: string; interv
 };
 
 type AnalyticsEventType =
+  | "page_view"
+  | "cta_click"
+  | "collection_filter"
   | "product_view"
+  | "product_detail_engagement"
+  | "bundle_selection"
   | "add_to_cart"
   | "checkout_start"
+  | "checkout_error"
+  | "inventory_error"
+  | "purchase"
+  | "subscription_checkout_start"
   | "newsletter_signup"
-  | "contact_submission";
+  | "contact_submission"
+  | "review_request"
+  | "review_submission";
+
+const ANALYTICS_EVENT_TYPES = new Set<AnalyticsEventType>([
+  "page_view", "cta_click", "collection_filter", "product_view", "product_detail_engagement",
+  "bundle_selection", "add_to_cart", "checkout_start", "checkout_error", "inventory_error",
+  "purchase", "subscription_checkout_start", "newsletter_signup", "contact_submission", "review_request", "review_submission",
+]);
 
 type ResendAudienceSyncResult = {
   status: "created" | "updated" | "skipped" | "failed";
@@ -2734,6 +2751,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
         expand: ["payment_intent", "shipping_cost.shipping_rate"],
       });
       const orderSnap = await db.collection("orders").doc(session.id).get();
+      const orderData = orderSnap.exists ? orderSnap.data()! : null;
       const selectedShipping = getSelectedShipping(session);
 
       res.json({
@@ -2742,8 +2760,16 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
         paymentStatus: session.payment_status,
         customerEmail: session.customer_details?.email || session.customer_email || "",
         orderId: orderSnap.exists ? orderSnap.id : "",
-        orderStatus: orderSnap.exists ? orderSnap.data()?.status || "" : "",
+        orderStatus: orderData?.status || "",
         orderStatusUrl: orderSnap.exists ? getOrderStatusUrl(orderSnap.id) : "",
+        orderType: orderData?.orderType || "",
+        items: Array.isArray(orderData?.items) ? orderData.items.slice(0, MAX_CART_ITEMS).map((item: PendingOrderItem) => ({
+          id: item.productId,
+          name: item.name,
+          category: item.itemType === "bundle" ? "Bundles" : "Salts",
+          price: Number(item.price || 0),
+          quantity: Number(item.quantity || 0),
+        })) : [],
         amounts: {
           subtotal: toMoneyFromCents(session.amount_subtotal),
           shipping: selectedShipping.amountTotal,
@@ -2939,6 +2965,9 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
         category,
         quantity,
         value,
+        currency,
+        transactionId,
+        items,
         path: requestPath,
         metadata,
       } = req.body as {
@@ -2948,32 +2977,79 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
         category?: string;
         quantity?: number;
         value?: number;
+        currency?: string;
+        transactionId?: string;
+        items?: Array<{ id?: string; name?: string; category?: string; price?: number; quantity?: number }>;
         path?: string;
         metadata?: Record<string, unknown>;
       };
 
-      if (!type) {
-        return res.status(400).json({ error: "Event type is required." });
+      if (!type || !ANALYTICS_EVENT_TYPES.has(type)) {
+        return res.status(400).json({ error: "A supported event type is required." });
       }
+
+      const safeNumber = (input: unknown, maximum: number) => {
+        const number = Number(input);
+        return Number.isFinite(number) ? Math.min(maximum, Math.max(0, Number(number.toFixed(2)))) : 0;
+      };
+      const safeMetadata = metadata && typeof metadata === "object" ? Object.fromEntries(
+        Object.entries(metadata)
+          .filter(([key, entry]) => !/email|phone|address|street|customer|(?:first|last|full)[_-]?name/i.test(key) && ["string", "number", "boolean"].includes(typeof entry))
+          .slice(0, 25)
+          .map(([key, entry]) => [key.slice(0, 60), typeof entry === "string" ? entry.slice(0, 200) : entry])
+      ) : {};
+      const safeItems = Array.isArray(items) ? items.slice(0, MAX_CART_ITEMS).map(item => ({
+        id: typeof item?.id === "string" ? item.id.slice(0, 120) : "",
+        name: typeof item?.name === "string" ? item.name.slice(0, 160) : "",
+        category: typeof item?.category === "string" ? item.category.slice(0, 100) : "",
+        price: safeNumber(item?.price, 100000),
+        quantity: safeNumber(item?.quantity, MAX_ITEM_QUANTITY),
+      })).filter(item => item.id && item.name) : [];
+      const safeRequestPath = (() => {
+        if (typeof requestPath !== "string") return "";
+        try {
+          const url = new URL(requestPath, "https://boanergesprovisions.com");
+          const allowed = new Set(["category", "sort", "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "gclid", "fbclid"]);
+          const query = new URLSearchParams();
+          url.searchParams.forEach((entry, key) => { if (allowed.has(key.toLowerCase())) query.set(key.toLowerCase(), entry.slice(0, 200)); });
+          return `${url.pathname}${query.size ? `?${query}` : ""}`.slice(0, 500);
+        } catch {
+          return requestPath.split(/[?#]/, 1)[0].slice(0, 500);
+        }
+      })();
 
       await db.collection("analytics_events").add({
         type,
-        productId: productId || "",
-        productName: productName || "",
-        category: category || "",
-        quantity: quantity || 0,
-        value: value || 0,
-        path: requestPath || "",
-        metadata: metadata || {},
+        productId: typeof productId === "string" ? productId.slice(0, 120) : "",
+        productName: typeof productName === "string" ? productName.slice(0, 160) : "",
+        category: typeof category === "string" ? category.slice(0, 100) : "",
+        quantity: safeNumber(quantity, MAX_ITEM_QUANTITY),
+        value: safeNumber(value, 1000000),
+        currency: typeof currency === "string" ? currency.toUpperCase().slice(0, 3) : "",
+        transactionId: typeof transactionId === "string" ? transactionId.slice(0, 200) : "",
+        items: safeItems,
+        path: safeRequestPath,
+        metadata: safeMetadata,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       const aggregateUpdates: Record<string, number> = {};
+      if (type === "page_view") aggregateUpdates.pageViews = 1;
+      if (type === "cta_click") aggregateUpdates.ctaClicks = 1;
+      if (type === "collection_filter") aggregateUpdates.collectionFilters = 1;
       if (type === "product_view") aggregateUpdates.productViews = 1;
-      if (type === "add_to_cart") aggregateUpdates.addToCart = quantity || 1;
+      if (type === "product_detail_engagement") aggregateUpdates.productDetailEngagements = 1;
+      if (type === "bundle_selection") aggregateUpdates.bundleSelections = 1;
+      if (type === "add_to_cart") aggregateUpdates.addToCart = safeNumber(quantity, MAX_ITEM_QUANTITY) || 1;
       if (type === "checkout_start") aggregateUpdates.checkoutStarts = 1;
-      if (type === "newsletter_signup") aggregateUpdates.newsletterSignups = 1;
-      if (type === "contact_submission") aggregateUpdates.contactSubmissions = 1;
+      if (type === "checkout_error") aggregateUpdates.checkoutErrors = 1;
+      if (type === "inventory_error") aggregateUpdates.inventoryErrors = 1;
+      if (type === "purchase") aggregateUpdates.browserPurchaseConfirmations = 1;
+      if (type === "subscription_checkout_start") aggregateUpdates.subscriptionCheckoutStarts = 1;
+      if (type === "newsletter_signup") aggregateUpdates.browserNewsletterSignupConfirmations = 1;
+      if (type === "contact_submission") aggregateUpdates.browserContactSubmissionConfirmations = 1;
+      if (type === "review_request") aggregateUpdates.reviewRequests = 1;
+      if (type === "review_submission") aggregateUpdates.reviewSubmissions = 1;
 
       if (Object.keys(aggregateUpdates).length) {
         await incrementAnalyticsDaily(getDateKey(), aggregateUpdates);

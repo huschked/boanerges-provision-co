@@ -5,6 +5,7 @@ import { getProducts, Product } from '@/src/services/productService';
 import { ProductCard } from '@/src/components/ProductCard';
 import { cn } from '@/src/lib/utils';
 import { SHOP_CATEGORIES, shopCategory, inCollection } from '@/src/lib/merchandising';
+import { trackAnalyticsEvent } from '@/src/lib/analytics';
 
 const ProductGridSkeleton = () => (
   <div role="status" aria-live="polite" aria-label="Loading salts">
@@ -94,7 +95,10 @@ export const Shop: React.FC = () => {
             {categories.map((cat) => (
               <button
                 key={cat}
-                onClick={() => setSearchParams({ ...Object.fromEntries(searchParams), category: cat })}
+                onClick={() => {
+                  setSearchParams({ ...Object.fromEntries(searchParams), category: cat });
+                  void trackAnalyticsEvent({ type: 'collection_filter', category: cat, metadata: { control: 'category' } });
+                }}
                 aria-pressed={activeCategory === cat}
                 className={cn(
                   "min-h-11 px-5 py-2 rounded-full text-[11px] uppercase tracking-widest font-bold transition-all whitespace-nowrap",
@@ -120,6 +124,7 @@ export const Shop: React.FC = () => {
                 aria-describedby="shop-results-status"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onBlur={() => { if (searchQuery.trim()) void trackAnalyticsEvent({ type: 'collection_filter', metadata: { control: 'search', resultCount: filteredProducts.length } }); }}
                 className="w-full min-h-11 bg-white/5 border border-white/10 py-3 pl-12 pr-4 text-sm rounded-sm transition-all text-brand-parchment placeholder:text-brand-parchment/50"
               />
             </div>
@@ -127,7 +132,10 @@ export const Shop: React.FC = () => {
             <select 
               id="shop-sort"
               value={activeSort}
-              onChange={(e) => setSearchParams({ ...Object.fromEntries(searchParams), sort: e.target.value })}
+              onChange={(e) => {
+                setSearchParams({ ...Object.fromEntries(searchParams), sort: e.target.value });
+                void trackAnalyticsEvent({ type: 'collection_filter', metadata: { control: 'sort', selection: e.target.value } });
+              }}
               className="min-h-11 bg-white/5 border border-white/10 py-3 px-4 sm:px-6 text-[11px] uppercase tracking-widest font-bold rounded-sm cursor-pointer text-brand-parchment"
             >
               <option value="featured" className="bg-brand-black">Featured</option>

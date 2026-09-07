@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { MapPin, Mail } from 'lucide-react';
 import logo from '@/src/assets/brand/boanerges-stacked-lockup.png';
 import { subscribeToNewsletter } from '@/src/lib/newsletter';
+import { openCookiePreferences, trackAnalyticsEvent } from '@/src/lib/analytics';
 
 export const Footer: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -18,6 +19,7 @@ export const Footer: React.FC = () => {
     try {
       const result = await subscribeToNewsletter(email.trim(), 'footer_newsletter');
       setStatus({ type: 'success', message: result.message || 'You are subscribed to the table.' });
+      void trackAnalyticsEvent({ type: 'newsletter_signup', metadata: { source: 'footer_newsletter' } });
       setEmail('');
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to subscribe right now.' });
@@ -68,6 +70,7 @@ export const Footer: React.FC = () => {
               <li><Link to="/returns" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Returns & Refunds</Link></li>
               <li><Link to="/contact" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Contact Us</Link></li>
               <li><Link to="/privacy" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Privacy Policy</Link></li>
+              <li><button type="button" onClick={openCookiePreferences} className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Cookie Choices</button></li>
               <li><Link to="/terms" className="text-sm text-brand-parchment/80 hover:text-brand-gold transition-colors">Terms of Service</Link></li>
             </ul>
           </div>

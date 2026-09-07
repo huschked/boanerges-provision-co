@@ -10,6 +10,7 @@ import spicyCategoryImage from '@/src/assets/category-spicy.png';
 import savoryCategoryImage from '@/src/assets/category-savory.png';
 import herbalCategoryImage from '@/src/assets/category-herbal.png';
 import { subscribeToNewsletter } from '@/src/lib/newsletter';
+import { trackAnalyticsEvent } from '@/src/lib/analytics';
 
 export const Home: React.FC = () => {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
@@ -40,6 +41,7 @@ export const Home: React.FC = () => {
     setSubscribeError('');
     try {
       await subscribeToNewsletter(email, 'home_newsletter');
+      void trackAnalyticsEvent({ type: 'newsletter_signup', metadata: { source: 'home_newsletter' } });
       setSubmitted(true);
       setEmail('');
     } catch (error) {
@@ -99,12 +101,14 @@ export const Home: React.FC = () => {
           >
             <Link 
               to="/shop" 
+              onClick={() => void trackAnalyticsEvent({ type: 'cta_click', metadata: { placement: 'home_hero', destination: '/shop', label: 'shop_collection' } })}
               className="w-full sm:w-auto px-16 py-6 bg-brand-gold text-brand-black text-[13px] uppercase tracking-[0.3em] font-black hover:bg-brand-parchment transition-all duration-500 shadow-2xl hover:-translate-y-1"
             >
               Shop the Collection
             </Link>
             <Link 
               to="/shop?category=Featured"
+              onClick={() => void trackAnalyticsEvent({ type: 'cta_click', metadata: { placement: 'home_hero', destination: '/shop?category=Featured', label: 'featured_salts' } })}
               className="w-full sm:w-auto px-16 py-6 border border-brand-gold/50 text-brand-gold text-[13px] uppercase tracking-[0.3em] font-black hover:bg-brand-gold hover:text-brand-black transition-all duration-500 hover:-translate-y-1"
             >
               Explore Featured Salts
@@ -152,6 +156,7 @@ export const Home: React.FC = () => {
             </div>
             <Link 
               to="/shop" 
+              onClick={() => void trackAnalyticsEvent({ type: 'cta_click', metadata: { placement: 'featured_products', destination: '/shop', label: 'view_all_products' } })}
               className="text-[12px] uppercase tracking-[0.25em] text-brand-black font-black flex items-center gap-3 group border-b border-brand-black/10 pb-1"
             >
               View All Products
@@ -261,6 +266,7 @@ export const Home: React.FC = () => {
               <Link 
                 key={i} 
                 to={`/shop?category=${cat.cat}`}
+                onClick={() => void trackAnalyticsEvent({ type: 'collection_filter', category: cat.cat, metadata: { source: 'home_category_card' } })}
                 className="group relative aspect-[3/4] overflow-hidden rounded-sm"
               >
                 <img 

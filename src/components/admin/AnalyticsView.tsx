@@ -79,9 +79,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ orders, products, 
           </label>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-brand-parchment/45">
-          <p>Built only from Firestore collections currently used by the app: orders, products, subscribers, and contact messages.</p>
-          <p>Storefront event instrumentation is now collecting product views, add-to-cart actions, checkout starts, and newsletter signups for future insight layers.</p>
-          <p>Some cards will stay empty until more shipping, bundle, or repeat-customer history accumulates in the live store.</p>
+          <p>This admin view uses first-party Firestore orders, products, subscribers, and contact messages. Paid-order records remain the source of truth for revenue.</p>
+          <p>GA4 owns traffic and storefront-funnel reporting. Meta owns advertising attribution and campaign optimization; those provider totals are not interchangeable with this operational view.</p>
+          <p>Some cards will stay empty until more shipping, bundle, or repeat-customer history accumulates. Optional provider tracking also depends on each visitor’s cookie choices.</p>
         </div>
       </section>
 

@@ -170,6 +170,28 @@ export function registerReviewRoutes(app: Express, deps: Dependencies) {
         const text = `How was ${data.productName}?\nShare your honest experience: ${url}\nYour review is optional, not incentivized, and will be moderated before publication. All ratings are welcome.\nStop review invitations: ${optOut}\n${postal}\nQuestions or edits: support@boanergesprovisions.com`;
         const providerId = await deps.send({ to: data.email, subject: `How was your ${data.productName}?`, text, html: `<div style="font-family:Arial,sans-serif;line-height:1.6;max-width:600px;margin:auto"><h1>How was ${escape(data.productName)}?</h1><p>We would love your honest feedback. All ratings are welcome. Reviews are optional, not incentivized, and moderated before publication.</p><p><a href="${escape(url)}">Review your purchase</a></p><p>Please do not forward this private link. It expires in 60 days.</p><hr><p><a href="${escape(optOut)}">Unsubscribe from review invitations</a></p><p>${escape(postal)}</p><p>Questions or edits: support@boanergesprovisions.com</p></div>` }, `review-request-${invite.id}`);
         await invite.ref.update({ status: 'sent', providerId, sentAt: FieldValue.serverTimestamp() });
+        const dateKey = new Date().toISOString().slice(0, 10);
+        await Promise.all([
+          db.collection('analytics_events').doc(randomUUID()).set({
+            type: 'review_request',
+            productId: data.productId,
+            productName: data.productName,
+            category: '',
+            quantity: 1,
+            value: 0,
+            currency: '',
+            transactionId: '',
+            items: [],
+            path: '',
+            metadata: { source: 'post_delivery_email' },
+            createdAt: FieldValue.serverTimestamp(),
+          }),
+          db.collection('analytics_daily').doc(dateKey).set({
+            dateKey,
+            reviewRequests: FieldValue.increment(1),
+            updatedAt: FieldValue.serverTimestamp(),
+          }, { merge: true }),
+        ]).catch(error => console.error('Review analytics could not be recorded:', error.message));
         sent++;
       } catch {
         // A timeout could mean the provider accepted the message. Never blindly resend.
