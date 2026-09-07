@@ -151,7 +151,7 @@ This board is the working queue for website development. Keep cards actionable e
   - The password is validated only on the server and never shipped in browser code; successful access uses a signed, HTTP-only, expiring cookie and failed attempts are rate-limited.
   - Catalog and commerce APIs fail closed while locked, including protection against CDN-cached bundle or subscription responses.
   - Public Firestore product reads cannot bypass the gate; the storefront receives publish-ready products through guarded server endpoints while authenticated Admin access continues.
-  - Stripe, Shippo, and Resend webhooks, cron workers, Admin, legal pages, newsletter signup, and signed customer-service links remain operational.
+  - Stripe, Shippo, and Resend webhooks, cron workers, Admin, legal pages, newsletter signup, checkout confirmation, and signed customer-service links remain operational.
   - Search engines receive a noindex directive while the public gate is displayed.
   - Disabling the gate requires only deployment configuration and a redeploy.
 - **Verification:**

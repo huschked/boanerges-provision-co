@@ -8,6 +8,7 @@ export const PRELAUNCH_SESSION_MS = 12 * 60 * 60 * 1000;
 const publicApiPaths = new Set([
   '/api/order-status',
   '/api/email-preferences',
+  '/api/checkout/session-status',
   '/api/subscriptions/portal',
   '/api/subscribers',
 ]);

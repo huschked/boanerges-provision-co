@@ -48,7 +48,11 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const location = useLocation();
   const isAdminPage = location.pathname.startsWith('/admin');
-  const bypassPrelaunch = isAdminPage || ['/order-status', '/email-preferences', '/review', '/privacy', '/terms'].includes(location.pathname);
+  const isCheckoutSuccessPage = ['/checkout/success', '/checkout-success', '/success']
+    .some(path => location.pathname === path || location.pathname.startsWith(`${path}/`));
+  const bypassPrelaunch = isAdminPage
+    || isCheckoutSuccessPage
+    || ['/order-status', '/email-preferences', '/review', '/privacy', '/terms'].includes(location.pathname);
   const wasAdminPage = useRef(isAdminPage);
 
   useEffect(() => {

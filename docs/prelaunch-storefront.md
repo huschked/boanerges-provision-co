@@ -36,9 +36,9 @@ The gate deliberately allows these operational routes while enabled:
 - Scheduled jobs
 - Authenticated Admin APIs
 - Signed order status, subscription portal, email preference, and review routes
+- Stripe checkout-success verification
 - Newsletter signup
 
 ## Launch
 
 Set `PRELAUNCH_MODE=false` in Vercel Production and redeploy. Verify the public storefront in an incognito window. The password may then be removed or rotated; keeping the variable while the mode is false does not enable the gate.
-

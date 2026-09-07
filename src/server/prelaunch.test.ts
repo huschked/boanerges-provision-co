@@ -34,6 +34,7 @@ test('prelaunch HTTP guard blocks storefront APIs and unlocks with an HttpOnly c
   registerPrelaunchProtection(app);
   app.get('/api/products', (_request, response) => response.json([{ id: 'salt' }]));
   app.post('/api/subscribers', (_request, response) => response.status(201).json({ success: true }));
+  app.get('/api/checkout/session-status', (_request, response) => response.json({ paymentStatus: 'paid' }));
   app.get('/api/subscribers-private', (_request, response) => response.json({ exposed: true }));
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
@@ -42,6 +43,7 @@ test('prelaunch HTTP guard blocks storefront APIs and unlocks with an HttpOnly c
     assert.deepEqual(await (await fetch(`${base}/api/prelaunch/status`)).json(), { enabled: true, unlocked: false });
     assert.equal((await fetch(`${base}/api/products`)).status, 423);
     assert.equal((await fetch(`${base}/api/subscribers`, { method: 'POST' })).status, 201, 'coming-soon signup remains available');
+    assert.equal((await fetch(`${base}/api/checkout/session-status?session_id=cs_test_return`)).status, 200, 'Stripe return verification remains available');
     assert.equal((await fetch(`${base}/api/subscribers-private`)).status, 423, 'allowlisted paths require an exact match');
     assert.equal((await fetch(`${base}/api/prelaunch/unlock`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: 'wrong' }) })).status, 401);
     const unlocked = await fetch(`${base}/api/prelaunch/unlock`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: process.env.PRELAUNCH_PASSWORD }) });
