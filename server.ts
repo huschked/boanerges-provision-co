@@ -2663,10 +2663,13 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       const aggregateSpec = { orderCount: AggregateField.count(), revenue: AggregateField.sum("totalAmount") };
       const [lifetimeSnapshot, periodSnapshot] = await Promise.all([
         db.collection("orders").aggregate(aggregateSpec).get(),
-        db.collection("orders").where("createdAt", ">=", periodStart).aggregate(aggregateSpec).get(),
+        db.collection("orders").where("createdAt", ">=", periodStart).select("totalAmount").get(),
       ]);
       const lifetime = lifetimeSnapshot.data();
-      const period = periodSnapshot.data();
+      const period = {
+        orderCount: periodSnapshot.size,
+        revenue: periodSnapshot.docs.reduce((total, document) => total + Number(document.data().totalAmount || 0), 0),
+      };
       res.set("Cache-Control", "private, no-store, max-age=0");
       res.json(buildAdminOrderSummary(lifetime, period));
     } catch (error) {

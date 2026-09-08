@@ -115,7 +115,11 @@ export const Admin: React.FC = () => {
       const [recentPage, searchedPage, orderSummary] = await Promise.all([
         getAdminOrdersPage<Order>({ limit: 50 }),
         orderSearchTerm.trim() ? getAdminOrdersPage<Order>({ search: orderSearchTerm, limit: 50 }) : Promise.resolve(null),
-        getAdminOrderSummary(),
+        getAdminOrderSummary().catch(error => {
+          console.error('Error fetching order totals:', error);
+          setAdminDataError('Orders loaded, but lifetime and 30-day totals are temporarily unavailable. Retry after checking the server logs.');
+          return null;
+        }),
       ]);
       const normalizedRecentOrders = normalizeAdminOrders(recentPage.orders);
       const activePage = searchedPage || recentPage;
@@ -129,15 +133,15 @@ export const Admin: React.FC = () => {
       const msgSnap = await getDocs(query(collection(db, 'contact_messages'), orderBy('createdAt', 'desc'), limit(300)));
       setMessages(msgSnap.docs.map((snapshot) => ({ id: snapshot.id, ...snapshot.data() } as ContactMessage)));
 
-      setStats({
-        revenue: orderSummary.lifetime.revenue,
-        orderCount: orderSummary.lifetime.orderCount,
-        periodRevenue: orderSummary.period.revenue,
-        periodOrderCount: orderSummary.period.orderCount,
-        periodDays: orderSummary.period.days,
+      setStats(current => ({
+        revenue: orderSummary?.lifetime.revenue ?? current.revenue,
+        orderCount: orderSummary?.lifetime.orderCount ?? current.orderCount,
+        periodRevenue: orderSummary?.period.revenue ?? current.periodRevenue,
+        periodOrderCount: orderSummary?.period.orderCount ?? current.periodOrderCount,
+        periodDays: orderSummary?.period.days ?? current.periodDays,
         productCount: pData.length,
         lowStock: pData.filter((product) => product.currentInventory < (product.reorderThreshold || 10)).length,
-      });
+      }));
       hasLoadedAdminDataRef.current = true;
     } catch (error) {
       console.error('Error fetching admin data:', error);
