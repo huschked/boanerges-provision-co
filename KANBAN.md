@@ -74,20 +74,6 @@ This board is the working queue for website development. Keep cards actionable e
   - Run `npm run build` and inspect generated chunk sizes.
 - **Notes / Links:** Relevant files include `src/components/admin/DashboardView.tsx` and `src/App.tsx`.
 
-### WEB-008 - Confirm Production Firebase Auth Domains
-
-- **Priority:** Medium
-- **Area:** infra
-- **Goal:** Confirm deployed app URLs are authorized for Firebase Google sign-in.
-- **Acceptance Criteria:**
-  - Production and preview domains are listed in Firebase Auth authorized domains.
-  - `.env.example` and launch notes describe which app URL values must match deployment.
-  - Any auth-domain mismatch behavior is documented for troubleshooting.
-- **Verification:**
-  - Browser-check Google sign-in on `/admin` in the deployed environment.
-  - Confirm Firebase console authorized domains match `APP_URL` and any preview URL.
-- **Notes / Links:** The admin UI uses Google popup sign-in and checks `users/{uid}.role === "admin"`.
-
 ### WEB-006 - Launch Readiness Pass
 
 - **Priority:** Medium
@@ -126,6 +112,23 @@ This board is the working queue for website development. Keep cards actionable e
 ## In Progress
 
 ## Review / Verify
+
+### WEB-008 - Confirm Production Firebase Auth Domains
+
+- **Status:** Review / Verify — repository configuration and troubleshooting guidance are complete; awaiting Firebase Console configuration and deployed sign-in verification.
+- **Priority:** Medium
+- **Area:** infra
+- **Goal:** Confirm deployed app URLs are authorized for Firebase Google sign-in.
+- **Acceptance Criteria:**
+  - Production and preview domains are listed in Firebase Auth authorized domains.
+  - `.env.example` and launch notes describe which app URL values must match deployment.
+  - Any auth-domain mismatch behavior is documented for troubleshooting.
+- **Verification:**
+  - Browser-check Google sign-in on `/admin` in the deployed environment.
+  - Confirm Firebase console authorized domains match `APP_URL` and any preview URL.
+- **Implementation Results:** Preserved the correct Firebase-managed auth handler, documented the exact production/root/stable-preview hostnames, clarified canonical `APP_URL` configuration, and added hostname-specific diagnostics for unauthorized-domain, provider, popup, and network failures.
+- **Verification Results:** TypeScript validation and focused Firebase authentication diagnostic tests pass. Owner must complete the Firebase Console hostname entries and deployed Admin sign-in check.
+- **Notes / Links:** Follow `docs/firebase-auth-domains.md`. Domain authorization permits the OAuth flow but does not grant Admin privileges; `users/{uid}.role === "admin"` remains required.
 
 ### WEB-021 - Add Consistent Order References and Fulfillment Copy
 

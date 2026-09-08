@@ -20,6 +20,7 @@ import { SubscriptionsView } from '../components/admin/SubscriptionsView';
 import { ReviewsView } from '../components/admin/ReviewsView';
 import { normalizeOrderLifecycle } from '@/src/lib/orderLifecycle';
 import { orderReference } from '@/src/lib/orderReference';
+import { firebaseAuthErrorMessage } from '@/src/lib/firebaseAuthError';
 
 type AdminTab = 'dashboard' | 'analytics' | 'products' | 'bundles' | 'subscriptions' | 'orders' | 'subscribers' | 'contact' | 'reviews';
 
@@ -198,10 +199,7 @@ export const Admin: React.FC = () => {
       await signInWithPopup(auth, provider);
     } catch (error: any) {
       console.error('Login error:', error);
-      const message =
-        error?.code === 'auth/unauthorized-domain'
-          ? 'This domain is not authorized for Firebase Google sign-in yet.'
-          : 'Unable to start Google sign-in.';
+      const message = firebaseAuthErrorMessage(error, window.location.hostname);
       setAuthError(message);
       toast.error(message);
     }
