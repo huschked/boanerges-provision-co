@@ -8,7 +8,7 @@ import { fileURLToPath } from "url";
 import Stripe from "stripe";
 import { Resend } from "resend";
 import admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
+import { AggregateField, getFirestore } from "firebase-admin/firestore";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
@@ -24,6 +24,7 @@ import { ORDER_DELIVERY_ESTIMATE_TEXT, ORDER_DELIVERY_MAX_BUSINESS_DAYS, ORDER_D
 import { createProductSnapshot, isProductPublishReady } from "./src/lib/productCatalog.js";
 import { resolveBundle, type BundleDefinition, type BundleProduct } from "./src/lib/bundleCommerce.js";
 import { isPrelaunchEnabled, registerPrelaunchProtection } from "./src/server/prelaunch.js";
+import { AdminOrderCursorError, buildAdminOrderSummary, createAdminOrderCursor, matchesAdminOrderSearch, parseAdminOrderCursor } from "./src/server/adminOrderQuery.js";
 
 dotenv.config();
 
@@ -2324,6 +2325,17 @@ async function getActiveResolvedBundles() {
   });
 }
 
+function serializeAdminOrderValue(value: unknown): unknown {
+  if (value instanceof admin.firestore.Timestamp) {
+    return { seconds: value.seconds, nanoseconds: value.nanoseconds };
+  }
+  if (Array.isArray(value)) return value.map(serializeAdminOrderValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, nested]) => [key, serializeAdminOrderValue(nested)]));
+  }
+  return value;
+}
+
 export async function createApp({ serveFrontend = false }: { serveFrontend?: boolean } = {}) {
   const app = express();
   const PORT = 3000;
@@ -2590,6 +2602,79 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
   });
 
   app.use("/api/checkout/create-session", checkoutLimiter);
+
+  app.get("/api/admin/orders", async (req, res) => {
+    try {
+      await authenticateAdmin(req);
+      const requestedLimit = Number(req.query.limit || 50);
+      if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 100) {
+        throw new AdminCommandError(400, "Order page size must be between 1 and 100.", "invalid_page_size");
+      }
+      const search = normalizedCommandValue(req.query.search, "search", 120);
+      const cursorValue = normalizedCommandValue(req.query.cursor, "cursor", 1000);
+      let cursorSnapshot: FirebaseFirestore.DocumentSnapshot | undefined;
+      if (cursorValue) {
+        const cursor = parseAdminOrderCursor(cursorValue);
+        const snapshot = await db.collection("orders").doc(cursor.orderId).get();
+        if (!snapshot.exists) throw new AdminOrderCursorError("expired_cursor");
+        cursorSnapshot = snapshot;
+      }
+
+      const matches: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+      let exhausted = false;
+      let scanAfter = cursorSnapshot;
+      const scanSize = Math.max(100, requestedLimit + 1);
+      while (matches.length < requestedLimit + 1 && !exhausted) {
+        let ordersQuery: FirebaseFirestore.Query = db.collection("orders").orderBy("createdAt", "desc");
+        if (scanAfter) ordersQuery = ordersQuery.startAfter(scanAfter);
+        const snapshot = await ordersQuery.limit(scanSize).get();
+        exhausted = snapshot.size < scanSize;
+        for (const document of snapshot.docs) {
+          const order = document.data();
+          if (matchesAdminOrderSearch({ id: document.id, ...order, orderReference: orderReference(document.id, order.orderReference) }, search)) matches.push(document);
+          if (matches.length >= requestedLimit + 1) break;
+        }
+        scanAfter = snapshot.docs.at(-1);
+        if (snapshot.empty) exhausted = true;
+      }
+
+      const page = matches.slice(0, requestedLimit);
+      const hasMore = matches.length > requestedLimit;
+      res.set("Cache-Control", "private, no-store, max-age=0");
+      res.json({
+        orders: page.map(document => serializeAdminOrderValue({ id: document.id, ...document.data() })),
+        nextCursor: hasMore && page.length ? createAdminOrderCursor(page.at(-1)!.id) : null,
+        hasMore,
+      });
+    } catch (error) {
+      if (error instanceof AdminOrderCursorError) {
+        return res.status(error.code === "expired_cursor" ? 410 : 400).json({ error: error.message, code: error.code });
+      }
+      const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "Orders could not be loaded.", "order_query_failed");
+      console.error("Admin order query error:", error);
+      return res.status(commandError.status).json({ error: commandError.message, code: commandError.code });
+    }
+  });
+
+  app.get("/api/admin/order-summary", async (req, res) => {
+    try {
+      await authenticateAdmin(req);
+      const periodStart = admin.firestore.Timestamp.fromMillis(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const aggregateSpec = { orderCount: AggregateField.count(), revenue: AggregateField.sum("totalAmount") };
+      const [lifetimeSnapshot, periodSnapshot] = await Promise.all([
+        db.collection("orders").aggregate(aggregateSpec).get(),
+        db.collection("orders").where("createdAt", ">=", periodStart).aggregate(aggregateSpec).get(),
+      ]);
+      const lifetime = lifetimeSnapshot.data();
+      const period = periodSnapshot.data();
+      res.set("Cache-Control", "private, no-store, max-age=0");
+      res.json(buildAdminOrderSummary(lifetime, period));
+    } catch (error) {
+      const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "Order totals could not be loaded.", "order_summary_failed");
+      console.error("Admin order summary error:", error);
+      res.status(commandError.status).json({ error: commandError.message, code: commandError.code });
+    }
+  });
 
   app.post("/api/admin/orders/:orderId/shipping/quote", async (req, res) => {
     const debugTrace: ShippoDebugEntry[] | undefined = SHIPPO_DEBUG ? [] : undefined;

@@ -60,21 +60,6 @@ This board is the working queue for website development. Keep cards actionable e
   - Verify a partial batch failure does not incorrectly update successful or untouched orders.
 - **Notes / Links:** Depends on WEB-009 and WEB-012; consumes exception data from WEB-013 and printable documents from WEB-017 without redefining either workflow. Relevant files include `src/components/admin/OrdersView.tsx` and `src/pages/Admin.tsx`.
 
-### WEB-019 - Add Server-Side Order Search and Pagination
-
-- **Priority:** Medium
-- **Area:** admin
-- **Goal:** Ensure older orders remain searchable and dashboard totals do not depend on the newest 300 documents loaded in the browser.
-- **Acceptance Criteria:**
-  - Order results use cursor pagination with clear previous/next or load-more behavior.
-  - Server-side lookup supports order reference, normalized email, customer name, and tracking number.
-  - Dashboard lifetime and period totals come from aggregate data rather than the current result page.
-  - Loading, empty, expired-cursor, and query-failure states are clear.
-- **Verification:**
-  - Test with more than 300 seeded orders and confirm the oldest order is discoverable.
-  - Compare aggregate counts and revenue against known fixture totals.
-- **Notes / Links:** Current loading is capped in `src/pages/Admin.tsx`.
-
 ### WEB-006 - Launch Readiness Pass
 
 - **Priority:** Medium
@@ -114,9 +99,29 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
+### WEB-019 - Add Server-Side Order Search and Pagination
+
+- **Status:** Review / Verify — implementation and automated verification are complete; awaiting deployed Admin verification with production Firestore data.
+- **Priority:** Medium
+- **Area:** admin
+- **Goal:** Ensure older orders remain searchable and dashboard totals do not depend on the newest 300 documents loaded in the browser.
+- **Acceptance Criteria:**
+  - Order results use cursor pagination with clear previous/next or load-more behavior.
+  - Server-side lookup supports order reference, normalized email, customer name, and tracking number.
+  - Dashboard lifetime and period totals come from aggregate data rather than the current result page.
+  - Loading, empty, expired-cursor, and query-failure states are clear.
+- **Verification:**
+  - Test with more than 300 seeded orders and confirm the oldest order is discoverable.
+  - Compare aggregate counts and revenue against known fixture totals.
+- **Implementation Results:** Replaced the browser's capped order query with authenticated server endpoints for normalized multi-field search, 50-order cursor pages, and complete-collection lifetime and rolling 30-day aggregates. Added load-more, loading, empty, query-failure, retry, and expired-cursor recovery states. Legacy order references are derived during search, so older records do not require a backfill.
+- **Verification Results:** TypeScript validation passes; all 76 automated tests pass, including a 350-order legacy-search fixture, cursor expiry coverage, and known aggregate-total mapping; the production build passes.
+- **Notes / Links:** Deployed verification should compare the dashboard lifetime and last-30-day cards with Firestore/known totals, search an order beyond the former 300-order boundary by reference/email/name/tracking, load multiple pages, and confirm a no-result search and retry state are understandable.
+
+## Done
+
 ### WEB-046 - Add Reusable Storefront Image Performance Infrastructure
 
-- **Status:** Review / Verify — reusable infrastructure and automated checks are complete; awaiting deployed/private storefront route verification.
+- **Status:** Done — owner confirmed the deployed responsive-image behavior and protected storefront routes are verified.
 - **Priority:** Medium
 - **Area:** storefront | performance
 - **Goal:** Make storefront images responsive, layout-stable, and straightforward to optimize when final photography replaces temporary artwork.
@@ -130,10 +135,8 @@ This board is the working queue for website development. Keep cards actionable e
   - Run TypeScript validation, automated tests, the production build, and the image asset audit.
   - Browser-check the homepage, shop, product detail, bundles, recipes, About, and Coming Soon pages at desktop and mobile widths.
 - **Implementation Results:** Added a reusable `ResponsiveImage` component with AVIF/WebP source-set support, compatible fallback markup, intrinsic dimensions, responsive `sizes`, async decoding, native lazy loading, and explicit hero priority. Applied it to high-impact Home, shop/product-card, product-detail, bundles, recipes, About, and Coming Soon media. Added Sharp-based `images:optimize` generation, a non-destructive `images:audit` command with strict launch mode, documented budgets, and a final-photography replacement checklist.
-- **Verification Results:** TypeScript validation, all 72 automated tests, and the production build pass. A converter smoke test generated valid 64 px and 180 px AVIF/WebP variants without altering the source. The audit currently identifies 26 temporary assets above 500 kB as expected. Desktop and 390×844 Coming Soon checks confirm intrinsic dimensions, correct priority behavior, complete image loading, and no horizontal overflow.
-- **Notes / Links:** The local static preview cannot unlock protected catalog routes without deployment secrets. Owner verification should cover Home, shop, product detail, bundles, recipes, and About after deployment. Before launch, every final replacement must follow `docs/image-performance.md` and pass `npm run images:audit -- --strict`.
-
-## Done
+- **Verification Results:** TypeScript validation, all 72 automated tests, and the production build pass. A converter smoke test generated valid 64 px and 180 px AVIF/WebP variants without altering the source. The audit currently identifies 26 temporary assets above 500 kB as expected. Desktop and 390×844 Coming Soon checks confirm intrinsic dimensions, correct priority behavior, complete image loading, and no horizontal overflow. Owner confirmed the deployed responsive-image behavior across the protected storefront routes works as expected.
+- **Notes / Links:** Before launch, every final replacement must follow `docs/image-performance.md` and pass `npm run images:audit -- --strict`.
 
 ### WEB-023 - Replace Placeholder Admin Metrics and Optimize App Bundles
 

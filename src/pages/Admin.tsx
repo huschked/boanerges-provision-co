@@ -13,8 +13,8 @@ import type { OrderQueueFilter } from '../components/admin/OrdersView';
 import type { Subscriber } from '../components/admin/SubscribersView';
 import type { ContactMessage } from '../components/admin/MessagesView';
 import { normalizeOrderLifecycle } from '@/src/lib/orderLifecycle';
-import { orderReference } from '@/src/lib/orderReference';
 import { firebaseAuthErrorMessage } from '@/src/lib/firebaseAuthError';
+import { AdminOrderApiError, getAdminOrderSummary, getAdminOrdersPage } from '@/src/lib/adminOrders';
 
 type AdminTab = 'dashboard' | 'analytics' | 'products' | 'bundles' | 'subscriptions' | 'orders' | 'subscribers' | 'contact' | 'reviews';
 
@@ -37,6 +37,14 @@ function AdminViewLoading() {
   );
 }
 
+function normalizeAdminOrders(values: Order[]) {
+  return values.map(order => ({
+    ...order,
+    totalAmount: order.totalAmount ?? (order as Order & { total?: number }).total ?? 0,
+    ...normalizeOrderLifecycle({ ...order }),
+  }));
+}
+
 export const Admin: React.FC = () => {
   const ADMIN_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
   const initialParams = typeof window === 'undefined' ? new URLSearchParams() : new URLSearchParams(window.location.search);
@@ -55,11 +63,46 @@ export const Admin: React.FC = () => {
   const [adminDataError, setAdminDataError] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [orderNextCursor, setOrderNextCursor] = useState<string | null>(null);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersLoadingMore, setOrdersLoadingMore] = useState(false);
+  const [ordersQueryError, setOrdersQueryError] = useState<string | null>(null);
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [messages, setMessages] = useState<ContactMessage[]>([]);
-  const [stats, setStats] = useState({ revenue: 0, orderCount: 0, productCount: 0, lowStock: 0 });
+  const [stats, setStats] = useState({ revenue: 0, orderCount: 0, periodRevenue: 0, periodOrderCount: 0, periodDays: 30, productCount: 0, lowStock: 0 });
   const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasLoadedAdminDataRef = useRef(false);
+  const orderQueryRequestRef = useRef(0);
+
+  const loadOrderResults = async (search: string, cursor = '', append = false) => {
+    const requestId = ++orderQueryRequestRef.current;
+    append ? setOrdersLoadingMore(true) : setOrdersLoading(true);
+    setOrdersQueryError(null);
+    try {
+      const page = await getAdminOrdersPage<Order>({ search, cursor, limit: 50 });
+      if (requestId !== orderQueryRequestRef.current) return;
+      const normalizedOrders = normalizeAdminOrders(page.orders);
+      setOrders(current => append ? [...current, ...normalizedOrders.filter(order => !current.some(existing => existing.id === order.id))] : normalizedOrders);
+      setOrderNextCursor(page.nextCursor);
+    } catch (error) {
+      const expired = error instanceof AdminOrderApiError && error.code === 'expired_cursor';
+      setOrdersQueryError(expired
+        ? 'This result page expired. The order search has been restarted from the newest matching order.'
+        : 'Orders could not be loaded. Retry the query without losing the rest of the admin workspace.');
+      if (expired) {
+        const firstPage = await getAdminOrdersPage<Order>({ search, limit: 50 });
+        if (requestId !== orderQueryRequestRef.current) return;
+        setOrders(normalizeAdminOrders(firstPage.orders));
+        setOrderNextCursor(firstPage.nextCursor);
+      }
+    } finally {
+      if (requestId === orderQueryRequestRef.current) {
+        setOrdersLoading(false);
+        setOrdersLoadingMore(false);
+      }
+    }
+  };
 
   const fetchData = async () => {
     setIsRefreshing(true);
@@ -69,18 +112,16 @@ export const Admin: React.FC = () => {
       const pData = await getAllProducts();
       setProducts(pData);
 
-      const ordersSnap = await getDocs(query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(300)));
-      const oData = ordersSnap.docs.map((snapshot) => {
-        const data = snapshot.data();
-        const lifecycle = normalizeOrderLifecycle(data);
-        return {
-          id: snapshot.id,
-          ...data,
-          totalAmount: data.totalAmount ?? data.total ?? 0,
-          ...lifecycle,
-        } as Order;
-      });
-      setOrders(oData);
+      const [recentPage, searchedPage, orderSummary] = await Promise.all([
+        getAdminOrdersPage<Order>({ limit: 50 }),
+        orderSearchTerm.trim() ? getAdminOrdersPage<Order>({ search: orderSearchTerm, limit: 50 }) : Promise.resolve(null),
+        getAdminOrderSummary(),
+      ]);
+      const normalizedRecentOrders = normalizeAdminOrders(recentPage.orders);
+      const activePage = searchedPage || recentPage;
+      setRecentOrders(normalizedRecentOrders);
+      setOrders(searchedPage ? normalizeAdminOrders(searchedPage.orders) : normalizedRecentOrders);
+      setOrderNextCursor(activePage.nextCursor);
 
       const subSnap = await getDocs(query(collection(db, 'subscribers'), orderBy('createdAt', 'desc'), limit(300)));
       setSubscribers(subSnap.docs.map((snapshot) => ({ ...snapshot.data(), id: snapshot.id } as Subscriber)));
@@ -89,8 +130,11 @@ export const Admin: React.FC = () => {
       setMessages(msgSnap.docs.map((snapshot) => ({ id: snapshot.id, ...snapshot.data() } as ContactMessage)));
 
       setStats({
-        revenue: oData.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0),
-        orderCount: oData.length,
+        revenue: orderSummary.lifetime.revenue,
+        orderCount: orderSummary.lifetime.orderCount,
+        periodRevenue: orderSummary.period.revenue,
+        periodOrderCount: orderSummary.period.orderCount,
+        periodDays: orderSummary.period.days,
         productCount: pData.length,
         lowStock: pData.filter((product) => product.currentInventory < (product.reorderThreshold || 10)).length,
       });
@@ -204,6 +248,14 @@ export const Admin: React.FC = () => {
     };
   }, [isAdmin]);
 
+  useEffect(() => {
+    if (!isAdmin || !hasLoadedAdminDataRef.current) return;
+    const timeout = window.setTimeout(() => {
+      void loadOrderResults(orderSearchTerm.trim());
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [isAdmin, orderSearchTerm]);
+
   const handleLogin = async () => {
     const provider = new GoogleAuthProvider();
     try {
@@ -226,23 +278,6 @@ export const Admin: React.FC = () => {
     await signOut(auth);
   };
 
-  const normalizedOrderSearchTerm = orderSearchTerm.trim().toLowerCase();
-  const filteredOrders = orders.filter((order) =>
-    !normalizedOrderSearchTerm ||
-    (order.id || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
-    orderReference(order.id, order.orderReference).toLowerCase().includes(normalizedOrderSearchTerm) ||
-    (order.customerEmail || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
-    (order.customerName || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
-    (order.customerPhone || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
-    (order.paymentStatus || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
-    (order.fulfillmentStatus || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
-    (order.shipmentStatus || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
-    [order.shippingAddress?.line1, order.shippingAddress?.city, order.shippingAddress?.state, order.shippingAddress?.postalCode]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-      .includes(normalizedOrderSearchTerm)
-  );
   const normalizedAudienceSearchTerm = audienceSearchTerm.trim().toLowerCase();
   const filteredSubscribers = subscribers.filter((subscriber) =>
     !normalizedAudienceSearchTerm ||
@@ -398,18 +433,18 @@ export const Admin: React.FC = () => {
           {activeTab === 'dashboard' && (
             <DashboardView
               stats={stats}
-              orders={orders}
+              orders={recentOrders}
               products={products}
               onViewOrders={(queue = 'all') => { setOrderQueue(queue); setActiveTab('orders'); }}
               onManageInventory={() => setActiveTab('products')}
             />
           )}
-          {activeTab === 'analytics' && <AnalyticsView orders={orders} products={products} subscribers={subscribers} messages={messages} />}
+          {activeTab === 'analytics' && <AnalyticsView orders={recentOrders} products={products} subscribers={subscribers} messages={messages} />}
           {activeTab === 'products' && <ProductsView products={products} onRefresh={fetchData} />}
           {activeTab === 'bundles' && <BundlesView products={products} refreshRevision={refreshRevision} />}
           {activeTab === 'subscriptions' && <SubscriptionsView refreshRevision={refreshRevision} />}
           {activeTab === 'reviews' && <ReviewsView refreshRevision={refreshRevision} />}
-          {activeTab === 'orders' && <OrdersView orders={filteredOrders} onRefresh={fetchData} searchTerm={orderSearchTerm} onSearchTermChange={setOrderSearchTerm} queueFilter={orderQueue} onQueueFilterChange={setOrderQueue} initialSelectedOrderId={initialOrderId} refreshRevision={refreshRevision} />}
+          {activeTab === 'orders' && <OrdersView orders={orders} onRefresh={fetchData} searchTerm={orderSearchTerm} onSearchTermChange={setOrderSearchTerm} queueFilter={orderQueue} onQueueFilterChange={setOrderQueue} initialSelectedOrderId={initialOrderId} refreshRevision={refreshRevision} isLoading={ordersLoading} isLoadingMore={ordersLoadingMore} hasMore={Boolean(orderNextCursor)} queryError={ordersQueryError} onRetry={() => void loadOrderResults(orderSearchTerm.trim())} onLoadMore={() => orderNextCursor && void loadOrderResults(orderSearchTerm.trim(), orderNextCursor, true)} />}
           {activeTab === 'subscribers' && <SubscribersView subscribers={filteredSubscribers} />}
           {activeTab === 'contact' && <MessagesView messages={filteredMessages} onRefresh={fetchData} />}
           </React.Suspense>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ChevronDown, Search, PackageSearch, Mail, Phone, MapPin, Printer, ListChecks, Copy } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronDown, Search, PackageSearch, Mail, Phone, MapPin, Printer, ListChecks, Copy, Loader2 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { cn } from '@/src/lib/utils';
 import { AdminOrderApiError, runOrderCommand, type FulfillmentOperation } from '@/src/lib/adminOrders';
@@ -23,6 +23,12 @@ interface OrdersViewProps {
   onQueueFilterChange: (value: OrderQueueFilter) => void;
   initialSelectedOrderId?: string;
   refreshRevision?: number;
+  isLoading?: boolean;
+  isLoadingMore?: boolean;
+  hasMore?: boolean;
+  queryError?: string | null;
+  onRetry?: () => void;
+  onLoadMore?: () => void;
 }
 
 const formatAddress = (address: Order['shippingAddress']) => {
@@ -33,7 +39,7 @@ const formatAddress = (address: Order['shippingAddress']) => {
     .join('\n');
 };
 
-export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searchTerm, onSearchTermChange, queueFilter, onQueueFilterChange, initialSelectedOrderId, refreshRevision = 0 }) => {
+export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searchTerm, onSearchTermChange, queueFilter, onQueueFilterChange, initialSelectedOrderId, refreshRevision = 0, isLoading = false, isLoadingMore = false, hasMore = false, queryError = null, onRetry, onLoadMore }) => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(initialSelectedOrderId || null);
   const [notesDraft, setNotesDraft] = useState('');
   const [trackingNumberDraft, setTrackingNumberDraft] = useState('');
@@ -218,7 +224,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="space-y-1">
           <h3 className="text-2xl font-serif text-brand-parchment">Order Fulfillment</h3>
-          <p className="text-[10px] uppercase tracking-[0.25em] text-brand-gold/50 font-black">Search by order id, customer name, or email</p>
+          <p className="text-[10px] uppercase tracking-[0.25em] text-brand-gold/50 font-black">Search by order reference, id, email, customer name, or tracking number</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative">
@@ -243,7 +249,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="card-premium p-5 space-y-2">
-          <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Visible Orders</p>
+          <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Loaded Orders</p>
           <p className="text-2xl font-serif text-brand-parchment">{visibleOrders.length}</p>
         </div>
         <button onClick={() => onQueueFilterChange('attention')} className={cn('card-premium p-5 space-y-2 text-left hover:border-red-400/30 transition-colors', queueFilter === 'attention' && 'border-red-400/40 bg-red-400/[0.04]')}>
@@ -253,6 +259,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
           </p>
         </button>
       </div>
+
+      {queryError && (
+        <div role="alert" className="flex flex-col gap-3 border border-amber-400/25 bg-amber-400/[0.06] p-5 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+          <p>{queryError}</p>
+          <button type="button" onClick={onRetry} className="min-h-11 shrink-0 border border-amber-300/30 px-5 py-3 text-[9px] font-black uppercase tracking-[0.18em] hover:bg-amber-300/10">Retry order query</button>
+        </div>
+      )}
 
       <div className="flex gap-2 overflow-x-auto pb-2" aria-label="Order exception filters">
         {([
@@ -277,7 +290,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
             </div>
           </div>
           <div className="divide-y divide-white/5 xl:max-h-[calc(100vh-12rem)] xl:overflow-y-auto">
-            {visibleOrderEntries.map(({ order, exceptions }) => {
+            {isLoading && (
+              <div role="status" className="flex min-h-64 items-center justify-center gap-3 text-brand-gold">
+                <Loader2 className="animate-spin" size={20} aria-hidden="true" />
+                <span className="text-[9px] font-black uppercase tracking-[0.2em]">Loading matching orders</span>
+              </div>
+            )}
+            {!isLoading && visibleOrderEntries.map(({ order, exceptions }) => {
               const orderStatus = order.fulfillmentStatus || 'pending';
               const totalAmount = order.totalAmount ?? 0;
               const isSelected = selectedOrder?.id === order.id;
@@ -332,10 +351,19 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                 </div>
               );
             })}
-            {visibleOrders.length === 0 && (
+            {!isLoading && visibleOrders.length === 0 && !queryError && (
               <div className="p-20 text-center space-y-4">
                 <PackageSearch size={32} className="mx-auto text-brand-parchment/10" />
-                <p className="text-[10px] uppercase tracking-widest text-brand-parchment/20 font-black">No orders match this queue</p>
+                <p className="text-[10px] uppercase tracking-widest text-brand-parchment/30 font-black">{normalizedSearchTerm ? 'No orders match this search' : 'No orders are available in this queue'}</p>
+                {normalizedSearchTerm && <button type="button" onClick={() => onSearchTermChange('')} className="text-[9px] font-black uppercase tracking-[0.18em] text-brand-gold hover:text-brand-parchment">Clear search</button>}
+              </div>
+            )}
+            {!isLoading && hasMore && (
+              <div className="p-5 text-center">
+                <button type="button" onClick={onLoadMore} disabled={isLoadingMore} className="inline-flex min-h-11 items-center justify-center gap-3 border border-brand-gold/30 px-6 py-3 text-[9px] font-black uppercase tracking-[0.18em] text-brand-gold hover:bg-brand-gold/10 disabled:cursor-wait disabled:opacity-50">
+                  {isLoadingMore && <Loader2 className="animate-spin" size={14} aria-hidden="true" />}
+                  {isLoadingMore ? 'Loading more' : 'Load more orders'}
+                </button>
               </div>
             )}
           </div>
@@ -353,7 +381,11 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                     <button type="button" onClick={copyOrderReference} className="inline-flex items-center gap-2 px-3 py-2 border border-white/10 text-[8px] uppercase tracking-[0.16em] font-black text-brand-parchment/50 hover:text-brand-gold hover:border-brand-gold/30" aria-label="Copy order reference"><Copy size={12} /> Copy</button>
                   </div>
                   <p className="text-brand-parchment/50 text-sm">
-                    {selectedOrder.createdAt?.toDate ? selectedOrder.createdAt.toDate().toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Date unavailable'}
+                    {selectedOrder.createdAt?.toDate
+                      ? selectedOrder.createdAt.toDate().toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                      : typeof selectedOrder.createdAt?.seconds === 'number'
+                        ? new Date(selectedOrder.createdAt.seconds * 1000).toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : 'Date unavailable'}
                   </p>
                   <div className="flex flex-wrap gap-2 pt-1">
                     <span className="px-3 py-1 border border-green-400/20 bg-green-400/5 text-green-300 text-[8px] uppercase tracking-[0.16em] font-black">Payment: {(selectedOrder.paymentStatus || 'unknown').replaceAll('_', ' ')}</span>

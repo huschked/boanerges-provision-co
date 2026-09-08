@@ -15,6 +15,17 @@ export class AdminOrderApiError extends Error {
   }
 }
 
+export type AdminOrderPage<TOrder> = {
+  orders: TOrder[];
+  nextCursor: string | null;
+  hasMore: boolean;
+};
+
+export type AdminOrderSummary = {
+  lifetime: { orderCount: number; revenue: number };
+  period: { days: number; orderCount: number; revenue: number };
+};
+
 async function adminPost(path: string, payload: Record<string, unknown>) {
   const user = auth.currentUser;
   if (!user) throw new AdminOrderApiError('Sign in is required.', 401, 'unauthenticated');
@@ -53,6 +64,21 @@ export type ShippingQuote = { quoteId: string; originalAddress: ShippingAddress;
 
 export function requestShippingQuote(orderId: string, parcel: Record<string, unknown>, addressOverride: ShippingAddress): Promise<ShippingQuote> {
   return adminPost(`/api/admin/orders/${encodeURIComponent(orderId)}/shipping/quote`, { ...parcel, addressOverride });
+}
+
+export async function getAdminOrdersPage<TOrder>({
+  search = '',
+  cursor = '',
+  limit = 50,
+}: { search?: string; cursor?: string; limit?: number } = {}): Promise<AdminOrderPage<TOrder>> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (search.trim()) params.set('search', search.trim());
+  if (cursor) params.set('cursor', cursor);
+  return adminGet(`/api/admin/orders?${params.toString()}`);
+}
+
+export function getAdminOrderSummary(): Promise<AdminOrderSummary> {
+  return adminGet('/api/admin/order-summary');
 }
 
 export function purchaseShippingLabel(orderId: string, payload: { quoteId: string; rateId: string; acceptCorrectedAddress: boolean }) {

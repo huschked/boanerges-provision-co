@@ -138,8 +138,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, pro
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
           {[
-            { label: 'Total Revenue', value: `$${stats.revenue.toFixed(2)}`, icon: DollarSign, color: 'text-green-400', glow: 'shadow-green-400/10' },
-            { label: 'Total Orders', value: stats.orderCount, icon: ShoppingCart, color: 'text-blue-400', glow: 'shadow-blue-400/10' },
+            { label: 'Lifetime Revenue', value: `$${stats.revenue.toFixed(2)}`, detail: `Last ${stats.periodDays} days: $${stats.periodRevenue.toFixed(2)}`, icon: DollarSign, color: 'text-green-400', glow: 'shadow-green-400/10' },
+            { label: 'Lifetime Orders', value: stats.orderCount, detail: `Last ${stats.periodDays} days: ${stats.periodOrderCount}`, icon: ShoppingCart, color: 'text-blue-400', glow: 'shadow-blue-400/10' },
             { label: 'Total Products', value: stats.productCount, icon: Package, color: 'text-brand-gold', glow: 'shadow-brand-gold/10' },
             { label: 'Low Stock Items', value: stats.lowStock, icon: AlertCircle, color: 'text-red-400', glow: 'shadow-red-400/10' },
           ].map((stat, i) => (
@@ -159,6 +159,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, pro
               <div className="space-y-1">
                 <p className="text-[10px] uppercase tracking-[0.3em] text-brand-parchment/30 font-black">{stat.label}</p>
                 <h3 className="text-4xl font-serif text-brand-parchment group-hover:text-brand-gold transition-colors duration-500">{stat.value}</h3>
+                {'detail' in stat && stat.detail && <p className="pt-2 text-[9px] font-black uppercase tracking-[0.16em] text-brand-parchment/35">{stat.detail}</p>}
               </div>
             </motion.div>
           ))}
