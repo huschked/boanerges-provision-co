@@ -28,21 +28,6 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Backlog
 
-### WEB-047 - Remediate Current Dependency Security Advisories
-
-- **Priority:** High
-- **Area:** infra | security
-- **Goal:** Update vulnerable runtime and build dependencies without destabilizing checkout, webhooks, Firebase, or storefront routing.
-- **Acceptance Criteria:**
-  - Every npm audit finding is mapped to its direct dependency and actual runtime exposure.
-  - Non-breaking patched versions are applied first; required major upgrades receive explicit migration and regression notes.
-  - Critical protobuf and WebSocket findings and high-severity Firebase, Express, React Router, Resend, Vite, and transitive findings are resolved or documented with a time-bounded exception.
-  - Production dependencies pass the agreed audit threshold without using forced upgrades blindly.
-  - Checkout, subscription, webhook, Admin authentication, Firestore, email, analytics, and protected storefront flows continue to pass regression verification.
-- **Verification:**
-  - Run `npm audit --omit=dev`, TypeScript validation, all automated tests, the production build, and focused deployed regression checks.
-- **Notes / Links:** Discovered during WEB-046 after installing its development-only Sharp optimizer. The audit currently reports 31 findings, including two critical advisories. Do not use `npm audit fix --force` without reviewing the proposed major-version changes.
-
 ### WEB-006 - Launch Readiness Pass
 
 - **Priority:** Medium
@@ -82,9 +67,29 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
+### WEB-047 - Remediate Current Dependency Security Advisories
+
+- **Status:** Review / Verify — dependency remediation and local regression verification are complete; awaiting deployed checks of credential-backed integrations.
+- **Priority:** High
+- **Area:** infra | security
+- **Goal:** Update vulnerable runtime and build dependencies without destabilizing checkout, webhooks, Firebase, or storefront routing.
+- **Acceptance Criteria:**
+  - Every npm audit finding is mapped to its direct dependency and actual runtime exposure.
+  - Non-breaking patched versions are applied first; required major upgrades receive explicit migration and regression notes.
+  - Critical protobuf and WebSocket findings and high-severity Firebase, Express, React Router, Resend, Vite, and transitive findings are resolved or documented with a time-bounded exception.
+  - Production dependencies pass the agreed audit threshold without using forced upgrades blindly.
+  - Checkout, subscription, webhook, Admin authentication, Firestore, email, analytics, and protected storefront flows continue to pass regression verification.
+- **Verification:**
+  - Run `npm audit --omit=dev`, TypeScript validation, all automated tests, the production build, and focused deployed regression checks.
+- **Implementation Results:** Removed the unused GenAI production dependency; moved Vite and its React/Tailwind plugins to development-only dependencies; upgraded patched Express parser/rate-limit, Firebase client/Admin, React Router, Resend, Tailwind, and supporting packages; pinned patched `qs`, Firestore, and Cloud Storage transitives; added an explicit Node runtime floor and a narrow install-script allowlist. Firebase Admin remains on compatible 13.x because 14.x removes the namespace API used throughout the server. See `docs/dependency-security.md` for the complete finding and exposure map.
+- **Verification Results:** Both `npm audit --omit=dev` and the complete `npm audit` report 0 vulnerabilities without `--force`; TypeScript validation passes; all 81 automated tests pass; and the Vite 6.4.3 production build passes.
+- **Notes / Links:** Deploy, then verify one-time and subscription checkout, Stripe webhook handling, Admin Google sign-in and Firestore data, a transactional Resend email, GA4/Meta events, and prelaunch unlock/redirect behavior before moving this card to Done.
+
+## Done
+
 ### WEB-016 - Add Order Filters, Saved Queues, Batch Actions, and Export
 
-- **Status:** Review / Verify — implementation and automated verification are complete; awaiting deployed Admin workflow verification with mixed test orders and Shippo test-mode labels.
+- **Status:** Done — owner confirmed the deployed Admin filters, saved queues, batch workflows, printing, copy actions, edit guards, and CSV export are verified.
 - **Priority:** Medium
 - **Area:** admin
 - **Goal:** Make the order list efficient as volume grows by replacing the single client-side search workflow with operational queues, batch tools, and an Excel-compatible export.
@@ -102,9 +107,7 @@ This board is the working queue for website development. Keep cards actionable e
   - Verify CSV output with filters, selected orders, empty results, commas/quotes, Unicode, and formula-like customer values.
 - **Implementation Results:** Added server-side fulfillment, payment, shipment, carrier, date-state, and newest/oldest query controls; built-in fulfillment queues; browser-persisted saved views; general multi-select; guarded batch packing; two-stage batch Shippo quote and label purchasing with per-order address/rate review, explicit charge authorization, and isolated results; batch packing-slip, pick-list, and existing-label printing; accessible copy actions; unsaved-edit guards; and authenticated selected-or-filtered UTF-8 CSV export with customer-data warnings, a 10,000-row limit, and spreadsheet-formula neutralization.
 - **Verification Results:** TypeScript validation passes; all 81 automated tests pass, including partial-batch isolation, order filter/date behavior, Minnesota business-day handling, CSV formula neutralization, and existing fulfillment lifecycle coverage; the production build passes.
-- **Notes / Links:** Deploy and verify with Shippo test credentials. Saved views intentionally remain local to the current browser. Batch label creation is capped at 20 orders, export selection at 250 orders, and complete filtered exports at 10,000 rows. Batch refunds and cancellations remain intentionally excluded because each requires individual inventory, payment, shipment, and label-refund review.
-
-## Done
+- **Notes / Links:** Saved views intentionally remain local to the current browser. Batch label creation is capped at 20 orders, export selection at 250 orders, and complete filtered exports at 10,000 rows. Batch refunds and cancellations remain intentionally excluded because each requires individual inventory, payment, shipment, and label-refund review.
 
 ### WEB-019 - Add Server-Side Order Search and Pagination
 
