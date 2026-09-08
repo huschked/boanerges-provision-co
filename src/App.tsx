@@ -5,28 +5,38 @@ import { Toaster } from 'react-hot-toast';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { CartDrawer } from './components/CartDrawer';
-import { Home } from './pages/Home';
-import { Shop } from './pages/Shop';
-import { ProductDetail } from './pages/ProductDetail';
-import { About } from './pages/About';
-import { Recipes } from './pages/Recipes';
-import { FAQ } from './pages/FAQ';
-import { Contact } from './pages/Contact';
-import { Bundles } from './pages/Bundles';
-import { Checkout } from './pages/Checkout';
-import { CheckoutSuccess } from './pages/CheckoutSuccess';
-import { Admin } from './pages/Admin';
-import { ReturnsPolicy } from './pages/ReturnsPolicy';
-import { OrderStatus } from './pages/OrderStatus';
-import { PrivacyPolicy } from './pages/PrivacyPolicy';
-import { EmailPreferences } from './pages/EmailPreferences';
-import { Review } from './pages/Review';
-import { TermsOfService } from './pages/TermsOfService';
 import { auth } from './lib/firebase';
 import { MotionConfig } from 'motion/react';
 import { CookiePreferences } from './components/CookiePreferences';
 import { trackPageView } from './lib/analytics';
 import { PrelaunchBoundary } from './components/PrelaunchGate';
+
+const Home = React.lazy(() => import('./pages/Home').then(({ Home }) => ({ default: Home })));
+const Shop = React.lazy(() => import('./pages/Shop').then(({ Shop }) => ({ default: Shop })));
+const ProductDetail = React.lazy(() => import('./pages/ProductDetail').then(({ ProductDetail }) => ({ default: ProductDetail })));
+const About = React.lazy(() => import('./pages/About').then(({ About }) => ({ default: About })));
+const Recipes = React.lazy(() => import('./pages/Recipes').then(({ Recipes }) => ({ default: Recipes })));
+const FAQ = React.lazy(() => import('./pages/FAQ').then(({ FAQ }) => ({ default: FAQ })));
+const Contact = React.lazy(() => import('./pages/Contact').then(({ Contact }) => ({ default: Contact })));
+const Bundles = React.lazy(() => import('./pages/Bundles').then(({ Bundles }) => ({ default: Bundles })));
+const Checkout = React.lazy(() => import('./pages/Checkout').then(({ Checkout }) => ({ default: Checkout })));
+const CheckoutSuccess = React.lazy(() => import('./pages/CheckoutSuccess').then(({ CheckoutSuccess }) => ({ default: CheckoutSuccess })));
+const ReturnsPolicy = React.lazy(() => import('./pages/ReturnsPolicy').then(({ ReturnsPolicy }) => ({ default: ReturnsPolicy })));
+const OrderStatus = React.lazy(() => import('./pages/OrderStatus').then(({ OrderStatus }) => ({ default: OrderStatus })));
+const PrivacyPolicy = React.lazy(() => import('./pages/PrivacyPolicy').then(({ PrivacyPolicy }) => ({ default: PrivacyPolicy })));
+const EmailPreferences = React.lazy(() => import('./pages/EmailPreferences').then(({ EmailPreferences }) => ({ default: EmailPreferences })));
+const Review = React.lazy(() => import('./pages/Review').then(({ Review }) => ({ default: Review })));
+const TermsOfService = React.lazy(() => import('./pages/TermsOfService').then(({ TermsOfService }) => ({ default: TermsOfService })));
+const Admin = React.lazy(() => import('./pages/Admin').then(({ Admin }) => ({ default: Admin })));
+
+function RouteLoading() {
+  return (
+    <div className="min-h-[50vh] flex items-center justify-center bg-brand-black text-brand-gold">
+      <span className="sr-only">Loading page</span>
+      <div aria-hidden="true" className="h-8 w-8 animate-spin rounded-full border-2 border-brand-gold/20 border-t-brand-gold" />
+    </div>
+  );
+}
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -73,6 +83,7 @@ export default function App() {
       {!isAdminPage && <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />}
       
       <main className="flex-grow">
+        <React.Suspense fallback={<RouteLoading />}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/shop" element={<Shop />} />
@@ -95,6 +106,7 @@ export default function App() {
           <Route path="/order-status" element={<OrderStatus />} />
           <Route path="/admin" element={<Admin />} />
         </Routes>
+        </React.Suspense>
       </main>
 
       {!isAdminPage && <Footer />}

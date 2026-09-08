@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { DollarSign, ShoppingCart, Package, AlertCircle, TrendingUp, PackageCheck } from 'lucide-react';
+import { DollarSign, ShoppingCart, Package, AlertCircle, PackageCheck } from 'lucide-react';
 import { Product } from '@/src/services/productService';
 import type { FulfillmentState, PaymentState, ShipmentState } from '@/src/lib/orderLifecycle';
 import { getOrderExceptions, ORDER_EXCEPTION_LABELS, type OrderExceptionKind } from '@/src/lib/orderExceptions';
@@ -151,28 +151,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, pro
               whileHover={{ y: -8, scale: 1.02 }}
               className={`card-premium p-10 space-y-6 relative group ${stat.glow}`}
             >
-              <div className="flex justify-between items-start">
+              <div className="flex items-start">
                 <div className={`p-4 rounded-sm bg-white/5 ${stat.color} group-hover:scale-110 transition-transform duration-700 shadow-inner`}>
                   <stat.icon size={22} strokeWidth={1.5} />
-                </div>
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-green-400/5 text-green-400 text-[9px] font-black tracking-widest">
-                  <TrendingUp size={10} />
-                  +12%
                 </div>
               </div>
               <div className="space-y-1">
                 <p className="text-[10px] uppercase tracking-[0.3em] text-brand-parchment/30 font-black">{stat.label}</p>
                 <h3 className="text-4xl font-serif text-brand-parchment group-hover:text-brand-gold transition-colors duration-500">{stat.value}</h3>
-              </div>
-              <div className="pt-4 border-t border-white/5">
-                <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: '70%' }}
-                    transition={{ duration: 1.5, delay: 0.5 }}
-                    className={`h-full bg-gradient-to-r from-transparent to-current ${stat.color}`}
-                  />
-                </div>
               </div>
             </motion.div>
           ))}

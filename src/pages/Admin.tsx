@@ -8,21 +8,34 @@ import { inMemoryPersistence, signInWithPopup, GoogleAuthProvider, onAuthStateCh
 import { collection, query, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { Product, getAllProducts } from '@/src/services/productService';
 import toast from 'react-hot-toast';
-import { DashboardView, Order } from '../components/admin/DashboardView';
-import { ProductsView } from '../components/admin/ProductsView';
-import { OrdersView } from '../components/admin/OrdersView';
+import type { Order } from '../components/admin/DashboardView';
 import type { OrderQueueFilter } from '../components/admin/OrdersView';
-import { SubscribersView, Subscriber } from '../components/admin/SubscribersView';
-import { MessagesView, ContactMessage } from '../components/admin/MessagesView';
-import { AnalyticsView } from '../components/admin/AnalyticsView';
-import { BundlesView } from '../components/admin/BundlesView';
-import { SubscriptionsView } from '../components/admin/SubscriptionsView';
-import { ReviewsView } from '../components/admin/ReviewsView';
+import type { Subscriber } from '../components/admin/SubscribersView';
+import type { ContactMessage } from '../components/admin/MessagesView';
 import { normalizeOrderLifecycle } from '@/src/lib/orderLifecycle';
 import { orderReference } from '@/src/lib/orderReference';
 import { firebaseAuthErrorMessage } from '@/src/lib/firebaseAuthError';
 
 type AdminTab = 'dashboard' | 'analytics' | 'products' | 'bundles' | 'subscriptions' | 'orders' | 'subscribers' | 'contact' | 'reviews';
+
+const DashboardView = React.lazy(() => import('../components/admin/DashboardView').then(({ DashboardView }) => ({ default: DashboardView })));
+const AnalyticsView = React.lazy(() => import('../components/admin/AnalyticsView').then(({ AnalyticsView }) => ({ default: AnalyticsView })));
+const ProductsView = React.lazy(() => import('../components/admin/ProductsView').then(({ ProductsView }) => ({ default: ProductsView })));
+const BundlesView = React.lazy(() => import('../components/admin/BundlesView').then(({ BundlesView }) => ({ default: BundlesView })));
+const SubscriptionsView = React.lazy(() => import('../components/admin/SubscriptionsView').then(({ SubscriptionsView }) => ({ default: SubscriptionsView })));
+const ReviewsView = React.lazy(() => import('../components/admin/ReviewsView').then(({ ReviewsView }) => ({ default: ReviewsView })));
+const OrdersView = React.lazy(() => import('../components/admin/OrdersView').then(({ OrdersView }) => ({ default: OrdersView })));
+const SubscribersView = React.lazy(() => import('../components/admin/SubscribersView').then(({ SubscribersView }) => ({ default: SubscribersView })));
+const MessagesView = React.lazy(() => import('../components/admin/MessagesView').then(({ MessagesView }) => ({ default: MessagesView })));
+
+function AdminViewLoading() {
+  return (
+    <div role="status" className="flex min-h-64 items-center justify-center gap-3 text-brand-gold">
+      <Loader2 className="animate-spin" size={24} aria-hidden="true" />
+      <span className="text-[10px] font-black uppercase tracking-[0.2em]">Loading workspace</span>
+    </div>
+  );
+}
 
 export const Admin: React.FC = () => {
   const ADMIN_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
@@ -381,6 +394,7 @@ export const Admin: React.FC = () => {
               <input aria-label={resourceSearchLabel} value={resourceSearchTerm} onChange={(e) => updateResourceSearch(e.target.value)} type="search" placeholder={`${resourceSearchLabel}...`} className="input-premium min-h-11 w-full pl-12" />
             </div>
           )}
+          <React.Suspense fallback={<AdminViewLoading />}>
           {activeTab === 'dashboard' && (
             <DashboardView
               stats={stats}
@@ -398,6 +412,7 @@ export const Admin: React.FC = () => {
           {activeTab === 'orders' && <OrdersView orders={filteredOrders} onRefresh={fetchData} searchTerm={orderSearchTerm} onSearchTermChange={setOrderSearchTerm} queueFilter={orderQueue} onQueueFilterChange={setOrderQueue} initialSelectedOrderId={initialOrderId} refreshRevision={refreshRevision} />}
           {activeTab === 'subscribers' && <SubscribersView subscribers={filteredSubscribers} />}
           {activeTab === 'contact' && <MessagesView messages={filteredMessages} onRefresh={fetchData} />}
+          </React.Suspense>
         </div>
       </main>
     </div>

@@ -60,20 +60,6 @@ This board is the working queue for website development. Keep cards actionable e
   - Compare aggregate counts and revenue against known fixture totals.
 - **Notes / Links:** Current loading is capped in `src/pages/Admin.tsx`.
 
-### WEB-023 - Replace Placeholder Admin Metrics and Optimize App Bundles
-
-- **Priority:** Low
-- **Area:** admin
-- **Goal:** Remove misleading dashboard decoration and improve initial application loading.
-- **Acceptance Criteria:**
-  - The hard-coded `+12%` dashboard indicator is replaced with a real period comparison or removed.
-  - Admin and analytics views are lazy-loaded where practical.
-  - Production build chunk warnings are reduced or intentionally documented.
-- **Verification:**
-  - Compare displayed period changes with fixture data.
-  - Run `npm run build` and inspect generated chunk sizes.
-- **Notes / Links:** Relevant files include `src/components/admin/DashboardView.tsx` and `src/App.tsx`.
-
 ### WEB-006 - Launch Readiness Pass
 
 - **Priority:** Medium
@@ -113,9 +99,28 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
+### WEB-023 - Replace Placeholder Admin Metrics and Optimize App Bundles
+
+- **Status:** Review / Verify — implementation and automated verification are complete; deployed route and Admin workspace navigation need owner verification.
+- **Priority:** Low
+- **Area:** admin
+- **Goal:** Remove misleading dashboard decoration and improve initial application loading.
+- **Acceptance Criteria:**
+  - The hard-coded `+12%` dashboard indicator is replaced with a real period comparison or removed.
+  - Admin and analytics views are lazy-loaded where practical.
+  - Production build chunk warnings are reduced or intentionally documented.
+- **Verification:**
+  - Compare displayed period changes with fixture data.
+  - Run `npm run build` and inspect generated chunk sizes.
+- **Implementation Results:** Removed the unsupported trend badges and decorative percentage bars from Admin summary cards. Added accessible loading states and route-level splitting for every storefront page, the Admin route, and each Admin workspace. Split React, Motion, and Firebase into stable vendor chunks so infrequently used screens and provider code can be cached independently.
+- **Verification Results:** TypeScript validation and all 70 automated tests pass. The production build completes without chunk warnings. The entry bundle fell from 1,531.26 kB (413.59 kB gzip) to 326.27 kB (102.03 kB gzip); Admin is 22.56 kB, Analytics is 25.46 kB, and the largest intentionally isolated dependency is Firestore at 513.53 kB (134.36 kB gzip).
+- **Notes / Links:** Firestore's dedicated cacheable chunk is documented in `vite.config.ts` with a 600 kB warning ceiling so future growth still produces a build warning. Relevant files include `src/components/admin/DashboardView.tsx`, `src/pages/Admin.tsx`, `src/App.tsx`, and `vite.config.ts`.
+
+## Done
+
 ### WEB-008 - Confirm Production Firebase Auth Domains
 
-- **Status:** Review / Verify — repository configuration and troubleshooting guidance are complete; awaiting Firebase Console configuration and deployed sign-in verification.
+- **Status:** Done — owner confirmed the production domains and deployed Admin Google sign-in are complete and verified.
 - **Priority:** Medium
 - **Area:** infra
 - **Goal:** Confirm deployed app URLs are authorized for Firebase Google sign-in.
@@ -127,12 +132,12 @@ This board is the working queue for website development. Keep cards actionable e
   - Browser-check Google sign-in on `/admin` in the deployed environment.
   - Confirm Firebase console authorized domains match `APP_URL` and any preview URL.
 - **Implementation Results:** Preserved the correct Firebase-managed auth handler, documented the exact production/root/stable-preview hostnames, clarified canonical `APP_URL` configuration, and added hostname-specific diagnostics for unauthorized-domain, provider, popup, and network failures.
-- **Verification Results:** TypeScript validation and focused Firebase authentication diagnostic tests pass. Owner must complete the Firebase Console hostname entries and deployed Admin sign-in check.
+- **Verification Results:** TypeScript validation, focused Firebase authentication diagnostic tests, and the production build pass. Owner confirmed the production-domain Google sign-in, Admin dashboard data loading, and fresh-session behavior work as expected.
 - **Notes / Links:** Follow `docs/firebase-auth-domains.md`. Domain authorization permits the OAuth flow but does not grant Admin privileges; `users/{uid}.role === "admin"` remains required.
 
 ### WEB-021 - Add Consistent Order References and Fulfillment Copy
 
-- **Status:** Review / Verify — implementation and automated checks are complete; awaiting deployed order-lifecycle verification.
+- **Status:** Done — owner confirmed the deployed order-reference and fulfillment-copy flow is complete and verified.
 - **Priority:** Medium
 - **Area:** checkout
 - **Goal:** Use one customer-friendly order reference and one accurate delivery promise everywhere.
@@ -143,10 +148,8 @@ This board is the working queue for website development. Keep cards actionable e
 - **Verification:**
   - Complete a test order and compare the reference and timing language in every customer/admin surface.
 - **Implementation Results:** Added collision-protected, server-assigned `BP-XXXXXX` references for checkout and subscription-renewal orders; a consistent legacy fallback; checkout webhook waiting; Admin search/copy/display; email, order-status, dashboard, packing-slip, and pick-list integration; and shared processing/delivery configuration.
-- **Verification Results:** TypeScript validation, all 68 automated tests, and the production build pass. The existing large-chunk build warning remains tracked by WEB-023.
+- **Verification Results:** TypeScript validation, all 68 automated tests, and the production build pass. Owner confirmed the deployed customer-friendly order reference remains consistent across the tested customer and Admin surfaces. The existing large-chunk build warning remains tracked by WEB-023.
 - **Notes / Links:** Deployment and owner-verification steps are documented in `docs/order-references-and-delivery.md`. Stripe IDs remain internal document and analytics identifiers rather than customer-facing order numbers.
-
-## Done
 
 ### WEB-045 - Add a Secure Prelaunch Storefront Gate
 
