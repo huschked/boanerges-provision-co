@@ -28,6 +28,21 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Backlog
 
+### WEB-047 - Remediate Current Dependency Security Advisories
+
+- **Priority:** High
+- **Area:** infra | security
+- **Goal:** Update vulnerable runtime and build dependencies without destabilizing checkout, webhooks, Firebase, or storefront routing.
+- **Acceptance Criteria:**
+  - Every npm audit finding is mapped to its direct dependency and actual runtime exposure.
+  - Non-breaking patched versions are applied first; required major upgrades receive explicit migration and regression notes.
+  - Critical protobuf and WebSocket findings and high-severity Firebase, Express, React Router, Resend, Vite, and transitive findings are resolved or documented with a time-bounded exception.
+  - Production dependencies pass the agreed audit threshold without using forced upgrades blindly.
+  - Checkout, subscription, webhook, Admin authentication, Firestore, email, analytics, and protected storefront flows continue to pass regression verification.
+- **Verification:**
+  - Run `npm audit --omit=dev`, TypeScript validation, all automated tests, the production build, and focused deployed regression checks.
+- **Notes / Links:** Discovered during WEB-046 after installing its development-only Sharp optimizer. The audit currently reports 31 findings, including two critical advisories. Do not use `npm audit fix --force` without reviewing the proposed major-version changes.
+
 ### WEB-016 - Add Order Filters, Saved Queues, and Batch Actions
 
 - **Priority:** Medium
@@ -99,9 +114,30 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
+### WEB-046 - Add Reusable Storefront Image Performance Infrastructure
+
+- **Status:** Review / Verify — reusable infrastructure and automated checks are complete; awaiting deployed/private storefront route verification.
+- **Priority:** Medium
+- **Area:** storefront | performance
+- **Goal:** Make storefront images responsive, layout-stable, and straightforward to optimize when final photography replaces temporary artwork.
+- **Acceptance Criteria:**
+  - High-impact storefront images declare intrinsic dimensions, responsive display sizes, async decoding, and intentional eager or lazy loading.
+  - Only above-the-fold hero media receives high fetch priority; below-the-fold editorial and catalog media load lazily.
+  - A reusable picture component supports AVIF and WebP source sets while retaining a compatible fallback.
+  - A documented local command generates responsive AVIF and WebP variants without overwriting source images.
+  - Image performance budgets and the final-asset replacement workflow are documented and auditable.
+- **Verification:**
+  - Run TypeScript validation, automated tests, the production build, and the image asset audit.
+  - Browser-check the homepage, shop, product detail, bundles, recipes, About, and Coming Soon pages at desktop and mobile widths.
+- **Implementation Results:** Added a reusable `ResponsiveImage` component with AVIF/WebP source-set support, compatible fallback markup, intrinsic dimensions, responsive `sizes`, async decoding, native lazy loading, and explicit hero priority. Applied it to high-impact Home, shop/product-card, product-detail, bundles, recipes, About, and Coming Soon media. Added Sharp-based `images:optimize` generation, a non-destructive `images:audit` command with strict launch mode, documented budgets, and a final-photography replacement checklist.
+- **Verification Results:** TypeScript validation, all 72 automated tests, and the production build pass. A converter smoke test generated valid 64 px and 180 px AVIF/WebP variants without altering the source. The audit currently identifies 26 temporary assets above 500 kB as expected. Desktop and 390×844 Coming Soon checks confirm intrinsic dimensions, correct priority behavior, complete image loading, and no horizontal overflow.
+- **Notes / Links:** The local static preview cannot unlock protected catalog routes without deployment secrets. Owner verification should cover Home, shop, product detail, bundles, recipes, and About after deployment. Before launch, every final replacement must follow `docs/image-performance.md` and pass `npm run images:audit -- --strict`.
+
+## Done
+
 ### WEB-023 - Replace Placeholder Admin Metrics and Optimize App Bundles
 
-- **Status:** Review / Verify — implementation and automated verification are complete; deployed route and Admin workspace navigation need owner verification.
+- **Status:** Done — owner confirmed the deployed routes, Admin workspaces, and corrected dashboard metrics are verified.
 - **Priority:** Low
 - **Area:** admin
 - **Goal:** Remove misleading dashboard decoration and improve initial application loading.
@@ -113,10 +149,8 @@ This board is the working queue for website development. Keep cards actionable e
   - Compare displayed period changes with fixture data.
   - Run `npm run build` and inspect generated chunk sizes.
 - **Implementation Results:** Removed the unsupported trend badges and decorative percentage bars from Admin summary cards. Added accessible loading states and route-level splitting for every storefront page, the Admin route, and each Admin workspace. Split React, Motion, and Firebase into stable vendor chunks so infrequently used screens and provider code can be cached independently.
-- **Verification Results:** TypeScript validation and all 70 automated tests pass. The production build completes without chunk warnings. The entry bundle fell from 1,531.26 kB (413.59 kB gzip) to 326.27 kB (102.03 kB gzip); Admin is 22.56 kB, Analytics is 25.46 kB, and the largest intentionally isolated dependency is Firestore at 513.53 kB (134.36 kB gzip).
+- **Verification Results:** TypeScript validation and all 70 automated tests pass. The production build completes without chunk warnings. The entry bundle fell from 1,531.26 kB (413.59 kB gzip) to 326.27 kB (102.03 kB gzip); Admin is 22.56 kB, Analytics is 25.46 kB, and the largest intentionally isolated dependency is Firestore at 513.53 kB (134.36 kB gzip). Owner confirmed the deployed route navigation, Admin workspace navigation, and removal of unsupported dashboard indicators work as expected.
 - **Notes / Links:** Firestore's dedicated cacheable chunk is documented in `vite.config.ts` with a 600 kB warning ceiling so future growth still produces a build warning. Relevant files include `src/components/admin/DashboardView.tsx`, `src/pages/Admin.tsx`, `src/App.tsx`, and `vite.config.ts`.
-
-## Done
 
 ### WEB-008 - Confirm Production Firebase Auth Domains
 

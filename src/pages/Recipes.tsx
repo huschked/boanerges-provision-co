@@ -11,6 +11,7 @@ import recipeMargaritaImage from '@/src/assets/recipe-margarita.png';
 import { PAIRING_PRODUCTS } from '@/src/lib/merchandising';
 import { getProducts, type Product } from '@/src/services/productService';
 import { SocialLinks } from '@/src/components/SocialLinks';
+import { ResponsiveImage } from '@/src/components/ResponsiveImage';
 
 export const Recipes: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -55,9 +56,12 @@ export const Recipes: React.FC = () => {
               className="group space-y-6"
             >
               <div className="aspect-[4/3] overflow-hidden rounded-sm border border-white/5">
-                <img
+                <ResponsiveImage
                   src={pairing.img}
                   alt={pairing.title}
+                  width={1024}
+                  height={1536}
+                  sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-80"
                   referrerPolicy="no-referrer"
                 />

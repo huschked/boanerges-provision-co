@@ -4,6 +4,7 @@ import aboutHeroImage from '@/src/assets/about-hero.png';
 import aboutOriginImage from '@/src/assets/about-origin.png';
 import aboutCraftsmanshipImage from '@/src/assets/about-craftsmanship.png';
 import aboutFlavorPhilosophyImage from '@/src/assets/about-flavor-philosophy.png';
+import { ResponsiveImage } from '@/src/components/ResponsiveImage';
 
 export const About: React.FC = () => {
   return (
@@ -11,9 +12,13 @@ export const About: React.FC = () => {
       {/* Hero */}
       <section className="relative h-[70vh] flex items-center justify-center overflow-hidden bg-brand-black">
         <div className="absolute inset-0 z-0">
-          <img 
+          <ResponsiveImage
             src={aboutHeroImage} 
             alt="Artisan Salt Crystals" 
+            width={1536}
+            height={1024}
+            sizes="100vw"
+            priority
             className="w-full h-full object-cover opacity-40"
             referrerPolicy="no-referrer"
           />
@@ -47,9 +52,12 @@ export const About: React.FC = () => {
               </div>
             </div>
             <div className="relative aspect-[4/5] rounded-sm overflow-hidden shadow-2xl">
-              <img 
+              <ResponsiveImage
                 src={aboutOriginImage} 
                 alt="Homegrown Peppers" 
+                width={1024}
+                height={1536}
+                sizes="(min-width: 1024px) 50vw, 100vw"
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />
@@ -65,9 +73,12 @@ export const About: React.FC = () => {
         <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
             <div className="order-2 lg:order-1 relative aspect-[4/5] rounded-sm overflow-hidden shadow-2xl">
-              <img 
+              <ResponsiveImage
                 src={aboutCraftsmanshipImage} 
                 alt="Small-Batch Craftsmanship" 
+                width={1536}
+                height={1024}
+                sizes="(min-width: 1024px) 50vw, 100vw"
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />
@@ -123,9 +134,12 @@ export const About: React.FC = () => {
               </div>
             </div>
             <div className="relative aspect-[4/5] rounded-sm overflow-hidden shadow-2xl">
-              <img 
+              <ResponsiveImage
                 src={aboutFlavorPhilosophyImage} 
                 alt="Flavor Philosophy" 
+                width={1024}
+                height={1536}
+                sizes="(min-width: 1024px) 50vw, 100vw"
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />

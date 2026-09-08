@@ -11,6 +11,7 @@ import savoryCategoryImage from '@/src/assets/category-savory.png';
 import herbalCategoryImage from '@/src/assets/category-herbal.png';
 import { subscribeToNewsletter } from '@/src/lib/newsletter';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
+import { ResponsiveImage } from '@/src/components/ResponsiveImage';
 
 export const Home: React.FC = () => {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
@@ -57,9 +58,13 @@ export const Home: React.FC = () => {
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-brand-black pt-40 pb-24 md:pt-52 md:pb-32">
         <div className="absolute inset-0 z-0">
-          <img 
+          <ResponsiveImage
             src={heroImage} 
             alt="Artisan Salt Still Life" 
+            width={1536}
+            height={1024}
+            sizes="100vw"
+            priority
             className="w-full h-full object-cover opacity-60"
             referrerPolicy="no-referrer"
           />
@@ -208,9 +213,12 @@ export const Home: React.FC = () => {
         <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
             <div className="relative aspect-[4/5] rounded-sm overflow-hidden shadow-2xl">
-              <img 
+              <ResponsiveImage
                 src={brandStoryImage} 
                 alt="Artisan Salt Craftsmanship" 
+                width={1024}
+                height={1536}
+                sizes="(min-width: 1024px) 50vw, 100vw"
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />
@@ -269,9 +277,12 @@ export const Home: React.FC = () => {
                 onClick={() => void trackAnalyticsEvent({ type: 'collection_filter', category: cat.cat, metadata: { source: 'home_category_card' } })}
                 className="group relative aspect-[3/4] overflow-hidden rounded-sm"
               >
-                <img 
+                <ResponsiveImage
                   src={cat.img} 
                   alt={cat.name} 
+                  width={1024}
+                  height={1536}
+                  sizes="(min-width: 768px) 33vw, 100vw"
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                   referrerPolicy="no-referrer"
                 />

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import logo from '@/src/assets/BoanergesLogoTransparent-v2.png';
 import heroImage from '@/src/assets/HeroImage.png';
 import { subscribeToNewsletter } from '@/src/lib/newsletter';
+import { ResponsiveImage } from './ResponsiveImage';
 
 type GateState = 'checking' | 'locked' | 'unlocked' | 'disabled' | 'error';
 
@@ -109,14 +110,14 @@ function ComingSoon({ state, onUnlock }: { state: GateState; onUnlock: () => voi
   return (
     <main className="relative min-h-[100svh] overflow-hidden bg-brand-black text-brand-parchment">
       <div className="absolute inset-0" aria-hidden="true">
-        <img src={heroImage} alt="" className="h-full w-full object-cover object-center opacity-35 scale-[1.03]" />
+        <ResponsiveImage src={heroImage} alt="" width={1536} height={1024} sizes="100vw" priority className="h-full w-full object-cover object-center opacity-35 scale-[1.03]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(197,160,89,0.12),transparent_34%),linear-gradient(180deg,rgba(10,10,10,0.72),rgba(10,10,10,0.92)_58%,#0a0a0a)]" />
         <div className="absolute inset-4 border border-brand-gold/15 md:inset-7" />
       </div>
 
       <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-7xl flex-col px-7 py-8 md:px-12 md:py-10">
         <header className="flex items-start justify-center md:justify-between">
-          <img src={logo} alt="Boanerges Provisions Co." className="h-auto w-[210px] drop-shadow-[0_12px_30px_rgba(0,0,0,0.55)] md:w-[250px]" />
+          <ResponsiveImage src={logo} alt="Boanerges Provisions Co." width={1092} height={360} sizes="(min-width: 768px) 250px, 210px" loading="eager" className="h-auto w-[210px] drop-shadow-[0_12px_30px_rgba(0,0,0,0.55)] md:w-[250px]" />
           <span className="hidden pt-4 text-[10px] font-black uppercase tracking-[0.38em] text-brand-gold/75 md:block">Small-Batch Finishing Salts</span>
         </header>
 

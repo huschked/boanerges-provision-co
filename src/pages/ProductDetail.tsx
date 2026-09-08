@@ -13,6 +13,7 @@ import { cn } from '@/src/lib/utils';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
 import { ORDER_DELIVERY_ESTIMATE_TEXT } from '@/src/config/fulfillment';
 import toast from 'react-hot-toast';
+import { ResponsiveImage } from '@/src/components/ResponsiveImage';
 
 export const ProductDetail: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -130,15 +131,19 @@ export const ProductDetail: React.FC = () => {
               animate={{ opacity: 1, scale: 1 }}
               className="aspect-square bg-white rounded-sm overflow-hidden border border-white/10 relative"
             >
-              <img 
+              <ResponsiveImage
                 src={selectedMedia.url}
                 alt={selectedMedia.alt}
+                width={1200}
+                height={1200}
+                sizes="(min-width: 1024px) 50vw, 100vw"
+                priority
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />
               {selectedMedia.type === 'illustrative' && <span className="absolute bottom-4 right-4 bg-brand-black/85 text-brand-parchment px-4 py-2 text-[9px] uppercase tracking-widest font-black">Illustrative image</span>}
             </motion.div>
-            {media.length > 1 && <div className="grid grid-cols-4 gap-4">{media.map((item, index) => <button key={`${item.url}-${index}`} type="button" onClick={() => { setSelectedImageIndex(index); void trackAnalyticsEvent({ type: 'product_detail_engagement', productId: product.id, productName: product.name, metadata: { interaction: 'gallery_image', imageIndex: index } }); }} aria-label={`View image ${index + 1} of ${media.length}: ${item.alt}`} aria-pressed={selectedImageIndex === index} className={cn('aspect-square min-h-11 overflow-hidden border bg-white', selectedImageIndex === index ? 'border-brand-gold' : 'border-white/20')}><img src={item.url} alt="" className="w-full h-full object-cover" /></button>)}</div>}
+            {media.length > 1 && <div className="grid grid-cols-4 gap-4">{media.map((item, index) => <button key={`${item.url}-${index}`} type="button" onClick={() => { setSelectedImageIndex(index); void trackAnalyticsEvent({ type: 'product_detail_engagement', productId: product.id, productName: product.name, metadata: { interaction: 'gallery_image', imageIndex: index } }); }} aria-label={`View image ${index + 1} of ${media.length}: ${item.alt}`} aria-pressed={selectedImageIndex === index} className={cn('aspect-square min-h-11 overflow-hidden border bg-white', selectedImageIndex === index ? 'border-brand-gold' : 'border-white/20')}><ResponsiveImage src={item.url} alt="" width={240} height={240} sizes="(min-width: 1024px) 12vw, 25vw" className="w-full h-full object-cover" /></button>)}</div>}
           </div>
 
           {/* Product Info */}

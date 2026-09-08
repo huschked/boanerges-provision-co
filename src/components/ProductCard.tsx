@@ -9,6 +9,7 @@ import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
 import toast from 'react-hot-toast';
+import { ResponsiveImage } from './ResponsiveImage';
 
 export const ProductCard: React.FC<{ product: Product; className?: string; dark?: boolean }> = ({ product, className, dark }) => {
   const addItem = useCart((state) => state.addItem);
@@ -25,9 +26,12 @@ export const ProductCard: React.FC<{ product: Product; className?: string; dark?
         "relative aspect-[4/5] overflow-hidden bg-white rounded-sm border transition-all duration-700",
         dark ? "border-white/5 shadow-2xl" : "border-brand-earth/5 shadow-lg hover:shadow-2xl"
       )}>
-        <Link to={`/product/${product.slug}`} className="block w-full h-full"><img
+        <Link to={`/product/${product.slug}`} className="block w-full h-full"><ResponsiveImage
           src={product.imageUrl} 
           alt={product.imageAlt || product.name}
+          width={800}
+          height={1000}
+          sizes="(min-width: 1024px) 25vw, (min-width: 768px) 50vw, 100vw"
           className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
           referrerPolicy="no-referrer"
         /></Link>

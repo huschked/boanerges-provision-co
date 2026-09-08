@@ -6,6 +6,7 @@ import { bundleToCartProduct, getBundles } from '@/src/services/bundleService';
 import { Plus, Check, Loader2, PackageX } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
+import { ResponsiveImage } from '@/src/components/ResponsiveImage';
 
 export const Bundles: React.FC = () => {
   const addItem = useCart((state) => state.addItem);
@@ -61,7 +62,7 @@ export const Bundles: React.FC = () => {
           {bundles.map((bundle, index) => (
             <motion.article key={bundle.id} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: index * 0.1 }} className="bg-brand-black rounded-sm border border-white/10 overflow-hidden flex flex-col shadow-2xl group">
               <div className="aspect-[4/3] relative overflow-hidden">
-                <img src={bundle.imageUrl} alt={bundle.imageAlt} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-85" />
+                <ResponsiveImage src={bundle.imageUrl} alt={bundle.imageAlt} width={1200} height={900} sizes="(min-width: 1024px) 33vw, 100vw" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-85" />
                 {bundle.imageType === 'illustrative' && <span className="absolute bottom-4 left-4 bg-brand-black/85 text-brand-parchment px-3 py-1 text-[8px] uppercase tracking-widest font-black">Illustrative image</span>}
                 {bundle.savingsAmount > 0 && <div className="absolute top-4 right-4 bg-brand-gold text-brand-black text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">Save {bundle.savingsPercent}%</div>}
               </div>
