@@ -1,3 +1,6 @@
+import { orderReference } from './orderReference.js';
+import { ORDER_DELIVERY_ESTIMATE_TEXT } from '../config/fulfillment.js';
+
 function timestampIso(value: unknown) {
   if (value && typeof value === 'object' && 'toDate' in value && typeof (value as { toDate?: unknown }).toDate === 'function') {
     return (value as { toDate: () => Date }).toDate().toISOString();
@@ -38,7 +41,7 @@ export function buildPublicOrderStatus(
     && !order.shippoTransactionId;
 
   return {
-    reference: orderId.slice(-8).toUpperCase(),
+    reference: orderReference(orderId, order.orderReference),
     createdAt: timestampIso(order.createdAt),
     updatedAt: timestampIso(order.updatedAt),
     expiresAt: new Date(expiresAt).toISOString(),
@@ -74,6 +77,7 @@ export function buildPublicOrderStatus(
       trackingNumber: String(order.trackingNumber || ''),
       trackingUrl: safePublicUrl(order.trackingUrl),
       estimatedDelivery: String(order.estimatedDelivery || ''),
+      deliveryEstimateText: ORDER_DELIVERY_ESTIMATE_TEXT,
       latestDetails: String(order.latestTrackingStatus?.details || ''),
       latestStatusDate: String(order.latestTrackingStatus?.statusDate || ''),
     },

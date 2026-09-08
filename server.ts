@@ -19,6 +19,8 @@ import { CHECKOUT_NEWSLETTER_SOURCE, shouldActivateCheckoutNewsletter } from "./
 import { buildRefundWorkflowPlan, isLabelRefundComplete, type RefundWorkflowRequest } from "./src/lib/refundWorkflow.js";
 import { createOrderStatusToken, verifyOrderStatusToken } from "./src/lib/orderStatusToken.js";
 import { buildPublicOrderStatus } from "./src/lib/orderStatusView.js";
+import { createOrderReference, isOrderReference, orderReference } from "./src/lib/orderReference.js";
+import { ORDER_DELIVERY_ESTIMATE_TEXT, ORDER_DELIVERY_MAX_BUSINESS_DAYS, ORDER_DELIVERY_MIN_BUSINESS_DAYS } from "./src/config/fulfillment.js";
 import { createProductSnapshot, isProductPublishReady } from "./src/lib/productCatalog.js";
 import { resolveBundle, type BundleDefinition, type BundleProduct } from "./src/lib/bundleCommerce.js";
 import { isPrelaunchEnabled, registerPrelaunchProtection } from "./src/server/prelaunch.js";
@@ -62,6 +64,51 @@ if (!admin.apps.length) {
 const db = typedFirebaseConfig.firestoreDatabaseId
   ? getFirestore(typedFirebaseConfig.firestoreDatabaseId)
   : getFirestore();
+
+class OrderReferenceCollisionError extends Error {}
+
+async function reserveOrderReference(orderId: string, preferredReference = "") {
+  const assignmentRef = db.collection("order_reference_assignments").doc(orderId);
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const candidate = attempt === 0 && isOrderReference(preferredReference)
+      ? orderReference(orderId, preferredReference)
+      : createOrderReference(randomBytes(6));
+    const indexRef = db.collection("order_reference_index").doc(candidate);
+    try {
+      return await db.runTransaction(async transaction => {
+        const [assignmentSnap, indexSnap] = await Promise.all([
+          transaction.get(assignmentRef),
+          transaction.get(indexRef),
+        ]);
+        const assigned = assignmentSnap.data()?.orderReference;
+        if (isOrderReference(assigned)) return orderReference(orderId, assigned);
+        if (indexSnap.exists && indexSnap.data()?.orderId !== orderId) throw new OrderReferenceCollisionError();
+
+        const referenceRecord = { orderId, orderReference: candidate, createdAt: admin.firestore.FieldValue.serverTimestamp() };
+        transaction.set(assignmentRef, referenceRecord, { merge: true });
+        transaction.set(indexRef, referenceRecord, { merge: true });
+        return candidate;
+      });
+    } catch (error) {
+      if (error instanceof OrderReferenceCollisionError) continue;
+      throw error;
+    }
+  }
+  throw new Error("Unable to allocate a unique order reference.");
+}
+
+async function ensureStoredOrderReference(orderId: string) {
+  const ref = db.collection("orders").doc(orderId);
+  const snapshot = await ref.get();
+  if (!snapshot.exists) return "";
+  const existing = snapshot.data()?.orderReference;
+  if (isOrderReference(existing)) return orderReference(orderId, existing);
+
+  const assigned = await reserveOrderReference(orderId, orderReference(orderId));
+  await ref.set({ orderReference: assigned, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  return assigned;
+}
 
 // Test Firestore connection
 async function testConnection() {
@@ -1111,7 +1158,7 @@ async function activateNewsletterSubscriber({
 function buildOrderEmailHtml({
   shippingAddress,
   customerName,
-  orderId,
+  publicOrderReference,
   items,
   subtotalAmount,
   shippingAmount,
@@ -1121,7 +1168,7 @@ function buildOrderEmailHtml({
 }: {
   shippingAddress: ReturnType<typeof getShippingAddress>;
   customerName: string;
-  orderId: string;
+  publicOrderReference: string;
   items: PendingOrderItem[];
   subtotalAmount: number;
   shippingAmount: number;
@@ -1149,7 +1196,7 @@ function buildOrderEmailHtml({
   return buildEmailLayout({
     eyebrow: "Order Confirmed",
     title: `Thank you${customerName ? `, ${escapeHtml(customerName)}` : ""}.`,
-    intro: "Your provisions are now in our fulfillment queue. We have received payment successfully and we will follow up again as soon as your order ships.",
+    intro: `Your provisions are now in our fulfillment queue. We have received payment successfully. ${ORDER_DELIVERY_ESTIMATE_TEXT} We will follow up again as soon as your order ships.`,
     ctaLabel: orderStatusUrl ? "View Order Status" : "Continue Shopping",
     ctaHref: orderStatusUrl || `${getPublicAppUrl() || "https://boanerges-provision-co.vercel.app"}/shop`,
     body: `
@@ -1157,7 +1204,7 @@ function buildOrderEmailHtml({
         <div style="display:grid;grid-template-columns:1fr;gap:20px;">
           <div style="padding:20px;border:1px solid rgba(197,160,89,0.16);background:rgba(255,255,255,0.02);">
             <p style="margin:0 0 10px;color:#c5a059;font-size:11px;font-weight:800;letter-spacing:0.24em;text-transform:uppercase;">Order Reference</p>
-            <p style="margin:0;color:#f4ecd8;font-size:22px;font-weight:700;">#${orderId.slice(-6).toUpperCase()}</p>
+            <p style="margin:0;color:#f4ecd8;font-size:22px;font-weight:700;">${escapeHtml(publicOrderReference)}</p>
           </div>
           <div style="padding:20px;border:1px solid rgba(255,255,255,0.08);">
             <p style="margin:0 0 10px;color:#c5a059;font-size:11px;font-weight:800;letter-spacing:0.24em;text-transform:uppercase;">Shipping To</p>
@@ -1225,15 +1272,16 @@ async function authenticateAdmin(req: express.Request): Promise<AdminActor> {
 }
 
 async function sendOrderConfirmation(orderId: string, order: FirebaseFirestore.DocumentData, idempotencyKey: string) {
+  const publicOrderReference = orderReference(orderId, order.orderReference);
   const result = await resend.emails.send({
     from: ORDERS_EMAIL_FROM,
     replyTo: ORDERS_REPLY_TO,
     to: order.customerEmail,
-    subject: `${String(order.orderType || "").startsWith("subscription") ? "Subscription Order" : "Order"} Confirmation #${orderId.slice(-6).toUpperCase()}`,
+    subject: `${String(order.orderType || "").startsWith("subscription") ? "Subscription Order" : "Order"} Confirmation ${publicOrderReference}`,
     html: buildOrderEmailHtml({
       shippingAddress: order.shippingAddress || null,
       customerName: order.customerName || "",
-      orderId,
+      publicOrderReference,
       items: order.items || [],
       subtotalAmount: Number(order.subtotalAmount || 0),
       shippingAmount: Number(order.shippingAmount || 0),
@@ -1247,6 +1295,7 @@ async function sendOrderConfirmation(orderId: string, order: FirebaseFirestore.D
 }
 
 async function sendShipmentNotification(orderId: string, order: FirebaseFirestore.DocumentData, idempotencyKey: string) {
+  const publicOrderReference = orderReference(orderId, order.orderReference);
   const trackingUrl = String(order.trackingUrl || "");
   const orderStatusUrl = getOrderStatusUrl(orderId);
   const shippedItems = Array.isArray(order.items)
@@ -1264,7 +1313,7 @@ async function sendShipmentNotification(orderId: string, order: FirebaseFirestor
     from: ORDERS_EMAIL_FROM,
     replyTo: ORDERS_REPLY_TO,
     to: order.customerEmail,
-    subject: `Your order #${orderId.slice(-6).toUpperCase()} has shipped`,
+    subject: `Your order ${publicOrderReference} has shipped`,
     html: buildEmailLayout({
       eyebrow: "Order Shipped",
       title: "Your provisions are on the way.",
@@ -1280,11 +1329,12 @@ async function sendShipmentNotification(orderId: string, order: FirebaseFirestor
 }
 
 async function sendRefundNotification(orderId: string, order: FirebaseFirestore.DocumentData, details: { amount: number; reason: string; cancelled: boolean }, idempotencyKey: string) {
+  const publicOrderReference = orderReference(orderId, order.orderReference);
   const result = await resend.emails.send({
     from: ORDERS_EMAIL_FROM,
     replyTo: ORDERS_REPLY_TO,
     to: order.customerEmail,
-    subject: `${details.cancelled ? "Cancellation" : "Refund"} confirmation #${orderId.slice(-6).toUpperCase()}`,
+    subject: `${details.cancelled ? "Cancellation" : "Refund"} confirmation ${publicOrderReference}`,
     html: buildEmailLayout({
       eyebrow: details.cancelled ? "Order Cancelled" : "Refund Issued",
       title: details.cancelled ? "Your order has been cancelled." : "Your refund is on the way.",
@@ -1306,6 +1356,7 @@ async function sendTrackingNotification(
   tracking: NonNullable<ShippoTrackingWebhook["data"]>,
   idempotencyKey: string,
 ) {
+  const publicOrderReference = orderReference(orderId, order.orderReference);
   const trackingUrl = String(tracking.tracking_url_provider || order.trackingUrl || "");
   const orderStatusUrl = getOrderStatusUrl(orderId);
   const details = tracking.tracking_status?.status_details || tracking.tracking_status?.substatus?.text || "";
@@ -1314,21 +1365,21 @@ async function sendTrackingNotification(
       eyebrow: "Order Delivered",
       title: "Your provisions have arrived.",
       intro: "The carrier has marked your package as delivered.",
-      subject: `Your order #${orderId.slice(-6).toUpperCase()} was delivered`,
+      subject: `Your order ${publicOrderReference} was delivered`,
       footer: "If you cannot locate the package, reply to this email and our support team will help.",
     },
     delayed: {
       eyebrow: "Shipment Update",
       title: "Your delivery is taking a little longer.",
       intro: "The carrier reported a delay. Your package is still being tracked, and the latest details are below.",
-      subject: `Delivery update for order #${orderId.slice(-6).toUpperCase()}`,
+      subject: `Delivery update for order ${publicOrderReference}`,
       footer: "We will keep monitoring the shipment. Reply to this email if you need help.",
     },
     exception: {
       eyebrow: "Shipment Attention",
       title: "Your shipment needs attention.",
       intro: "The carrier reported an issue that may affect delivery. Our team can help with the next step.",
-      subject: `Shipping issue for order #${orderId.slice(-6).toUpperCase()}`,
+      subject: `Shipping issue for order ${publicOrderReference}`,
       footer: "Reply to this email and our support team will help resolve the shipment issue.",
     },
   }[kind];
@@ -2693,8 +2744,8 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
             },
             display_name: shippingCost > 0 ? "Standard Shipping" : "Free Shipping",
             delivery_estimate: {
-              minimum: { unit: "business_day", value: 3 },
-              maximum: { unit: "business_day", value: 7 },
+              minimum: { unit: "business_day", value: ORDER_DELIVERY_MIN_BUSINESS_DAYS },
+              maximum: { unit: "business_day", value: ORDER_DELIVERY_MAX_BUSINESS_DAYS },
             },
             tax_behavior: "exclusive",
           },
@@ -2766,6 +2817,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
         paymentStatus: session.payment_status,
         customerEmail: session.customer_details?.email || session.customer_email || "",
         orderId: orderSnap.exists ? orderSnap.id : "",
+        orderReference: orderSnap.exists ? orderReference(orderSnap.id, orderData?.orderReference) : "",
         orderStatus: orderData?.status || "",
         orderStatusUrl: orderSnap.exists ? getOrderStatusUrl(orderSnap.id) : "",
         orderType: orderData?.orderType || "",
@@ -3318,6 +3370,9 @@ async function completePaidOrderEffects(orderId: string) {
   const orderRef = db.collection("orders").doc(orderId);
   let orderSnap = await orderRef.get();
   if (!orderSnap.exists) return;
+  await ensureStoredOrderReference(orderId);
+  orderSnap = await orderRef.get();
+  if (!orderSnap.exists) return;
   await completeCheckoutNewsletterConsent(orderId, orderSnap.data()!);
   if (normalizeOrderLifecycle(orderSnap.data()!).fulfillmentStatus === "requires_attention") return;
   await recordPaidOrderAnalyticsOnce(orderId);
@@ -3379,6 +3434,7 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session, event:
   }
   const pendingOrderData = pendingOrderSnap.data()!;
   const orderItems = (pendingOrderData.items || []) as PendingOrderItem[];
+  const publicOrderReference = await reserveOrderReference(orderId);
 
   const customerEmail = normalizeCustomerEmail(session.customer_details?.email || session.customer_email || pendingOrderData.customerEmail);
   const customerName = session.customer_details?.name || "";
@@ -3391,6 +3447,7 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session, event:
   const taxAmount = toMoneyFromCents(session.total_details?.amount_tax);
   const total = toMoneyFromCents(session.amount_total);
   const orderBase = {
+    orderReference: publicOrderReference,
     stripeSessionId: session.id,
     stripePaymentIntentId:
       typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || "",
@@ -3475,7 +3532,7 @@ async function handleSuccessfulCheckout(session: Stripe.Checkout.Session, event:
       from: ORDERS_EMAIL_FROM,
       replyTo: ORDERS_REPLY_TO,
       to: ORDERS_NOTIFICATION_EMAIL,
-      subject: `URGENT: Order Fulfillment Error #${orderId.slice(-6).toUpperCase()}`,
+      subject: `URGENT: Order Fulfillment Error ${publicOrderReference}`,
       html: `<h3>Payment received but inventory failed to decrement!</h3>
              <p>Error: ${error.message}</p>
              <p>Please review order <strong>${orderId}</strong> manually.</p>`
@@ -3538,6 +3595,7 @@ async function handlePaidSubscriptionInvoice(invoice: Stripe.Invoice) {
   if (!subscriptionSnap.exists) throw new Error(`Subscription record ${subscriptionId} is missing.`);
   const subscription = subscriptionSnap.data()!;
   const orderId = invoice.id;
+  const publicOrderReference = await reserveOrderReference(orderId);
   const orderRef = db.collection("orders").doc(orderId);
   const items = (subscription.items || []) as PendingOrderItem[];
   let inventoryConflict = "";
@@ -3558,6 +3616,7 @@ async function handlePaidSubscriptionInvoice(invoice: Stripe.Invoice) {
     const totalAmount = toMoneyFromCents((invoice as any).total);
     const taxAmount = Array.isArray((invoice as any).total_taxes) ? toMoneyFromCents((invoice as any).total_taxes.reduce((sum: number, tax: any) => sum + Number(tax.amount || 0), 0)) : Math.max(0, totalAmount - invoiceSubtotal);
     const order = {
+      orderReference: publicOrderReference,
       orderType: "subscription_renewal", stripeSubscriptionId: subscriptionId, stripeInvoiceId: invoice.id,
       stripeCustomerId: typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id || subscription.stripeCustomerId || "",
       stripePaymentIntentId: typeof (invoice as any).payment_intent === "string" ? (invoice as any).payment_intent : (invoice as any).payment_intent?.id || "",

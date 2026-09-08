@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, Loader2, PackageCheck, Mail, ArrowRight, Sparkles } from 'lucide-react';
 import { useCart } from '@/src/store';
 import { trackPurchaseOnce } from '@/src/lib/analytics';
+import { ORDER_DELIVERY_ESTIMATE_TEXT } from '@/src/config/fulfillment';
 
 type CheckoutSessionStatus = {
   id: string;
@@ -10,6 +11,7 @@ type CheckoutSessionStatus = {
   paymentStatus: string;
   customerEmail?: string;
   orderId?: string;
+  orderReference?: string;
   orderStatus?: string;
   orderStatusUrl?: string;
   orderType?: string;
@@ -47,15 +49,20 @@ export const CheckoutSuccess: React.FC = () => {
 
     const verifySession = async () => {
       try {
-        const response = await fetch(`/api/checkout/session-status?session_id=${encodeURIComponent(sessionId)}`);
-        const data = await response.json();
+        let data: CheckoutSessionStatus | null = null;
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          const response = await fetch(`/api/checkout/session-status?session_id=${encodeURIComponent(sessionId)}`);
+          data = await response.json();
+          if (!response.ok) throw new Error((data as any)?.error || 'Unable to verify checkout status.');
+          if (!isMounted) return;
+          setSessionStatus(data);
 
-        if (!response.ok) {
-          throw new Error(data.error || 'Unable to verify checkout status.');
+          const awaitingOrderReference = data?.status === 'complete' && data.paymentStatus === 'paid' && !data.orderReference;
+          if (!awaitingOrderReference || attempt === 7) break;
+          await new Promise(resolve => window.setTimeout(resolve, 1000));
         }
 
-        if (!isMounted) return;
-        setSessionStatus(data);
+        if (!data || !isMounted) return;
 
         if (data.status === 'complete' && data.paymentStatus === 'paid') {
           const fallbackItems = useCart.getState().items.map(item => ({
@@ -116,7 +123,7 @@ export const CheckoutSuccess: React.FC = () => {
                 {isVerifying ? 'Verifying Payment' : isPaid ? 'Order Confirmed' : 'Payment Review'}
               </span>
               <h1 className="text-4xl md:text-6xl font-serif text-brand-parchment leading-tight">
-                {isVerifying ? 'One moment while we confirm.' : isPaid ? 'Your provisions are on the way.' : 'We are checking your payment.'}
+                {isVerifying ? 'One moment while we confirm.' : isPaid ? 'Your order is confirmed.' : 'We are checking your payment.'}
               </h1>
               <p className="max-w-2xl mx-auto text-brand-parchment/65 text-lg font-light leading-relaxed">
                 {isPaid
@@ -132,7 +139,7 @@ export const CheckoutSuccess: React.FC = () => {
               <div className="space-y-2">
                 <h2 className="text-brand-parchment text-lg font-serif">What happens next</h2>
                 <p className="text-sm text-brand-parchment/55 leading-relaxed">
-                  Your order is now in our queue and will be handcrafted and packed before shipping.
+                  Your order is now in our queue and will be prepared and packed before shipping. {ORDER_DELIVERY_ESTIMATE_TEXT}
                 </p>
               </div>
             </div>
@@ -163,10 +170,10 @@ export const CheckoutSuccess: React.FC = () => {
               </p>
               <div className="space-y-2">
                 <p className="text-brand-parchment text-lg font-serif">
-                  {sessionStatus?.orderId
-                    ? `Order #${sessionStatus.orderId.slice(-8).toUpperCase()}`
-                    : sessionId
-                      ? `Stripe Session ${sessionId.slice(-10).toUpperCase()}`
+                  {sessionStatus?.orderReference
+                    ? `Order ${sessionStatus.orderReference}`
+                    : isPaid
+                      ? 'Order reference is being prepared'
                       : 'Checkout reference unavailable'}
                 </p>
                 <p className="text-sm text-brand-parchment/50 leading-relaxed max-w-xl">

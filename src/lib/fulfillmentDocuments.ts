@@ -1,3 +1,5 @@
+import { orderReference } from './orderReference.js';
+
 export type FulfillmentDocumentItem = {
   productId?: string;
   name?: string;
@@ -10,6 +12,7 @@ export type FulfillmentDocumentItem = {
 
 export type FulfillmentDocumentOrder = {
   id: string;
+  orderReference?: string;
   items?: FulfillmentDocumentItem[];
   paymentStatus?: string;
   fulfillmentStatus?: string;
@@ -63,6 +66,6 @@ export function buildConsolidatedPickList(orders: FulfillmentDocumentOrder[]): P
     .sort((a, b) => a.name.localeCompare(b.name) || a.sizeOz - b.sizeOz);
 }
 
-export function shortOrderReference(orderId: string) {
-  return orderId.slice(-8).toUpperCase();
+export function shortOrderReference(order: FulfillmentDocumentOrder) {
+  return orderReference(order.id, order.orderReference);
 }

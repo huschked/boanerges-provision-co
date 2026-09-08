@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { ORDER_PROCESSING_TEXT } from '@/src/config/fulfillment';
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <section className="space-y-4">
@@ -31,7 +32,7 @@ export const TermsOfService: React.FC = () => (
         </Section>
 
         <Section title="Shipping and delivery">
-          <p>Orders are typically processed within 2–3 business days. Carrier delivery dates are estimates rather than guarantees. Risk of carrier delay, weather, address errors, or events outside our reasonable control may affect delivery.</p>
+          <p>{ORDER_PROCESSING_TEXT} Carrier delivery dates are estimates rather than guarantees. Risk of carrier delay, weather, address errors, or events outside our reasonable control may affect delivery.</p>
           <p>You are responsible for providing a complete and accurate shipping address. Contact <a className="text-brand-gold hover:text-brand-parchment underline underline-offset-4" href="mailto:orders@boanergesprovisions.com">orders@boanergesprovisions.com</a> immediately if an address needs correction; changes are not guaranteed after fulfillment begins.</p>
         </Section>
 

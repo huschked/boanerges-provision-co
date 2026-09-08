@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Plus } from 'lucide-react';
+import { ORDER_DELIVERY_ESTIMATE_TEXT } from '@/src/config/fulfillment';
 
 export const FAQ: React.FC = () => {
   const faqs = [
@@ -22,7 +23,7 @@ export const FAQ: React.FC = () => {
     },
     {
       q: "What is your shipping policy?",
-      a: "We offer free standard shipping on all orders over $50 within the continental USA. Orders are typically processed within 2-3 business days and shipped via USPS or UPS."
+      a: `We offer free standard shipping on all orders over $50 within the continental USA. ${ORDER_DELIVERY_ESTIMATE_TEXT} Orders ship through an available supported carrier.`
     },
     {
       q: "Can I return a jar of salt?",

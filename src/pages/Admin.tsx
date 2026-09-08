@@ -19,6 +19,7 @@ import { BundlesView } from '../components/admin/BundlesView';
 import { SubscriptionsView } from '../components/admin/SubscriptionsView';
 import { ReviewsView } from '../components/admin/ReviewsView';
 import { normalizeOrderLifecycle } from '@/src/lib/orderLifecycle';
+import { orderReference } from '@/src/lib/orderReference';
 
 type AdminTab = 'dashboard' | 'analytics' | 'products' | 'bundles' | 'subscriptions' | 'orders' | 'subscribers' | 'contact' | 'reviews';
 
@@ -218,6 +219,7 @@ export const Admin: React.FC = () => {
   const filteredOrders = orders.filter((order) =>
     !normalizedOrderSearchTerm ||
     (order.id || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
+    orderReference(order.id, order.orderReference).toLowerCase().includes(normalizedOrderSearchTerm) ||
     (order.customerEmail || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
     (order.customerName || '').toLowerCase().includes(normalizedOrderSearchTerm) ||
     (order.customerPhone || '').toLowerCase().includes(normalizedOrderSearchTerm) ||

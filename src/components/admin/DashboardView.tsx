@@ -5,9 +5,11 @@ import { Product } from '@/src/services/productService';
 import type { FulfillmentState, PaymentState, ShipmentState } from '@/src/lib/orderLifecycle';
 import { getOrderExceptions, ORDER_EXCEPTION_LABELS, type OrderExceptionKind } from '@/src/lib/orderExceptions';
 import type { OrderQueueFilter } from './OrdersView';
+import { orderReference } from '@/src/lib/orderReference';
 
 export interface Order {
   id: string;
+  orderReference?: string;
   customerEmail: string;
   customerName?: string;
   customerPhone?: string;
@@ -190,7 +192,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, pro
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-white/5">
-                  <th className="px-10 py-6 text-[10px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Order ID</th>
+                  <th className="px-10 py-6 text-[10px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Order Reference</th>
                   <th className="px-10 py-6 text-[10px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Customer</th>
                   <th className="px-10 py-6 text-[10px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Amount</th>
                   <th className="px-10 py-6 text-[10px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black text-right">Status</th>
@@ -203,7 +205,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ stats, orders, pro
 
                   return (
                   <tr key={order.id} className="hover:bg-white/[0.02] transition-colors group">
-                    <td className="px-10 py-6 text-[11px] text-brand-parchment font-mono tracking-wider opacity-60 group-hover:opacity-100 transition-opacity">#{order.id.slice(0, 8).toUpperCase()}</td>
+                    <td className="px-10 py-6 text-[11px] text-brand-parchment font-mono tracking-wider opacity-60 group-hover:opacity-100 transition-opacity">{orderReference(order.id, order.orderReference)}</td>
                     <td className="px-10 py-6 text-[11px] text-brand-parchment/80 font-medium">{order.customerName || order.customerEmail}</td>
                     <td className="px-10 py-6 text-sm text-brand-parchment font-black tracking-tight">${totalAmount.toFixed(2)}</td>
                     <td className="px-10 py-6 text-right">

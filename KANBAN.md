@@ -60,19 +60,6 @@ This board is the working queue for website development. Keep cards actionable e
   - Compare aggregate counts and revenue against known fixture totals.
 - **Notes / Links:** Current loading is capped in `src/pages/Admin.tsx`.
 
-### WEB-021 - Add Consistent Order References and Fulfillment Copy
-
-- **Priority:** Medium
-- **Area:** checkout
-- **Goal:** Use one customer-friendly order reference and one accurate delivery promise everywhere.
-- **Acceptance Criteria:**
-  - A human-readable order number is generated once and used in checkout success, emails, admin search, packing slips, and support workflows.
-  - Handling, shipping, and delivery estimates are sourced from shared configuration.
-  - Checkout, FAQ, order confirmation, shipment email, and order-status copy no longer conflict.
-- **Verification:**
-  - Complete a test order and compare the reference and timing language in every customer/admin surface.
-- **Notes / Links:** Current views use different slices of the Stripe Checkout Session id.
-
 ### WEB-023 - Replace Placeholder Admin Metrics and Optimize App Bundles
 
 - **Priority:** Low
@@ -140,9 +127,27 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
+### WEB-021 - Add Consistent Order References and Fulfillment Copy
+
+- **Status:** Review / Verify — implementation and automated checks are complete; awaiting deployed order-lifecycle verification.
+- **Priority:** Medium
+- **Area:** checkout
+- **Goal:** Use one customer-friendly order reference and one accurate delivery promise everywhere.
+- **Acceptance Criteria:**
+  - A human-readable order number is generated once and used in checkout success, emails, admin search, packing slips, and support workflows.
+  - Handling, shipping, and delivery estimates are sourced from shared configuration.
+  - Checkout, FAQ, order confirmation, shipment email, and order-status copy no longer conflict.
+- **Verification:**
+  - Complete a test order and compare the reference and timing language in every customer/admin surface.
+- **Implementation Results:** Added collision-protected, server-assigned `BP-XXXXXX` references for checkout and subscription-renewal orders; a consistent legacy fallback; checkout webhook waiting; Admin search/copy/display; email, order-status, dashboard, packing-slip, and pick-list integration; and shared processing/delivery configuration.
+- **Verification Results:** TypeScript validation, all 68 automated tests, and the production build pass. The existing large-chunk build warning remains tracked by WEB-023.
+- **Notes / Links:** Deployment and owner-verification steps are documented in `docs/order-references-and-delivery.md`. Stripe IDs remain internal document and analytics identifiers rather than customer-facing order numbers.
+
+## Done
+
 ### WEB-045 - Add a Secure Prelaunch Storefront Gate
 
-- **Status:** Review / Verify — implementation and local checks are complete; awaiting deployed production-domain verification.
+- **Status:** Done — owner confirmed the deployed production-domain gate is complete and verified.
 - **Priority:** High
 - **Area:** storefront | infra | security
 - **Goal:** Let the production domain collect interest and support private stakeholder review without exposing unfinished catalog or commerce flows.
@@ -159,11 +164,12 @@ This board is the working queue for website development. Keep cards actionable e
   - Browser-check locked, invalid-password, valid-password, session persistence, separate-incognito-session, newsletter, legal, Admin, and direct product URL behavior.
   - After deployment, confirm operational webhook and cron deliveries remain successful and run a Stripe test-mode checkout through an unlocked session.
 - **Implementation Results:** Added the branded gate, server-side session and rate limiting, guarded product APIs, prelaunch-safe caching, Admin/customer route exceptions, Firestore read hardening, and `docs/prelaunch-storefront.md`.
+- **Verification Results:** Automated prelaunch/API checks, TypeScript validation, and the production build passed. Owner verified the production domain, Coming Soon presentation, private access flow, and an unlocked Stripe test checkout returning through the operational checkout-confirmation exception.
 - **Notes / Links:** Configure server-only `PRELAUNCH_MODE` and `PRELAUNCH_PASSWORD`; never use a `VITE_` prefix for the password. Deploy the application before the accompanying Firestore rules as documented.
 
 ### WEB-004 - Storefront Analytics and Ad Tracking
 
-- **Status:** Review / Verify — implementation and local checks are complete; awaiting deployed GA4/Meta configuration and provider test-event verification.
+- **Status:** Done — owner confirmed the deployed GA4 and Meta integrations are complete and verified.
 - **Priority:** High
 - **Area:** analytics | privacy | marketing
 - **Goal:** Preserve the internal operational analytics while adding consent-aware Google Analytics 4 and Meta Pixel measurement for traffic, ecommerce behavior, advertising attribution, and campaign optimization.
@@ -185,9 +191,8 @@ This board is the working queue for website development. Keep cards actionable e
   - Browser-check consent defaults and preference changes, SPA page views, product view, add to cart, checkout start, completed purchase, subscription checkout, and newsletter signup while monitoring network requests.
   - Confirm GA4 events and consent state with Google Tag Assistant/DebugView and confirm Meta browser events in Events Manager Test Events (or Meta Pixel Helper) using test transactions only.
 - **Implementation Results:** Added independent GA4/Meta configuration, consent controls, sanitized shared ecommerce events, verified-purchase deduplication, first-party daily counters, privacy disclosures, admin reporting guidance, automated adapter tests, and `docs/analytics-and-ad-tracking.md`.
+- **Verification Results:** Automated analytics tests, TypeScript validation, and the production build passed. Owner verified production GA4 and Meta event delivery for the storefront ecommerce flow, including completed purchases, and configured GA4 `purchase` as a key event.
 - **Notes / Links:** Use `VITE_GA_MEASUREMENT_ID` and `VITE_META_PIXEL_ID` as public identifiers, not secrets. Start with browser-side GA4 and Meta Pixel; evaluate Meta Conversions API as a separate hardening story after baseline tracking is verified. The current admin analytics view intentionally lacks traffic, conversion-rate, ad-attribution, and abandoned-cart reporting.
-
-## Done
 
 ### WEB-003 - Admin Portal End-to-End Regression Verification
 

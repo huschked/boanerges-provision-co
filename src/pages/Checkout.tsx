@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
 import { getProductsByIds } from '@/src/services/productService';
 import { bundleToCartProduct, getBundles } from '@/src/services/bundleService';
+import { ORDER_DELIVERY_ESTIMATE_TEXT } from '@/src/config/fulfillment';
 
 export const Checkout: React.FC = () => {
   const { items, total, updateQuantity, removeItem, refreshProductSnapshots } = useCart();
@@ -265,7 +266,7 @@ export const Checkout: React.FC = () => {
 
             <div className="p-8 bg-brand-gold/5 border border-brand-gold/20 rounded-sm">
               <p className="text-[12px] text-brand-parchment/60 leading-relaxed italic font-light">
-                "Your order will typically be processed within 2–3 business days. Thank you for supporting small-batch craftsmanship."
+                “{ORDER_DELIVERY_ESTIMATE_TEXT} Thank you for supporting small-batch craftsmanship.”
               </p>
             </div>
           </div>

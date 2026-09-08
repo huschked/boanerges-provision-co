@@ -11,6 +11,7 @@ import { ProductRating } from '@/src/components/ProductRating';
 import { useCart } from '@/src/store';
 import { cn } from '@/src/lib/utils';
 import { trackAnalyticsEvent } from '@/src/lib/analytics';
+import { ORDER_DELIVERY_ESTIMATE_TEXT } from '@/src/config/fulfillment';
 import toast from 'react-hot-toast';
 
 export const ProductDetail: React.FC = () => {
@@ -166,7 +167,7 @@ export const ProductDetail: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <div className="space-y-1">
                       <p className="text-[11px] font-black uppercase tracking-widest text-brand-parchment">One-time Purchase</p>
-                      <p className="text-xs text-brand-parchment/40">Typically processed within 2–3 business days</p>
+                      <p className="text-xs text-brand-parchment/40">{ORDER_DELIVERY_ESTIMATE_TEXT}</p>
                     </div>
                     <span className="font-serif text-xl text-brand-parchment">${product.price.toFixed(2)}</span>
                   </div>

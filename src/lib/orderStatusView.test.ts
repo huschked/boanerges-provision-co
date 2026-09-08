@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { buildPublicOrderStatus } from './orderStatusView.ts';
 
 const baseOrder = {
+  orderReference: 'BP-7K4M2Q',
   paymentStatus: 'paid', fulfillmentStatus: 'pending', shipmentStatus: 'not_shipped',
   customerName: 'Private Customer', customerEmail: 'private@example.com', customerPhone: '555-555-5555',
   shippingAddress: { line1: 'Private street' }, adminNotes: 'Never expose this',
@@ -18,6 +19,8 @@ test('public order status uses an explicit privacy-safe response', () => {
     assert.equal(serialized.includes(privateValue), false);
   }
   assert.equal(view.items[0].name, 'Ghost Salt');
+  assert.equal(view.reference, 'BP-7K4M2Q');
+  assert.match(view.shipping.deliveryEstimateText, /3–7 business days/);
   assert.equal(view.actions.canRequestAddressChange, true);
   assert.equal(view.actions.canRequestCancellation, true);
 });

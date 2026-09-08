@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ChevronDown, Search, PackageSearch, Mail, Phone, MapPin, Printer, ListChecks } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronDown, Search, PackageSearch, Mail, Phone, MapPin, Printer, ListChecks, Copy } from 'lucide-react';
 import QRCode from 'qrcode';
 import { cn } from '@/src/lib/utils';
 import { AdminOrderApiError, runOrderCommand, type FulfillmentOperation } from '@/src/lib/adminOrders';
@@ -10,6 +10,7 @@ import { ReservationPanel } from './ReservationPanel';
 import { formatExceptionAge, getOrderExceptions, ORDER_EXCEPTION_LABELS, type OrderExceptionKind } from '@/src/lib/orderExceptions';
 import { canIncludeInPickList } from '@/src/lib/fulfillmentDocuments';
 import { FulfillmentPrintDocuments, type FulfillmentPrintJob } from './FulfillmentPrintDocuments';
+import { orderReference } from '@/src/lib/orderReference';
 
 export type OrderQueueFilter = 'all' | 'attention' | OrderExceptionKind;
 
@@ -83,6 +84,16 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
     ? selectedOrder.latestTransactionalEmail.type
     : selectedOrder?.refundEmailStatus === 'failed' ? 'refund'
       : selectedOrder?.shipmentEmailStatus === 'failed' ? 'shipment' : 'confirmation';
+
+  const copyOrderReference = async () => {
+    if (!selectedOrder) return;
+    try {
+      await navigator.clipboard.writeText(orderReference(selectedOrder.id, selectedOrder.orderReference));
+      toast.success('Order reference copied.');
+    } catch {
+      toast.error('Could not copy the order reference.');
+    }
+  };
 
   useEffect(() => {
     if (!visibleOrders.length) {
@@ -291,7 +302,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                 >
                   <div className="flex justify-between items-start gap-4">
                     <div className="min-w-0 space-y-2">
-                      <p className="text-xs font-mono text-brand-gold/60 tracking-wider">#{order.id.slice(0, 8).toUpperCase()}</p>
+                      <p className="text-xs font-mono text-brand-gold/60 tracking-wider">{orderReference(order.id, order.orderReference)}</p>
                       <p className="truncate text-sm text-brand-parchment font-black">{order.customerName || order.customerEmail}</p>
                       <p className="truncate text-[10px] text-brand-parchment/40 font-medium">{order.customerEmail}</p>
                       <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/25 font-black">
@@ -337,7 +348,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                 <div className="space-y-3">
                   <button onClick={() => setIsMobileDetailOpen(false)} className="xl:hidden inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-brand-gold font-black"><ArrowLeft size={14} /> Back to orders</button>
                   <p className="text-[10px] uppercase tracking-[0.3em] text-brand-gold/50 font-black">Order Details</p>
-                  <h3 className="text-3xl font-serif text-brand-parchment">#{selectedOrder.id.slice(0, 8).toUpperCase()}</h3>
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-3xl font-serif text-brand-parchment">{orderReference(selectedOrder.id, selectedOrder.orderReference)}</h3>
+                    <button type="button" onClick={copyOrderReference} className="inline-flex items-center gap-2 px-3 py-2 border border-white/10 text-[8px] uppercase tracking-[0.16em] font-black text-brand-parchment/50 hover:text-brand-gold hover:border-brand-gold/30" aria-label="Copy order reference"><Copy size={12} /> Copy</button>
+                  </div>
                   <p className="text-brand-parchment/50 text-sm">
                     {selectedOrder.createdAt?.toDate ? selectedOrder.createdAt.toDate().toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Date unavailable'}
                   </p>

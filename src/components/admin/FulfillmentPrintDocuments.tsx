@@ -27,7 +27,7 @@ const PackingSlip: React.FC<{ order: Order; qrDataUrl: string }> = ({ order, qrD
     <article className="print-page packing-slip">
       <header className="print-header">
         <img src={logo} alt="Boanerges Provisions Co." />
-        <div><p className="print-kicker">Packing Slip</p><h1>Order #{shortOrderReference(order.id)}</h1><p>{orderDate(order.createdAt)}</p></div>
+        <div><p className="print-kicker">Packing Slip</p><h1>Order {shortOrderReference(order)}</h1><p>{orderDate(order.createdAt)}</p></div>
       </header>
 
       <section className="print-two-column">
@@ -52,7 +52,7 @@ const PackingSlip: React.FC<{ order: Order; qrDataUrl: string }> = ({ order, qrD
       </section>
 
       <footer className="print-footer">
-        <div><img src={qrDataUrl} alt={`QR code for order ${shortOrderReference(order.id)}`} /><p>Scan to open this order in the secure admin portal.</p></div>
+        <div><img src={qrDataUrl} alt={`QR code for order ${shortOrderReference(order)}`} /><p>Scan to open this order in the secure admin portal.</p></div>
         <div className="print-checks"><span>□ Items checked</span><span>□ Package sealed</span><span>□ Label matched</span></div>
       </footer>
     </article>
@@ -74,7 +74,7 @@ const PickList: React.FC<{ orders: Order[] }> = ({ orders }) => {
           <tr key={`${item.productId}-${item.sizeOz}`}><td className="print-checkbox">□</td><td className="print-mono">{item.productId}</td><td>{item.name}</td><td>{item.sizeOz ? `${item.sizeOz} oz` : '—'}</td><td>{item.orderCount}</td><td className="print-number print-quantity">{item.quantity}</td></tr>
         ))}</tbody>
       </table>
-      <section className="print-order-references"><h2>Included Orders</h2><p>{orders.map(order => `#${shortOrderReference(order.id)}`).join(' · ')}</p></section>
+      <section className="print-order-references"><h2>Included Orders</h2><p>{orders.map(order => shortOrderReference(order)).join(' · ')}</p></section>
       <footer className="print-signoff"><span>Picked by: ____________________</span><span>Date/time: ____________________</span></footer>
     </article>
   );
