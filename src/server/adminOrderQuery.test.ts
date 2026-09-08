@@ -4,8 +4,10 @@ import {
   ADMIN_ORDER_CURSOR_TTL_MS,
   AdminOrderCursorError,
   buildAdminOrderSummary,
+  buildAdminOrdersCsv,
   createAdminOrderCursor,
   matchesAdminOrderSearch,
+  matchesAdminOrderFilters,
   normalizeAdminOrderSearch,
   parseAdminOrderCursor,
 } from './adminOrderQuery.js';
@@ -25,6 +27,33 @@ test('normalizes and searches all supported order identity fields', () => {
   assert.equal(matchesAdminOrderSearch(order, 'jose'), true);
   assert.equal(matchesAdminOrderSearch(order, '1Z999AA10123456784'), true);
   assert.equal(matchesAdminOrderSearch(order, 'not present'), false);
+});
+
+test('filters operational queues and date states independently', () => {
+  const now = Date.UTC(2026, 8, 8, 18);
+  const order = { fulfillmentStatus: 'packed', paymentStatus: 'paid', shipmentStatus: 'not_shipped', carrier: 'USPS', createdAt: { seconds: (now - 2 * 86_400_000) / 1000 } };
+  assert.equal(matchesAdminOrderFilters(order, { fulfillmentStatus: 'packed', paymentStatus: 'paid', shipmentStatus: 'not_shipped', carrier: 'usps', dateState: '7d' }, now), true);
+  assert.equal(matchesAdminOrderFilters(order, { fulfillmentStatus: 'pending' }, now), false);
+  assert.equal(matchesAdminOrderFilters(order, { dateState: 'today' }, now), false);
+  assert.equal(matchesAdminOrderFilters(order, { dateState: 'older30' }, now), false);
+});
+
+test('today filter follows the Minnesota business day instead of the server UTC day', () => {
+  const now = Date.UTC(2026, 8, 9, 2, 0, 0); // Sep 8 at 9 PM in Minneapolis.
+  const sameBusinessDay = { createdAt: { seconds: Date.UTC(2026, 8, 8, 6, 0, 0) / 1000 } };
+  assert.equal(matchesAdminOrderFilters(sameBusinessDay, { dateState: 'today' }, now), true);
+});
+
+test('CSV export is Excel compatible and neutralizes formula-like customer data', () => {
+  const csv = buildAdminOrdersCsv([{
+    id: 'order-1', orderReference: 'BP-ABC234', createdAt: { seconds: Date.UTC(2026, 8, 8) / 1000 },
+    customerName: '=HYPERLINK("bad")', customerEmail: 'salt@example.com', totalAmount: 12.5,
+    items: [{ name: 'Salt, Hot', quantity: 2 }], shippingAddress: { line1: '1 Main St', city: 'Minneapolis', state: 'MN', postalCode: '55401' },
+  }]);
+  assert.equal(csv.startsWith('\uFEFF'), true);
+  assert.match(csv, /"'=HYPERLINK\(""bad""\)"/);
+  assert.match(csv, /"2 x Salt, Hot"/);
+  assert.equal(csv.includes('stripeSessionId'), false);
 });
 
 test('an order older than the former 300-result cap remains discoverable', () => {

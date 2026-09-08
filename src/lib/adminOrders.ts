@@ -26,6 +26,19 @@ export type AdminOrderSummary = {
   period: { days: number; orderCount: number; revenue: number };
 };
 
+export type AdminOrderQueryOptions = {
+  fulfillmentStatus: string;
+  paymentStatus: string;
+  shipmentStatus: string;
+  carrier: string;
+  dateState: 'all' | 'today' | '7d' | '30d' | 'older30';
+  sort: 'newest' | 'oldest';
+};
+
+export const DEFAULT_ADMIN_ORDER_QUERY: AdminOrderQueryOptions = {
+  fulfillmentStatus: '', paymentStatus: '', shipmentStatus: '', carrier: '', dateState: 'all', sort: 'newest',
+};
+
 async function adminPost(path: string, payload: Record<string, unknown>) {
   const user = auth.currentUser;
   if (!user) throw new AdminOrderApiError('Sign in is required.', 401, 'unauthenticated');
@@ -70,15 +83,34 @@ export async function getAdminOrdersPage<TOrder>({
   search = '',
   cursor = '',
   limit = 50,
-}: { search?: string; cursor?: string; limit?: number } = {}): Promise<AdminOrderPage<TOrder>> {
+  query = DEFAULT_ADMIN_ORDER_QUERY,
+}: { search?: string; cursor?: string; limit?: number; query?: AdminOrderQueryOptions } = {}): Promise<AdminOrderPage<TOrder>> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (search.trim()) params.set('search', search.trim());
   if (cursor) params.set('cursor', cursor);
+  Object.entries(query).forEach(([key, value]) => { if (value && value !== 'all') params.set(key, value); });
   return adminGet(`/api/admin/orders?${params.toString()}`);
 }
 
 export function getAdminOrderSummary(): Promise<AdminOrderSummary> {
   return adminGet('/api/admin/order-summary');
+}
+
+export async function exportAdminOrders({ search = '', query = DEFAULT_ADMIN_ORDER_QUERY, orderIds = [] }: { search?: string; query?: AdminOrderQueryOptions; orderIds?: string[] }) {
+  const user = auth.currentUser;
+  if (!user) throw new AdminOrderApiError('Sign in is required.', 401, 'unauthenticated');
+  const response = await fetch('/api/admin/orders/export', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
+    body: JSON.stringify({ search, ...query, orderIds }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new AdminOrderApiError(data.error || 'The export failed.', response.status, data.code);
+  }
+  const disposition = response.headers.get('content-disposition') || '';
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `boanerges-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+  return { blob: await response.blob(), filename };
 }
 
 export function purchaseShippingLabel(orderId: string, payload: { quoteId: string; rateId: string; acceptCorrectedAddress: boolean }) {

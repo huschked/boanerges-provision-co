@@ -43,23 +43,6 @@ This board is the working queue for website development. Keep cards actionable e
   - Run `npm audit --omit=dev`, TypeScript validation, all automated tests, the production build, and focused deployed regression checks.
 - **Notes / Links:** Discovered during WEB-046 after installing its development-only Sharp optimizer. The audit currently reports 31 findings, including two critical advisories. Do not use `npm audit fix --force` without reviewing the proposed major-version changes.
 
-### WEB-016 - Add Order Filters, Saved Queues, and Batch Actions
-
-- **Priority:** Medium
-- **Area:** admin
-- **Goal:** Make the order list efficient as volume grows by replacing the single client-side search workflow with operational queues and batch tools.
-- **Acceptance Criteria:**
-  - Orders can be filtered by fulfillment, payment, shipment, carrier, and date state; exception detection and resolution remain owned by WEB-013.
-  - Admins can sort fulfillment queues oldest-first and save or quickly reopen common views.
-  - Multi-select supports batch labels and safe status updates, with printable fulfillment documents supplied by WEB-017.
-  - Destructive or irreversible batch actions require confirmation and report partial failures clearly.
-  - Order ID, email, address, and tracking values have accessible copy actions.
-  - Unsaved notes or shipment edits warn before changing orders or leaving the page.
-- **Verification:**
-  - Browser-check filters, sorting, saved views, selection, and batch actions with mixed-status orders.
-  - Verify a partial batch failure does not incorrectly update successful or untouched orders.
-- **Notes / Links:** Depends on WEB-009 and WEB-012; consumes exception data from WEB-013 and printable documents from WEB-017 without redefining either workflow. Relevant files include `src/components/admin/OrdersView.tsx` and `src/pages/Admin.tsx`.
-
 ### WEB-006 - Launch Readiness Pass
 
 - **Priority:** Medium
@@ -99,9 +82,33 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
+### WEB-016 - Add Order Filters, Saved Queues, Batch Actions, and Export
+
+- **Status:** Review / Verify — implementation and automated verification are complete; awaiting deployed Admin workflow verification with mixed test orders and Shippo test-mode labels.
+- **Priority:** Medium
+- **Area:** admin
+- **Goal:** Make the order list efficient as volume grows by replacing the single client-side search workflow with operational queues, batch tools, and an Excel-compatible export.
+- **Acceptance Criteria:**
+  - Orders can be filtered by fulfillment, payment, shipment, carrier, and date state; exception detection and resolution remain owned by WEB-013.
+  - Admins can sort fulfillment queues oldest-first and save or quickly reopen common views.
+  - Multi-select supports batch labels and safe status updates, with printable fulfillment documents supplied by WEB-017.
+  - Destructive or irreversible batch actions require confirmation and report partial failures clearly.
+  - Order ID, email, address, and tracking values have accessible copy actions.
+  - Unsaved notes or shipment edits warn before changing orders or leaving the page.
+  - Admins can export selected orders or the complete current server-filtered result as an Excel-compatible UTF-8 CSV without exposing internal provider IDs or executable spreadsheet formulas.
+- **Verification:**
+  - Browser-check filters, sorting, saved views, selection, batch actions, and exports with mixed-status orders.
+  - Verify a partial batch failure does not incorrectly update successful or untouched orders.
+  - Verify CSV output with filters, selected orders, empty results, commas/quotes, Unicode, and formula-like customer values.
+- **Implementation Results:** Added server-side fulfillment, payment, shipment, carrier, date-state, and newest/oldest query controls; built-in fulfillment queues; browser-persisted saved views; general multi-select; guarded batch packing; two-stage batch Shippo quote and label purchasing with per-order address/rate review, explicit charge authorization, and isolated results; batch packing-slip, pick-list, and existing-label printing; accessible copy actions; unsaved-edit guards; and authenticated selected-or-filtered UTF-8 CSV export with customer-data warnings, a 10,000-row limit, and spreadsheet-formula neutralization.
+- **Verification Results:** TypeScript validation passes; all 81 automated tests pass, including partial-batch isolation, order filter/date behavior, Minnesota business-day handling, CSV formula neutralization, and existing fulfillment lifecycle coverage; the production build passes.
+- **Notes / Links:** Deploy and verify with Shippo test credentials. Saved views intentionally remain local to the current browser. Batch label creation is capped at 20 orders, export selection at 250 orders, and complete filtered exports at 10,000 rows. Batch refunds and cancellations remain intentionally excluded because each requires individual inventory, payment, shipment, and label-refund review.
+
+## Done
+
 ### WEB-019 - Add Server-Side Order Search and Pagination
 
-- **Status:** Review / Verify — implementation and automated verification are complete; awaiting deployed Admin verification with production Firestore data.
+- **Status:** Done — owner confirmed the deployed Admin order list loads successfully after the aggregate-query compatibility fix.
 - **Priority:** Medium
 - **Area:** admin
 - **Goal:** Ensure older orders remain searchable and dashboard totals do not depend on the newest 300 documents loaded in the browser.
@@ -114,10 +121,8 @@ This board is the working queue for website development. Keep cards actionable e
   - Test with more than 300 seeded orders and confirm the oldest order is discoverable.
   - Compare aggregate counts and revenue against known fixture totals.
 - **Implementation Results:** Replaced the browser's capped order query with authenticated server endpoints for normalized multi-field search, 50-order cursor pages, and complete-collection lifetime and rolling 30-day aggregates. Added load-more, loading, empty, query-failure, retry, and expired-cursor recovery states. Legacy order references are derived during search, so older records do not require a backfill.
-- **Verification Results:** TypeScript validation passes; all 76 automated tests pass, including a 350-order legacy-search fixture, cursor expiry coverage, and known aggregate-total mapping; the production build passes.
-- **Notes / Links:** Deployed verification should compare the dashboard lifetime and last-30-day cards with Firestore/known totals, search an order beyond the former 300-order boundary by reference/email/name/tracking, load multiple pages, and confirm a no-result search and retry state are understandable.
-
-## Done
+- **Verification Results:** TypeScript validation passes; all 76 automated tests pass, including a 350-order legacy-search fixture, cursor expiry coverage, and known aggregate-total mapping; the production build passes. Owner confirmed the deployed Admin order list now loads after replacing the filtered Firestore sum with a server-computed 30-day total that does not require a composite index.
+- **Notes / Links:** No additional Firestore composite index or environment variable is required for this workflow.
 
 ### WEB-046 - Add Reusable Storefront Image Performance Infrastructure
 

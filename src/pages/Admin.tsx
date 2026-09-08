@@ -14,7 +14,7 @@ import type { Subscriber } from '../components/admin/SubscribersView';
 import type { ContactMessage } from '../components/admin/MessagesView';
 import { normalizeOrderLifecycle } from '@/src/lib/orderLifecycle';
 import { firebaseAuthErrorMessage } from '@/src/lib/firebaseAuthError';
-import { AdminOrderApiError, getAdminOrderSummary, getAdminOrdersPage } from '@/src/lib/adminOrders';
+import { AdminOrderApiError, DEFAULT_ADMIN_ORDER_QUERY, getAdminOrderSummary, getAdminOrdersPage, type AdminOrderQueryOptions } from '@/src/lib/adminOrders';
 
 type AdminTab = 'dashboard' | 'analytics' | 'products' | 'bundles' | 'subscriptions' | 'orders' | 'subscribers' | 'contact' | 'reviews';
 
@@ -58,6 +58,9 @@ export const Admin: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [orderSearchTerm, setOrderSearchTerm] = useState(initialOrderId);
+  const [orderQuery, setOrderQuery] = useState<AdminOrderQueryOptions>(DEFAULT_ADMIN_ORDER_QUERY);
+  const [orderEditsDirty, setOrderEditsDirty] = useState(false);
+  const [discardOrderEditsRevision, setDiscardOrderEditsRevision] = useState(0);
   const [audienceSearchTerm, setAudienceSearchTerm] = useState('');
   const [inquirySearchTerm, setInquirySearchTerm] = useState('');
   const [adminDataError, setAdminDataError] = useState<string | null>(null);
@@ -80,7 +83,7 @@ export const Admin: React.FC = () => {
     append ? setOrdersLoadingMore(true) : setOrdersLoading(true);
     setOrdersQueryError(null);
     try {
-      const page = await getAdminOrdersPage<Order>({ search, cursor, limit: 50 });
+      const page = await getAdminOrdersPage<Order>({ search, cursor, limit: 50, query: orderQuery });
       if (requestId !== orderQueryRequestRef.current) return;
       const normalizedOrders = normalizeAdminOrders(page.orders);
       setOrders(current => append ? [...current, ...normalizedOrders.filter(order => !current.some(existing => existing.id === order.id))] : normalizedOrders);
@@ -91,7 +94,7 @@ export const Admin: React.FC = () => {
         ? 'This result page expired. The order search has been restarted from the newest matching order.'
         : 'Orders could not be loaded. Retry the query without losing the rest of the admin workspace.');
       if (expired) {
-        const firstPage = await getAdminOrdersPage<Order>({ search, limit: 50 });
+        const firstPage = await getAdminOrdersPage<Order>({ search, limit: 50, query: orderQuery });
         if (requestId !== orderQueryRequestRef.current) return;
         setOrders(normalizeAdminOrders(firstPage.orders));
         setOrderNextCursor(firstPage.nextCursor);
@@ -112,9 +115,10 @@ export const Admin: React.FC = () => {
       const pData = await getAllProducts();
       setProducts(pData);
 
+      const hasActiveOrderQuery = Boolean(orderSearchTerm.trim()) || Object.keys(DEFAULT_ADMIN_ORDER_QUERY).some(key => orderQuery[key as keyof AdminOrderQueryOptions] !== DEFAULT_ADMIN_ORDER_QUERY[key as keyof AdminOrderQueryOptions]);
       const [recentPage, searchedPage, orderSummary] = await Promise.all([
-        getAdminOrdersPage<Order>({ limit: 50 }),
-        orderSearchTerm.trim() ? getAdminOrdersPage<Order>({ search: orderSearchTerm, limit: 50 }) : Promise.resolve(null),
+        getAdminOrdersPage<Order>({ limit: 50, query: DEFAULT_ADMIN_ORDER_QUERY }),
+        hasActiveOrderQuery ? getAdminOrdersPage<Order>({ search: orderSearchTerm, limit: 50, query: orderQuery }) : Promise.resolve(null),
         getAdminOrderSummary().catch(error => {
           console.error('Error fetching order totals:', error);
           setAdminDataError('Orders loaded, but lifetime and 30-day totals are temporarily unavailable. Retry after checking the server logs.');
@@ -258,7 +262,7 @@ export const Admin: React.FC = () => {
       void loadOrderResults(orderSearchTerm.trim());
     }, 350);
     return () => window.clearTimeout(timeout);
-  }, [isAdmin, orderSearchTerm]);
+  }, [isAdmin, orderSearchTerm, orderQuery.fulfillmentStatus, orderQuery.paymentStatus, orderQuery.shipmentStatus, orderQuery.carrier, orderQuery.dateState, orderQuery.sort]);
 
   const handleLogin = async () => {
     const provider = new GoogleAuthProvider();
@@ -275,6 +279,7 @@ export const Admin: React.FC = () => {
   };
 
   const handleLogout = async () => {
+    if (orderEditsDirty && !window.confirm('Discard unsaved order notes or shipment edits and sign out?')) return;
     if (idleTimeoutRef.current) {
       clearTimeout(idleTimeoutRef.current);
       idleTimeoutRef.current = null;
@@ -303,6 +308,8 @@ export const Admin: React.FC = () => {
     if (activeTab === 'subscribers') setAudienceSearchTerm(value);
     if (activeTab === 'contact') setInquirySearchTerm(value);
   };
+
+  const canLeaveOrderWorkspace = () => !orderEditsDirty || window.confirm('Discard unsaved order notes or shipment edits?');
 
   if (loading) {
     return (
@@ -365,7 +372,7 @@ export const Admin: React.FC = () => {
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => { if (tab.id === 'orders') setOrderQueue('all'); setActiveTab(tab.id as AdminTab); }}
+              onClick={() => { if (activeTab === 'orders' && tab.id !== 'orders' && !canLeaveOrderWorkspace()) return; if (tab.id === 'orders') setOrderQueue('all'); setActiveTab(tab.id as AdminTab); }}
               title={tab.label}
               className={`w-full flex items-center justify-center lg:justify-start gap-4 px-3 lg:px-5 py-4 rounded-sm text-[10px] uppercase tracking-[0.25em] font-black transition-all duration-500 relative group overflow-hidden ${
                 activeTab === tab.id ? 'text-brand-black' : 'text-brand-parchment/30 hover:text-brand-parchment'
@@ -412,7 +419,7 @@ export const Admin: React.FC = () => {
               <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-brand-parchment/20 group-focus-within:text-brand-gold transition-colors" size={14} />
               <input aria-label={resourceSearchLabel} value={resourceSearchTerm} onChange={(e) => updateResourceSearch(e.target.value)} type="search" placeholder={`${resourceSearchLabel}...`} className="bg-white/5 border border-white/10 rounded-full py-3 pl-14 pr-8 text-[11px] uppercase tracking-widest text-brand-parchment outline-none focus:border-brand-gold/50 focus:bg-white/10 transition-all duration-500 w-56 xl:w-80 placeholder:text-brand-parchment/30" />
             </div>}
-            <button type="button" onClick={fetchData} disabled={isRefreshing} aria-label={isRefreshing ? 'Refreshing admin data' : 'Refresh admin data'} className="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center text-brand-parchment/40 hover:text-brand-gold hover:border-brand-gold/50 hover:bg-white/5 transition-all duration-500 group disabled:cursor-wait disabled:opacity-60">
+            <button type="button" onClick={() => { if (activeTab === 'orders' && orderEditsDirty) { if (!window.confirm('Discard unsaved order notes or shipment edits and refresh?')) return; setDiscardOrderEditsRevision(current => current + 1); setOrderEditsDirty(false); } void fetchData(); }} disabled={isRefreshing} aria-label={isRefreshing ? 'Refreshing admin data' : 'Refresh admin data'} className="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center text-brand-parchment/40 hover:text-brand-gold hover:border-brand-gold/50 hover:bg-white/5 transition-all duration-500 group disabled:cursor-wait disabled:opacity-60">
               {isRefreshing ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} className="group-hover:rotate-180 transition-transform duration-700" />}
             </button>
           </div>
@@ -448,7 +455,7 @@ export const Admin: React.FC = () => {
           {activeTab === 'bundles' && <BundlesView products={products} refreshRevision={refreshRevision} />}
           {activeTab === 'subscriptions' && <SubscriptionsView refreshRevision={refreshRevision} />}
           {activeTab === 'reviews' && <ReviewsView refreshRevision={refreshRevision} />}
-          {activeTab === 'orders' && <OrdersView orders={orders} onRefresh={fetchData} searchTerm={orderSearchTerm} onSearchTermChange={setOrderSearchTerm} queueFilter={orderQueue} onQueueFilterChange={setOrderQueue} initialSelectedOrderId={initialOrderId} refreshRevision={refreshRevision} isLoading={ordersLoading} isLoadingMore={ordersLoadingMore} hasMore={Boolean(orderNextCursor)} queryError={ordersQueryError} onRetry={() => void loadOrderResults(orderSearchTerm.trim())} onLoadMore={() => orderNextCursor && void loadOrderResults(orderSearchTerm.trim(), orderNextCursor, true)} />}
+          {activeTab === 'orders' && <OrdersView orders={orders} onRefresh={fetchData} searchTerm={orderSearchTerm} onSearchTermChange={setOrderSearchTerm} query={orderQuery} onQueryChange={setOrderQuery} onDirtyChange={setOrderEditsDirty} discardEditsRevision={discardOrderEditsRevision} queueFilter={orderQueue} onQueueFilterChange={setOrderQueue} initialSelectedOrderId={initialOrderId} refreshRevision={refreshRevision} isLoading={ordersLoading} isLoadingMore={ordersLoadingMore} hasMore={Boolean(orderNextCursor)} queryError={ordersQueryError} onRetry={() => void loadOrderResults(orderSearchTerm.trim())} onLoadMore={() => orderNextCursor && void loadOrderResults(orderSearchTerm.trim(), orderNextCursor, true)} />}
           {activeTab === 'subscribers' && <SubscribersView subscribers={filteredSubscribers} />}
           {activeTab === 'contact' && <MessagesView messages={filteredMessages} onRefresh={fetchData} />}
           </React.Suspense>

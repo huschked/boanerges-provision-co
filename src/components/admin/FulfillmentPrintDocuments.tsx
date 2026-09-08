@@ -6,6 +6,7 @@ import { buildConsolidatedPickList, getPackingSlipItems, shortOrderReference } f
 
 export type FulfillmentPrintJob =
   | { type: 'packing-slip'; order: Order; qrDataUrl: string }
+  | { type: 'packing-slips'; entries: Array<{ order: Order; qrDataUrl: string }> }
   | { type: 'pick-list'; orders: Order[] };
 
 const orderDate = (value: any) => {
@@ -84,7 +85,11 @@ export const FulfillmentPrintDocuments: React.FC<{ job: FulfillmentPrintJob | nu
   if (!job || typeof document === 'undefined') return null;
   return createPortal(
     <div className="admin-print-root" aria-hidden="true">
-      {job.type === 'packing-slip' ? <PackingSlip order={job.order} qrDataUrl={job.qrDataUrl} /> : <PickList orders={job.orders} />}
+      {job.type === 'packing-slip'
+        ? <PackingSlip order={job.order} qrDataUrl={job.qrDataUrl} />
+        : job.type === 'packing-slips'
+          ? job.entries.map(entry => <PackingSlip key={entry.order.id} order={entry.order} qrDataUrl={entry.qrDataUrl} />)
+          : <PickList orders={job.orders} />}
     </div>,
     document.body,
   );

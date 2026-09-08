@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ChevronDown, Search, PackageSearch, Mail, Phone, MapPin, Printer, ListChecks, Copy, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronDown, Search, PackageSearch, Mail, Phone, MapPin, Printer, ListChecks, Copy, Loader2, Download, BookmarkPlus, PackagePlus } from 'lucide-react';
 import QRCode from 'qrcode';
 import { cn } from '@/src/lib/utils';
-import { AdminOrderApiError, runOrderCommand, type FulfillmentOperation } from '@/src/lib/adminOrders';
+import { AdminOrderApiError, exportAdminOrders, runOrderCommand, type AdminOrderQueryOptions, type FulfillmentOperation } from '@/src/lib/adminOrders';
 import { Order } from './DashboardView';
 import toast from 'react-hot-toast';
 import { ShippingWorkflow } from './ShippingWorkflow';
@@ -11,6 +11,8 @@ import { formatExceptionAge, getOrderExceptions, ORDER_EXCEPTION_LABELS, type Or
 import { canIncludeInPickList } from '@/src/lib/fulfillmentDocuments';
 import { FulfillmentPrintDocuments, type FulfillmentPrintJob } from './FulfillmentPrintDocuments';
 import { orderReference } from '@/src/lib/orderReference';
+import { BatchShippingLabels } from './BatchShippingLabels';
+import { canBatchPack, summarizeOrderBatch } from '@/src/lib/adminOrderBatch';
 
 export type OrderQueueFilter = 'all' | 'attention' | OrderExceptionKind;
 
@@ -19,6 +21,10 @@ interface OrdersViewProps {
   onRefresh: () => void;
   searchTerm: string;
   onSearchTermChange: (value: string) => void;
+  query: AdminOrderQueryOptions;
+  onQueryChange: (value: AdminOrderQueryOptions) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  discardEditsRevision?: number;
   queueFilter: OrderQueueFilter;
   onQueueFilterChange: (value: OrderQueueFilter) => void;
   initialSelectedOrderId?: string;
@@ -39,7 +45,9 @@ const formatAddress = (address: Order['shippingAddress']) => {
     .join('\n');
 };
 
-export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searchTerm, onSearchTermChange, queueFilter, onQueueFilterChange, initialSelectedOrderId, refreshRevision = 0, isLoading = false, isLoadingMore = false, hasMore = false, queryError = null, onRetry, onLoadMore }) => {
+const SAVED_ORDER_VIEWS_KEY = 'boanerges.admin.order-views.v1';
+
+export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searchTerm, onSearchTermChange, query, onQueryChange, onDirtyChange, discardEditsRevision = 0, queueFilter, onQueueFilterChange, initialSelectedOrderId, refreshRevision = 0, isLoading = false, isLoadingMore = false, hasMore = false, queryError = null, onRetry, onLoadMore }) => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(initialSelectedOrderId || null);
   const [notesDraft, setNotesDraft] = useState('');
   const [trackingNumberDraft, setTrackingNumberDraft] = useState('');
@@ -56,6 +64,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
   const [isMobileDetailOpen, setIsMobileDetailOpen] = useState(false);
   const [selectedPrintOrderIds, setSelectedPrintOrderIds] = useState<Set<string>>(new Set());
   const [printJob, setPrintJob] = useState<FulfillmentPrintJob | null>(null);
+  const [savedViews, setSavedViews] = useState<Array<{ id: string; name: string; query: AdminOrderQueryOptions }>>([]);
+  const [savingView, setSavingView] = useState(false);
+  const [viewName, setViewName] = useState('');
+  const [batchResult, setBatchResult] = useState<{ succeeded: string[]; failed: Array<{ id: string; message: string }> } | null>(null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [showBatchLabels, setShowBatchLabels] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const ordersWithExceptions = useMemo(() => orders.map(order => ({ order, exceptions: getOrderExceptions(order) })), [orders]);
   const exceptionCounts = useMemo(() => ordersWithExceptions.reduce((counts, item) => {
@@ -90,6 +105,11 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
     ? selectedOrder.latestTransactionalEmail.type
     : selectedOrder?.refundEmailStatus === 'failed' ? 'refund'
       : selectedOrder?.shipmentEmailStatus === 'failed' ? 'shipment' : 'confirmation';
+  const hasUnsavedEdits = Boolean(selectedOrder) && (
+    notesDraft !== (selectedOrder?.adminNotes || '')
+    || trackingNumberDraft !== (selectedOrder?.trackingNumber || '')
+    || trackingUrlDraft !== (selectedOrder?.trackingUrl || '')
+  );
 
   const copyOrderReference = async () => {
     if (!selectedOrder) return;
@@ -118,6 +138,37 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
     setTrackingNumberDraft(selectedOrder?.trackingNumber || '');
     setTrackingUrlDraft(selectedOrder?.trackingUrl || '');
   }, [selectedOrder?.id, selectedOrder?.adminNotes, selectedOrder?.trackingNumber, selectedOrder?.trackingUrl]);
+
+  useEffect(() => {
+    if (discardEditsRevision > 0) {
+      setNotesDraft(selectedOrder?.adminNotes || '');
+      setTrackingNumberDraft(selectedOrder?.trackingNumber || '');
+      setTrackingUrlDraft(selectedOrder?.trackingUrl || '');
+    }
+  }, [discardEditsRevision]);
+
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedEdits);
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedEdits) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', warnBeforeUnload);
+      onDirtyChange?.(false);
+    };
+  }, [hasUnsavedEdits, onDirtyChange]);
+
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(SAVED_ORDER_VIEWS_KEY) || '[]');
+      if (Array.isArray(parsed)) setSavedViews(parsed.filter(view => view && typeof view.id === 'string' && typeof view.name === 'string' && view.query));
+    } catch {
+      setSavedViews([]);
+    }
+  }, []);
 
   useEffect(() => {
     setRefundAmount('');
@@ -174,9 +225,129 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
     setPrintJob({ type: 'pick-list', orders: selectedOrders });
   };
 
+  const printSelectedPackingSlips = async () => {
+    const selectedOrders = orders.filter(order => selectedPrintOrderIds.has(order.id));
+    if (!selectedOrders.length) return toast.error('Select at least one order.');
+    try {
+      const entries = await Promise.all(selectedOrders.map(async order => {
+        const adminUrl = new URL('/admin', window.location.origin);
+        adminUrl.searchParams.set('tab', 'orders');
+        adminUrl.searchParams.set('order', order.id);
+        return { order, qrDataUrl: await QRCode.toDataURL(adminUrl.toString(), { errorCorrectionLevel: 'M', margin: 1, width: 320 }) };
+      }));
+      setPrintJob({ type: 'packing-slips', entries });
+    } catch {
+      toast.error('The selected packing slips could not be prepared.');
+    }
+  };
+
+  const openSelectedLabels = () => {
+    const labelOrders = orders.filter(order => selectedPrintOrderIds.has(order.id) && order.labelUrl);
+    if (!labelOrders.length) return toast.error('None of the selected orders has an existing label.');
+    if (labelOrders.length > 20) return toast.error('Open no more than 20 label PDFs at once. Narrow the selection and retry.');
+    if (!window.confirm(`Open ${labelOrders.length} shipping-label ${labelOrders.length === 1 ? 'PDF' : 'PDFs'} in new tabs for printing? Your browser may ask permission for multiple tabs.`)) return;
+    const opened = labelOrders.reduce((count, order) => {
+      const tab = window.open(order.labelUrl, '_blank');
+      if (!tab) return count;
+      tab.opener = null;
+      return count + 1;
+    }, 0);
+    if (opened < labelOrders.length) toast.error(`${labelOrders.length - opened} label tabs were blocked by the browser.`);
+  };
+
+  const openBatchLabels = () => {
+    if (!confirmDiscardEdits()) return;
+    if (selectedPrintOrderIds.size > 20) return toast.error('Create no more than 20 shipping labels per batch. Narrow the selection and retry.');
+    setShowBatchLabels(true);
+  };
+
   const describeError = (error: unknown) => {
     if (error instanceof AdminOrderApiError) return error.message;
     return 'The operation could not be completed. Please retry.';
+  };
+
+  const discardDrafts = () => {
+    setNotesDraft(selectedOrder?.adminNotes || '');
+    setTrackingNumberDraft(selectedOrder?.trackingNumber || '');
+    setTrackingUrlDraft(selectedOrder?.trackingUrl || '');
+  };
+
+  const confirmDiscardEdits = () => {
+    if (!hasUnsavedEdits) return true;
+    if (!window.confirm('Discard unsaved order notes or shipment edits?')) return false;
+    discardDrafts();
+    return true;
+  };
+
+  const updateQuery = (changes: Partial<AdminOrderQueryOptions>) => {
+    if (!confirmDiscardEdits()) return;
+    onQueryChange({ ...query, ...changes });
+    setSelectedPrintOrderIds(new Set());
+    setBatchResult(null);
+  };
+
+  const copyValue = async (label: string, value: string) => {
+    if (!value.trim()) return toast.error(`${label} is not available.`);
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied.`);
+    } catch {
+      toast.error(`${label} could not be copied.`);
+    }
+  };
+
+  const persistSavedViews = (views: typeof savedViews) => {
+    setSavedViews(views);
+    localStorage.setItem(SAVED_ORDER_VIEWS_KEY, JSON.stringify(views));
+  };
+
+  const saveCurrentView = () => {
+    const name = viewName.trim();
+    if (!name) return;
+    const next = [...savedViews.filter(view => view.name.toLowerCase() !== name.toLowerCase()), { id: crypto.randomUUID(), name, query }].slice(-12);
+    persistSavedViews(next);
+    setViewName('');
+    setSavingView(false);
+    toast.success('Order view saved on this browser.');
+  };
+
+  const runBatchPack = async () => {
+    if (!confirmDiscardEdits()) return;
+    const selected = orders.filter(order => selectedPrintOrderIds.has(order.id));
+    const eligible = selected.filter(canBatchPack);
+    if (!eligible.length) return toast.error('Select at least one paid order that is ready to pack.');
+    if (!window.confirm(`Mark ${eligible.length} ${eligible.length === 1 ? 'order' : 'orders'} as packed? ${selected.length - eligible.length || 'No'} ineligible selections will be skipped.`)) return;
+    setBatchBusy(true);
+    const settled = await Promise.allSettled(eligible.map(order => runOrderCommand(order.id, 'pack')));
+    const result = summarizeOrderBatch(eligible, settled, describeError);
+    setBatchResult(result);
+    setBatchBusy(false);
+    setSelectedPrintOrderIds(new Set(result.failed.map(item => item.id)));
+    if (result.failed.length) toast.error(`${result.succeeded.length} packed; ${result.failed.length} failed. Review the batch report.`);
+    else toast.success(`${result.succeeded.length} ${result.succeeded.length === 1 ? 'order' : 'orders'} packed.`);
+    await onRefresh();
+  };
+
+  const exportOrders = async () => {
+    const selectedIds = [...selectedPrintOrderIds];
+    if (!window.confirm(`Export ${selectedIds.length ? `${selectedIds.length} selected orders` : 'every order matching the current server filters'}? The CSV contains customer contact and shipping information.`)) return;
+    setExporting(true);
+    try {
+      const { blob, filename } = await exportAdminOrders({ search: searchTerm, query, orderIds: selectedIds });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast.success('Order CSV downloaded.');
+    } catch (error) {
+      toast.error(describeError(error));
+    } finally {
+      setExporting(false);
+    }
   };
 
   const executeCommand = async (operation: FulfillmentOperation, payload: Record<string, unknown> = {}) => {
@@ -220,6 +391,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
   return (
     <div className="min-w-0 space-y-10">
       <FulfillmentPrintDocuments job={printJob} />
+      {showBatchLabels && <BatchShippingLabels orders={orders.filter(order => selectedPrintOrderIds.has(order.id))} onClose={() => setShowBatchLabels(false)} onComplete={async () => { setSelectedPrintOrderIds(new Set()); await onRefresh(); }} />}
       <ReservationPanel refreshRevision={refreshRevision} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="space-y-1">
@@ -231,14 +403,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-parchment/20" size={14} />
             <input
               value={searchTerm}
-              onChange={(e) => onSearchTermChange(e.target.value)}
+              onChange={(e) => { if (confirmDiscardEdits()) { onSearchTermChange(e.target.value); setSelectedPrintOrderIds(new Set()); setBatchResult(null); } }}
               placeholder="Search orders..."
               className="bg-white/5 border border-white/10 rounded-full py-3 pl-12 pr-5 text-[11px] uppercase tracking-[0.2em] text-brand-parchment w-full md:w-80"
             />
           </div>
           {normalizedSearchTerm && (
             <button
-              onClick={() => onSearchTermChange('')}
+              onClick={() => { if (confirmDiscardEdits()) { onSearchTermChange(''); setSelectedPrintOrderIds(new Set()); setBatchResult(null); } }}
               className="px-4 py-3 rounded-full border border-white/10 text-[10px] uppercase tracking-[0.2em] font-black text-brand-parchment/60 hover:text-brand-gold hover:border-brand-gold/40 transition-colors"
             >
               Clear
@@ -252,13 +424,37 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
           <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Loaded Orders</p>
           <p className="text-2xl font-serif text-brand-parchment">{visibleOrders.length}</p>
         </div>
-        <button onClick={() => onQueueFilterChange('attention')} className={cn('card-premium p-5 space-y-2 text-left hover:border-red-400/30 transition-colors', queueFilter === 'attention' && 'border-red-400/40 bg-red-400/[0.04]')}>
+        <button onClick={() => { if (confirmDiscardEdits()) onQueueFilterChange('attention'); }} className={cn('card-premium p-5 space-y-2 text-left hover:border-red-400/30 transition-colors', queueFilter === 'attention' && 'border-red-400/40 bg-red-400/[0.04]')}>
           <p className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Needs Attention</p>
           <p className="text-2xl font-serif text-brand-parchment">
             {ordersWithExceptions.filter(item => item.exceptions.length > 0).length}
           </p>
         </button>
       </div>
+
+      <section className="card-premium p-5 lg:p-6 space-y-5" aria-label="Server order filters">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="mr-2 text-[9px] font-black uppercase tracking-[0.18em] text-brand-parchment/35">Quick queues</p>
+          <button type="button" onClick={() => updateQuery({ fulfillmentStatus: 'pending', paymentStatus: 'paid', shipmentStatus: '', carrier: '', dateState: 'all', sort: 'oldest' })} className="border border-white/10 px-4 py-2 text-[9px] font-black uppercase tracking-[0.14em] text-brand-parchment/55 hover:border-brand-gold/30 hover:text-brand-gold">Ready to pack</button>
+          <button type="button" onClick={() => updateQuery({ fulfillmentStatus: 'packed', paymentStatus: 'paid', shipmentStatus: '', carrier: '', dateState: 'all', sort: 'oldest' })} className="border border-white/10 px-4 py-2 text-[9px] font-black uppercase tracking-[0.14em] text-brand-parchment/55 hover:border-brand-gold/30 hover:text-brand-gold">Ready to ship</button>
+          <button type="button" onClick={() => updateQuery({ fulfillmentStatus: '', paymentStatus: '', shipmentStatus: 'in_transit', carrier: '', dateState: 'all', sort: 'oldest' })} className="border border-white/10 px-4 py-2 text-[9px] font-black uppercase tracking-[0.14em] text-brand-parchment/55 hover:border-brand-gold/30 hover:text-brand-gold">In transit</button>
+          <button type="button" onClick={() => updateQuery({ fulfillmentStatus: '', paymentStatus: '', shipmentStatus: '', carrier: '', dateState: 'all', sort: 'newest' })} className="ml-auto border border-white/10 px-4 py-2 text-[9px] font-black uppercase tracking-[0.14em] text-brand-parchment/45 hover:text-brand-gold">Reset filters</button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          {([
+            ['fulfillmentStatus', 'Fulfillment', [['', 'All'], ['pending', 'Pending'], ['requires_attention', 'Needs attention'], ['packed', 'Packed'], ['shipped', 'Shipped'], ['cancelled', 'Cancelled']]],
+            ['paymentStatus', 'Payment', [['', 'All'], ['paid', 'Paid'], ['partially_refunded', 'Partially refunded'], ['refunded', 'Refunded'], ['failed', 'Failed']]],
+            ['shipmentStatus', 'Shipment', [['', 'All'], ['not_shipped', 'Not shipped'], ['pre_transit', 'Pre-transit'], ['in_transit', 'In transit'], ['delayed', 'Delayed'], ['delivered', 'Delivered'], ['exception', 'Exception'], ['returned', 'Returned']]],
+            ['carrier', 'Carrier', [['', 'All'], ['USPS', 'USPS'], ['UPS', 'UPS'], ['FedEx', 'FedEx'], ['DHL', 'DHL']]],
+            ['dateState', 'Order age', [['all', 'Any date'], ['today', 'Today'], ['7d', 'Last 7 days'], ['30d', 'Last 30 days'], ['older30', 'Older than 30 days']]],
+            ['sort', 'Sort', [['newest', 'Newest first'], ['oldest', 'Oldest first']]],
+          ] as Array<[keyof AdminOrderQueryOptions, string, Array<[string, string]>]>).map(([key, label, options]) => <label key={key} className="text-[8px] font-black uppercase tracking-[0.15em] text-brand-parchment/35">{label}<select value={query[key]} onChange={event => updateQuery({ [key]: event.target.value } as Partial<AdminOrderQueryOptions>)} className="input-premium mt-2 min-h-11 py-2 normal-case tracking-normal">{options.map(([value, text]) => <option key={value || 'all'} value={value}>{text}</option>)}</select></label>)}
+        </div>
+        <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-5">
+          {savedViews.map(view => <div key={view.id} className="inline-flex border border-brand-gold/20"><button type="button" onClick={() => updateQuery(view.query)} className="px-4 py-2 text-[9px] font-black uppercase tracking-[0.14em] text-brand-gold hover:bg-brand-gold/10">{view.name}</button><button type="button" aria-label={`Delete saved view ${view.name}`} onClick={() => persistSavedViews(savedViews.filter(item => item.id !== view.id))} className="border-l border-brand-gold/20 px-2 text-brand-parchment/35 hover:text-red-300">×</button></div>)}
+          {!savingView ? <button type="button" onClick={() => setSavingView(true)} className="inline-flex items-center gap-2 border border-white/10 px-4 py-2 text-[9px] font-black uppercase tracking-[0.14em] text-brand-parchment/55 hover:text-brand-gold"><BookmarkPlus size={13} /> Save current view</button> : <div className="flex flex-wrap gap-2"><input autoFocus value={viewName} onChange={event => setViewName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') saveCurrentView(); }} maxLength={40} placeholder="View name" className="input-premium min-h-11 py-2" /><button type="button" onClick={saveCurrentView} disabled={!viewName.trim()} className="bg-brand-gold px-4 text-[9px] font-black uppercase tracking-[0.14em] text-brand-black disabled:opacity-40">Save</button><button type="button" onClick={() => { setSavingView(false); setViewName(''); }} className="px-3 text-[9px] font-black uppercase text-brand-parchment/45">Cancel</button></div>}
+        </div>
+      </section>
 
       {queryError && (
         <div role="alert" className="flex flex-col gap-3 border border-amber-400/25 bg-amber-400/[0.06] p-5 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between">
@@ -273,20 +469,35 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
           ['attention', 'Needs attention', ordersWithExceptions.filter(item => item.exceptions.length > 0).length],
           ...Object.entries(ORDER_EXCEPTION_LABELS).map(([kind, label]) => [kind, label, exceptionCounts[kind as OrderExceptionKind] || 0]),
         ] as Array<[OrderQueueFilter, string, number]>).filter(([kind, , count]) => kind === 'all' || kind === 'attention' || count > 0).map(([kind, label, count]) => (
-          <button key={kind} onClick={() => onQueueFilterChange(kind)} className={cn('shrink-0 px-4 py-2 border text-[9px] uppercase tracking-[0.16em] font-black transition-colors', queueFilter === kind ? 'bg-brand-gold text-brand-black border-brand-gold' : 'border-white/10 text-brand-parchment/45 hover:text-brand-gold hover:border-brand-gold/30')}>
+          <button key={kind} onClick={() => { if (confirmDiscardEdits()) onQueueFilterChange(kind); }} className={cn('shrink-0 px-4 py-2 border text-[9px] uppercase tracking-[0.16em] font-black transition-colors', queueFilter === kind ? 'bg-brand-gold text-brand-black border-brand-gold' : 'border-white/10 text-brand-parchment/45 hover:text-brand-gold hover:border-brand-gold/30')}>
             {label} · {count}
           </button>
         ))}
       </div>
+
+      <section className="flex flex-col gap-4 border border-white/10 bg-white/[0.015] p-5 lg:flex-row lg:items-center lg:justify-between" aria-label="Batch order actions">
+        <div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-brand-gold">Batch actions</p><p className="mt-1 text-xs text-brand-parchment/45">{selectedPrintOrderIds.size} selected. Actions validate every order independently.</p></div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void runBatchPack()} disabled={batchBusy || selectedPrintOrderIds.size === 0} className="inline-flex min-h-11 items-center gap-2 border border-blue-400/25 px-4 text-[9px] font-black uppercase tracking-[0.14em] text-blue-300 disabled:opacity-30"><PackagePlus size={14} /> Mark packed</button>
+          <button type="button" onClick={openBatchLabels} disabled={batchBusy || selectedPrintOrderIds.size === 0} className="inline-flex min-h-11 items-center gap-2 border border-brand-gold/30 px-4 text-[9px] font-black uppercase tracking-[0.14em] text-brand-gold disabled:opacity-30"><PackagePlus size={14} /> Create labels</button>
+          <button type="button" onClick={openSelectedLabels} disabled={selectedPrintOrderIds.size === 0} className="inline-flex min-h-11 items-center gap-2 border border-white/15 px-4 text-[9px] font-black uppercase tracking-[0.14em] text-brand-parchment/65 disabled:opacity-30"><Printer size={14} /> Open labels</button>
+          <button type="button" onClick={() => void printSelectedPackingSlips()} disabled={selectedPrintOrderIds.size === 0} className="inline-flex min-h-11 items-center gap-2 border border-white/15 px-4 text-[9px] font-black uppercase tracking-[0.14em] text-brand-parchment/65 disabled:opacity-30"><Printer size={14} /> Packing slips</button>
+          <button type="button" onClick={printSelectedPickList} disabled={selectedPrintOrderIds.size === 0} className="inline-flex min-h-11 items-center gap-2 border border-brand-gold/30 px-4 text-[9px] font-black uppercase tracking-[0.14em] text-brand-gold disabled:opacity-30"><ListChecks size={14} /> Print pick list</button>
+          <button type="button" onClick={() => void exportOrders()} disabled={exporting} className="inline-flex min-h-11 items-center gap-2 bg-brand-gold px-4 text-[9px] font-black uppercase tracking-[0.14em] text-brand-black disabled:opacity-50">{exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} {selectedPrintOrderIds.size ? 'Export selected' : 'Export filtered'}</button>
+        </div>
+      </section>
+
+      {batchResult && <div role="status" className={cn('border p-5 text-sm', batchResult.failed.length ? 'border-amber-400/25 bg-amber-400/[0.05] text-amber-100' : 'border-green-400/20 bg-green-400/[0.04] text-green-100')}><p className="font-black">Batch complete: {batchResult.succeeded.length} succeeded, {batchResult.failed.length} failed.</p>{batchResult.failed.length > 0 && <ul className="mt-3 space-y-1 text-xs">{batchResult.failed.map(item => <li key={item.id}>{orderReference(item.id)} — {item.message}</li>)}</ul>}</div>}
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)] items-start gap-6">
         <div className={cn('min-w-0 self-start xl:sticky xl:top-32 card-premium overflow-hidden', isMobileDetailOpen ? 'hidden xl:block' : 'block')}>
           <div className="px-5 py-4 border-b border-white/5 space-y-3">
             <div className="flex items-center justify-between gap-3"><p className="text-[10px] uppercase tracking-[0.22em] text-brand-gold/60 font-black">Order Queue</p><p className="text-xs text-brand-parchment/35">{normalizedSearchTerm ? `${visibleOrders.length} matching` : `${visibleOrders.length} shown`}</p></div>
             <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => setSelectedPrintOrderIds(new Set(visibleOrders.map(order => order.id)))} className="text-[8px] uppercase tracking-[0.16em] font-black text-brand-parchment/45 hover:text-brand-gold">Select loaded</button>
               <button onClick={() => setSelectedPrintOrderIds(new Set(visibleOrders.filter(canIncludeInPickList).map(order => order.id)))} className="text-[8px] uppercase tracking-[0.16em] font-black text-brand-parchment/45 hover:text-brand-gold">Select fulfillable</button>
               {selectedPrintOrderIds.size > 0 && <button onClick={() => setSelectedPrintOrderIds(new Set())} className="text-[8px] uppercase tracking-[0.16em] font-black text-brand-parchment/45 hover:text-brand-gold">Clear</button>}
-              <button onClick={printSelectedPickList} disabled={selectedPrintOrderIds.size === 0} className="ml-auto inline-flex items-center gap-2 px-3 py-2 border border-brand-gold/30 text-brand-gold text-[8px] uppercase tracking-[0.16em] font-black hover:bg-brand-gold/10 disabled:opacity-30"><ListChecks size={12} /> Print Pick List ({selectedPrintOrderIds.size})</button>
+              <p className="ml-auto text-[8px] font-black uppercase tracking-[0.14em] text-brand-parchment/30">{selectedPrintOrderIds.size} selected</p>
             </div>
           </div>
           <div className="divide-y divide-white/5 xl:max-h-[calc(100vh-12rem)] xl:overflow-y-auto">
@@ -302,18 +513,17 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
               const isSelected = selectedOrder?.id === order.id;
               const paymentStatus = order.paymentStatus || 'unknown';
 
-              const isPickListEligible = canIncludeInPickList(order);
               return (
                 <div key={order.id} className="relative">
-                  <label className={cn('absolute left-5 top-7 z-10 flex items-center', !isPickListEligible && 'opacity-25')} title={isPickListEligible ? 'Include in consolidated pick list' : 'Only paid, pending or packed orders can be picked'}>
-                    <input type="checkbox" checked={selectedPrintOrderIds.has(order.id)} disabled={!isPickListEligible} onChange={event => setSelectedPrintOrderIds(current => {
+                  <label className="absolute left-5 top-7 z-10 flex items-center" title="Select order for a batch action">
+                    <input type="checkbox" checked={selectedPrintOrderIds.has(order.id)} onChange={event => setSelectedPrintOrderIds(current => {
                       const next = new Set(current);
                       if (event.target.checked) next.add(order.id); else next.delete(order.id);
                       return next;
-                    })} aria-label={`Select order ${order.id} for pick list`} />
+                    })} aria-label={`Select order ${order.id} for batch actions`} />
                   </label>
                   <button
-                  onClick={() => { setSelectedOrderId(order.id); setIsMobileDetailOpen(true); }}
+                  onClick={() => { if (!confirmDiscardEdits()) return; setSelectedOrderId(order.id); setIsMobileDetailOpen(true); }}
                   className={cn(
                     'w-full text-left py-6 pr-6 pl-14 border-l-2 transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-gold/70 focus-visible:ring-inset',
                     isSelected ? 'bg-brand-gold/[0.07] border-l-brand-gold' : 'border-l-transparent hover:bg-white/[0.02]'
@@ -379,6 +589,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                   <div className="flex items-center gap-3">
                     <h3 className="text-3xl font-serif text-brand-parchment">{orderReference(selectedOrder.id, selectedOrder.orderReference)}</h3>
                     <button type="button" onClick={copyOrderReference} className="inline-flex items-center gap-2 px-3 py-2 border border-white/10 text-[8px] uppercase tracking-[0.16em] font-black text-brand-parchment/50 hover:text-brand-gold hover:border-brand-gold/30" aria-label="Copy order reference"><Copy size={12} /> Copy</button>
+                    <button type="button" onClick={() => void copyValue('Order ID', selectedOrder.id)} className="inline-flex items-center gap-2 px-3 py-2 border border-white/10 text-[8px] uppercase tracking-[0.16em] font-black text-brand-parchment/50 hover:text-brand-gold hover:border-brand-gold/30" aria-label="Copy internal order ID"><Copy size={12} /> ID</button>
                   </div>
                   <p className="text-brand-parchment/50 text-sm">
                     {selectedOrder.createdAt?.toDate
@@ -443,10 +654,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                   <p className="text-[10px] uppercase tracking-[0.25em] text-brand-gold/40 font-black">Customer</p>
                   <div className="space-y-3 text-brand-parchment">
                     <p className="font-black">{selectedOrder.customerName || 'Customer name unavailable'}</p>
-                    <a href={`mailto:${selectedOrder.customerEmail}`} className="flex items-center gap-3 text-brand-parchment/70 hover:text-brand-gold transition-colors">
+                    <div className="flex items-center gap-3"><a href={`mailto:${selectedOrder.customerEmail}`} className="flex min-w-0 items-center gap-3 text-brand-parchment/70 hover:text-brand-gold transition-colors">
                       <Mail size={14} />
                       {selectedOrder.customerEmail}
-                    </a>
+                    </a><button type="button" onClick={() => void copyValue('Email', selectedOrder.customerEmail || '')} aria-label="Copy customer email" className="p-2 text-brand-parchment/35 hover:text-brand-gold"><Copy size={12} /></button></div>
                     <p className="flex items-center gap-3 text-brand-parchment/70">
                       <Phone size={14} />
                       {selectedOrder.customerPhone || 'Phone not provided'}
@@ -459,6 +670,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                     <MapPin size={14} className="mt-1 shrink-0" />
                     {formatAddress(selectedOrder.shippingAddress)}
                   </p>
+                  <button type="button" onClick={() => void copyValue('Shipping address', formatAddress(selectedOrder.shippingAddress))} className="inline-flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.14em] text-brand-parchment/40 hover:text-brand-gold"><Copy size={12} /> Copy address</button>
                 </div>
               </div>
 
@@ -527,7 +739,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Tracking Number</label>
+                    <div className="flex items-center justify-between gap-3"><label className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Tracking Number</label><button type="button" onClick={() => void copyValue('Tracking number', trackingNumberDraft)} className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.12em] text-brand-parchment/35 hover:text-brand-gold"><Copy size={11} /> Copy</button></div>
                     <input
                       value={trackingNumberDraft}
                       onChange={(e) => setTrackingNumberDraft(e.target.value)}
@@ -537,7 +749,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ orders, onRefresh, searc
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Tracking URL</label>
+                    <div className="flex items-center justify-between gap-3"><label className="text-[9px] uppercase tracking-[0.2em] text-brand-parchment/30 font-black">Tracking URL</label><button type="button" onClick={() => void copyValue('Tracking URL', trackingUrlDraft)} className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.12em] text-brand-parchment/35 hover:text-brand-gold"><Copy size={11} /> Copy</button></div>
                     <input
                       value={trackingUrlDraft}
                       onChange={(e) => setTrackingUrlDraft(e.target.value)}

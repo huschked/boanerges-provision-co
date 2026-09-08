@@ -24,7 +24,7 @@ import { ORDER_DELIVERY_ESTIMATE_TEXT, ORDER_DELIVERY_MAX_BUSINESS_DAYS, ORDER_D
 import { createProductSnapshot, isProductPublishReady } from "./src/lib/productCatalog.js";
 import { resolveBundle, type BundleDefinition, type BundleProduct } from "./src/lib/bundleCommerce.js";
 import { isPrelaunchEnabled, registerPrelaunchProtection } from "./src/server/prelaunch.js";
-import { AdminOrderCursorError, buildAdminOrderSummary, createAdminOrderCursor, matchesAdminOrderSearch, parseAdminOrderCursor } from "./src/server/adminOrderQuery.js";
+import { AdminOrderCursorError, buildAdminOrderSummary, buildAdminOrdersCsv, createAdminOrderCursor, matchesAdminOrderFilters, matchesAdminOrderSearch, parseAdminOrderCursor, type AdminOrderFilterOptions } from "./src/server/adminOrderQuery.js";
 
 dotenv.config();
 
@@ -2336,6 +2336,38 @@ function serializeAdminOrderValue(value: unknown): unknown {
   return value;
 }
 
+function adminOrderQueryOptions(source: Record<string, unknown>) {
+  const dateState = normalizedCommandValue(source.dateState, "dateState", 20) || "all";
+  const sort = normalizedCommandValue(source.sort, "sort", 20) || "newest";
+  if (!["all", "today", "7d", "30d", "older30"].includes(dateState)) {
+    throw new AdminCommandError(400, "Order date filter is invalid.", "invalid_date_filter");
+  }
+  if (!["newest", "oldest"].includes(sort)) {
+    throw new AdminCommandError(400, "Order sort is invalid.", "invalid_sort");
+  }
+  return {
+    search: normalizedCommandValue(source.search, "search", 120),
+    sort: sort as "newest" | "oldest",
+    filters: {
+      fulfillmentStatus: normalizedCommandValue(source.fulfillmentStatus, "fulfillmentStatus", 40),
+      paymentStatus: normalizedCommandValue(source.paymentStatus, "paymentStatus", 40),
+      shipmentStatus: normalizedCommandValue(source.shipmentStatus, "shipmentStatus", 40),
+      carrier: normalizedCommandValue(source.carrier, "carrier", 80),
+      dateState: dateState as AdminOrderFilterOptions["dateState"],
+    },
+  };
+}
+
+function searchableAdminOrder(document: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot) {
+  const data = document.data() || {};
+  return {
+    id: document.id,
+    ...data,
+    ...normalizeOrderLifecycle(data),
+    orderReference: orderReference(document.id, data.orderReference),
+  };
+}
+
 export async function createApp({ serveFrontend = false }: { serveFrontend?: boolean } = {}) {
   const app = express();
   const PORT = 3000;
@@ -2610,7 +2642,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 100) {
         throw new AdminCommandError(400, "Order page size must be between 1 and 100.", "invalid_page_size");
       }
-      const search = normalizedCommandValue(req.query.search, "search", 120);
+      const queryOptions = adminOrderQueryOptions(req.query as Record<string, unknown>);
       const cursorValue = normalizedCommandValue(req.query.cursor, "cursor", 1000);
       let cursorSnapshot: FirebaseFirestore.DocumentSnapshot | undefined;
       if (cursorValue) {
@@ -2625,13 +2657,13 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       let scanAfter = cursorSnapshot;
       const scanSize = Math.max(100, requestedLimit + 1);
       while (matches.length < requestedLimit + 1 && !exhausted) {
-        let ordersQuery: FirebaseFirestore.Query = db.collection("orders").orderBy("createdAt", "desc");
+        let ordersQuery: FirebaseFirestore.Query = db.collection("orders").orderBy("createdAt", queryOptions.sort === "oldest" ? "asc" : "desc");
         if (scanAfter) ordersQuery = ordersQuery.startAfter(scanAfter);
         const snapshot = await ordersQuery.limit(scanSize).get();
         exhausted = snapshot.size < scanSize;
         for (const document of snapshot.docs) {
-          const order = document.data();
-          if (matchesAdminOrderSearch({ id: document.id, ...order, orderReference: orderReference(document.id, order.orderReference) }, search)) matches.push(document);
+          const order = searchableAdminOrder(document);
+          if (matchesAdminOrderSearch(order, queryOptions.search) && matchesAdminOrderFilters(order, queryOptions.filters)) matches.push(document);
           if (matches.length >= requestedLimit + 1) break;
         }
         scanAfter = snapshot.docs.at(-1);
@@ -2653,6 +2685,49 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
       const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "Orders could not be loaded.", "order_query_failed");
       console.error("Admin order query error:", error);
       return res.status(commandError.status).json({ error: commandError.message, code: commandError.code });
+    }
+  });
+
+  app.post("/api/admin/orders/export", async (req, res) => {
+    try {
+      await authenticateAdmin(req);
+      const requestedIds: string[] = Array.isArray(req.body?.orderIds) ? [...new Set<string>(req.body.orderIds.map(String).filter(Boolean))] : [];
+      if (requestedIds.length > 250) throw new AdminCommandError(400, "Select no more than 250 orders per export.", "export_selection_too_large");
+
+      let orders: Array<Record<string, unknown>> = [];
+      if (requestedIds.length) {
+        const documents = await Promise.all(requestedIds.map(orderId => db.collection("orders").doc(orderId).get()));
+        orders = documents.filter(document => document.exists).map(searchableAdminOrder);
+      } else {
+        const queryOptions = adminOrderQueryOptions((req.body || {}) as Record<string, unknown>);
+        let scanAfter: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+        while (orders.length <= 10_000) {
+          let ordersQuery: FirebaseFirestore.Query = db.collection("orders").orderBy("createdAt", queryOptions.sort === "oldest" ? "asc" : "desc");
+          if (scanAfter) ordersQuery = ordersQuery.startAfter(scanAfter);
+          const snapshot = await ordersQuery.limit(250).get();
+          for (const document of snapshot.docs) {
+            const order = searchableAdminOrder(document);
+            if (matchesAdminOrderSearch(order, queryOptions.search) && matchesAdminOrderFilters(order, queryOptions.filters)) orders.push(order);
+          }
+          scanAfter = snapshot.docs.at(-1);
+          if (snapshot.size < 250) break;
+        }
+        if (orders.length > 10_000) throw new AdminCommandError(413, "This export exceeds 10,000 orders. Narrow the filters and retry.", "export_too_large");
+      }
+
+      if (!orders.length) throw new AdminCommandError(404, "No orders match this export.", "empty_export");
+      const stamp = new Date().toISOString().slice(0, 10);
+      res.set({
+        "Cache-Control": "private, no-store, max-age=0",
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="boanerges-orders-${stamp}.csv"`,
+        "X-Content-Type-Options": "nosniff",
+      });
+      res.send(buildAdminOrdersCsv(orders));
+    } catch (error) {
+      const commandError = error instanceof AdminCommandError ? error : new AdminCommandError(500, "The order export could not be generated.", "order_export_failed");
+      console.error("Admin order export error:", error);
+      res.status(commandError.status).json({ error: commandError.message, code: commandError.code });
     }
   });
 
