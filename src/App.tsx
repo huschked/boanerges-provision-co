@@ -10,6 +10,7 @@ import { MotionConfig } from 'motion/react';
 import { CookiePreferences } from './components/CookiePreferences';
 import { trackPageView } from './lib/analytics';
 import { PrelaunchBoundary } from './components/PrelaunchGate';
+import { RouteSeoHead } from './components/SeoHead';
 
 const Home = React.lazy(() => import('./pages/Home').then(({ Home }) => ({ default: Home })));
 const Shop = React.lazy(() => import('./pages/Shop').then(({ Shop }) => ({ default: Shop })));
@@ -28,6 +29,7 @@ const EmailPreferences = React.lazy(() => import('./pages/EmailPreferences').the
 const Review = React.lazy(() => import('./pages/Review').then(({ Review }) => ({ default: Review })));
 const TermsOfService = React.lazy(() => import('./pages/TermsOfService').then(({ TermsOfService }) => ({ default: TermsOfService })));
 const Admin = React.lazy(() => import('./pages/Admin').then(({ Admin }) => ({ default: Admin })));
+const NotFound = React.lazy(() => import('./pages/NotFound').then(({ NotFound }) => ({ default: NotFound })));
 
 function RouteLoading() {
   return (
@@ -78,6 +80,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col">
       <Toaster position="bottom-right" />
       <ScrollToTop />
+      <RouteSeoHead />
       <AnalyticsRouteTracker />
       {!isAdminPage && <Header onCartClick={() => setIsCartOpen(true)} />}
       {!isAdminPage && <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />}
@@ -105,6 +108,7 @@ export default function App() {
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/order-status" element={<OrderStatus />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
         </React.Suspense>
       </main>

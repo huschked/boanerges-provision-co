@@ -1,6 +1,7 @@
 node_modules/
 build/
 dist/
+.seo-build/
 coverage/
 .DS_Store
 *.log

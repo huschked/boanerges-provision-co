@@ -47,6 +47,6 @@ test('every pairing has a real catalog product key and does not send Shop this S
     assert.ok(PAIRING_PRODUCTS[match[1]], `Missing pairing for ${match[1]}`);
     assert.ok(productSlugs.includes(PAIRING_PRODUCTS[match[1]]), `Unknown product ${match[1]}`);
   }
-  assert.ok(recipes.includes('to={`/product/${product.id}`}'));
+  assert.ok(recipes.includes('to={`/product/${product.slug}`}'));
   assert.ok(recipes.includes('This salt is currently unavailable.'));
 });

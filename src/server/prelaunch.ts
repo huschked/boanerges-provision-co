@@ -19,6 +19,7 @@ const publicApiPrefixes = [
   '/api/cron/',
   '/api/admin/',
   '/api/reviews/',
+  '/api/seo/',
 ];
 
 export function isPrelaunchEnabled(environment: NodeJS.ProcessEnv = process.env) {

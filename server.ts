@@ -25,6 +25,8 @@ import { createProductSnapshot, isProductPublishReady } from "./src/lib/productC
 import { resolveBundle, type BundleDefinition, type BundleProduct } from "./src/lib/bundleCommerce.js";
 import { isPrelaunchEnabled, registerPrelaunchProtection } from "./src/server/prelaunch.js";
 import { AdminOrderCursorError, buildAdminOrderSummary, buildAdminOrdersCsv, createAdminOrderCursor, matchesAdminOrderFilters, matchesAdminOrderSearch, parseAdminOrderCursor, type AdminOrderFilterOptions } from "./src/server/adminOrderQuery.js";
+import { registerSeoRoutes, type SeoProduct } from "./src/server/seo.js";
+import { reviewAggregate } from "./src/lib/reviews.js";
 
 dotenv.config();
 
@@ -2325,6 +2327,23 @@ async function getActiveResolvedBundles() {
   });
 }
 
+async function getPublishReadyProduct(identifier: string) {
+  const direct = await db.collection("products").doc(identifier).get();
+  const directData = direct.data();
+  if (direct.exists && directData?.active === true && isProductPublishReady(directData)) {
+    return { id: direct.id, ...directData };
+  }
+
+  // Public URLs use the catalog slug even when Firestore uses an opaque document id.
+  // Slug is a single-field query, so this does not require a composite index.
+  const bySlug = await db.collection("products").where("slug", "==", identifier).limit(2).get();
+  const matches = bySlug.docs.flatMap(productDoc => {
+    const data = productDoc.data();
+    return data.active === true && isProductPublishReady(data) ? [{ id: productDoc.id, ...data }] : [];
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
 function serializeAdminOrderValue(value: unknown): unknown {
   if (value instanceof admin.firestore.Timestamp) {
     return { seconds: value.seconds, nanoseconds: value.nanoseconds };
@@ -2494,6 +2513,37 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
   // Standard JSON parsing for other routes
   app.use(express.json());
   registerPrelaunchProtection(app);
+  registerSeoRoutes(app, {
+    appUrl: (request) => getPublicAppUrl(`${request.protocol}://${request.get("host")}`),
+    isPrelaunch: () => isPrelaunchEnabled(),
+    getProducts: async () => {
+      const snapshot = await db.collection("products").where("active", "==", true).get();
+      return snapshot.docs.flatMap((productDoc) => {
+        const data = productDoc.data();
+        return isProductPublishReady(data) ? [{ id: productDoc.id, ...data } as SeoProduct] : [];
+      });
+    },
+    getProduct: async (slug) => {
+      return await getPublishReadyProduct(slug) as SeoProduct | null;
+    },
+    getBundles: getActiveResolvedBundles,
+    getReviewSummary: async (productId) => {
+      const snapshot = await db.collection("reviews").where("productId", "==", productId).get();
+      const rows = snapshot.docs.map(document => document.data()) as Array<Record<string, any>>;
+      const aggregate = reviewAggregate(rows as Array<{ status: string; verified: boolean; rating: number }>);
+      const reviews = rows
+        .filter(review => review.status === "published" && review.verified === true && Number.isInteger(review.rating) && review.rating >= 1 && review.rating <= 5)
+        .sort((left, right) => (right.createdAt?.toMillis?.() || 0) - (left.createdAt?.toMillis?.() || 0))
+        .slice(0, 50)
+        .map(review => ({
+          displayName: String(review.displayName || "Verified buyer"),
+          rating: Number(review.rating),
+          text: String(review.text || ""),
+          date: review.createdAt?.toDate?.().toISOString().slice(0, 10) || "",
+        }));
+      return { ...aggregate, reviews };
+    },
+  });
   registerReviewRoutes(app, {
     db, authenticateAdmin, appUrl: () => getPublicAppUrl(),
     send: async (message, idempotencyKey) => {
@@ -2856,16 +2906,11 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
 
   app.get("/api/products/:slug", async (req, res) => {
     try {
-      const productSnap = await db.collection("products").doc(req.params.slug).get();
-
-      if (!productSnap.exists || productSnap.data()?.active !== true || !isProductPublishReady(productSnap.data())) {
+      const product = await getPublishReadyProduct(req.params.slug);
+      if (!product) {
         return res.status(404).json({ error: "Product not found" });
       }
-
-      res.json({
-        id: productSnap.id,
-        ...productSnap.data(),
-      });
+      res.json(product);
     } catch (error: any) {
       console.error("Product Fetch Error:", error);
       res.status(500).json({ error: error.message });
@@ -3348,7 +3393,7 @@ export async function createApp({ serveFrontend = false }: { serveFrontend?: boo
     } else {
       const distPath = path.join(process.cwd(), "dist");
       app.use(express.static(distPath));
-      app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
+      app.get("*", (req, res) => res.sendFile(path.join(process.cwd(), ".seo-build", "storefront-shell.html")));
     }
   }
 

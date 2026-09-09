@@ -75,7 +75,7 @@ export const Recipes: React.FC = () => {
                 <h3 className="text-2xl font-serif text-brand-parchment">{pairing.title}</h3>
                 <p className="text-sm text-brand-parchment/60 leading-relaxed">{pairing.desc}</p>
                 {product ? <Link
-                  to={`/product/${product.id}`}
+                  to={`/product/${product.slug}`}
                   aria-label={`Shop ${pairing.salt}`}
                   className="inline-flex items-center gap-2 text-[11px] uppercase tracking-widest font-black text-brand-gold group/link pt-2"
                 >

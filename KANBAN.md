@@ -28,6 +28,27 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Backlog
 
+### WEB-048 - Cut Over External Services from Sandbox to Production
+
+- **Priority:** High
+- **Area:** checkout | fulfillment | email | analytics | infra
+- **Goal:** Replace every sandbox, test-mode, and temporary integration setting with an intentionally configured production counterpart before the Coming Soon gate is removed.
+- **Acceptance Criteria:**
+  - A launch inventory identifies every environment-specific integration and credential, including Stripe, Shippo, Firebase, Resend, Google OAuth, GA4, Meta Pixel, Vercel cron jobs, `APP_URL`, and signing/webhook secrets; each is marked as production-ready, intentionally shared, or still blocked.
+  - Vercel Production uses only live credentials and production resource IDs, while Preview and local environments retain isolated test credentials. No secret values are committed, logged, copied into documentation, or exposed through `VITE_` variables.
+  - Stripe live-mode Products, one-time Prices, recurring Prices, subscription shipping Prices, Tax settings, Customer Portal configuration, and webhook endpoint/events are created and mapped to the production catalog without reusing test-mode IDs.
+  - Shippo uses the live token, approved sender address/contact information, production webhook and secret, and `SHIPPO_DEBUG=false`; test labels and test tracking data remain outside live operations.
+  - Resend uses the verified production sending domain, approved sender identities, production Audience and webhook secret, and an approved non-residential postal address before marketing or review-request sending is enabled. Test-recipient restrictions and other temporary delivery controls are removed only when their production replacements are verified.
+  - Firebase Admin credentials, Firestore database, Auth authorized domains/providers, Storage configuration, deployed rules, and required indexes all target the intended production project; test records are not copied into the live catalog, orders, subscribers, or analytics datasets.
+  - GA4 and Meta use the intended business properties/dataset, production-domain traffic is received, ecommerce events contain no prohibited personal data, and internal or launch-test traffic is documented so it can be excluded from reporting.
+  - Test-only keys, resource IDs, debug flags, placeholder URLs, temporary bypasses, and stale webhook endpoints are removed from the Production environment after cutover. A rollback record identifies the previous configuration without storing secret values.
+  - An owner-approved live smoke test validates one-time checkout, subscription checkout and portal access, tax and shipping, inventory commitment, order creation, customer email, Admin visibility, Shippo rate/label handling, Stripe/Resend/Shippo webhooks, GA4/Meta purchase reporting, cancellation/refund behavior, and the customer order-status link without affecting a real customer.
+- **Verification:**
+  - Review the Production, Preview, and Development environment-variable names side by side without displaying their values; confirm every production credential directly in its provider dashboard.
+  - Perform the controlled live purchase with a real owner-controlled payment method, document the order reference and provider event IDs, void/refund any test label and payment as appropriate, and confirm there are no duplicate orders, emails, subscriptions, or inventory changes.
+  - Run `npm run lint`, `npm test`, `npm run build`, `npm audit --omit=dev`, and the complete launch regression checklist before removing the prelaunch gate.
+- **Notes / Links:** Launch-blocking operational story. Begin provider verification early because account review, domain verification, live-payment activation, and shipping configuration can have lead time, but perform the final credential switch and real-money smoke test only after products, prices, policies, sender address, and launch content are approved. Never use fabricated identity, banking, tax, mailing-address, or fulfillment information to unlock a live account.
+
 ### WEB-006 - Launch Readiness Pass
 
 - **Priority:** Medium
@@ -49,17 +70,26 @@ This board is the working queue for website development. Keep cards actionable e
 
 - **Priority:** Medium
 - **Area:** content/storefront
-- **Goal:** Preserve the premium Boanerges voice while grounding product and brand claims in concrete, approved facts.
+- **Goal:** Preserve the premium Boanerges voice while grounding product and brand claims in concrete, approved facts that help customers decide, match real search intent, and give search and AI systems clear source material.
 - **Acceptance Criteria:**
-  - Homepage and PDP copy clearly explain what finishing salt is, how much to use, when to apply it, and what each flavor pairs with.
-  - Founder, location, sourcing, pepper varieties, process, batch, and food-quality details appear only when provided and approved by the business.
+  - Current keyword, search-result, competitor, shopping-result, and conversational-query research is documented before finalizing the page strategy. Available first-party Search Console, Bing, onsite search, sales, review, support, and analytics evidence is preferred; external volume/difficulty estimates are dated and labeled rather than guessed. Competitor language is used to understand intent and gaps, never copied.
+  - A page-and-query map assigns one primary customer intent and a small set of genuinely relevant supporting questions to the homepage, Shop, each crawlable collection, each product, About, Recipes, and FAQ. Seed research may include finishing/flavored/spicy salts, pepper-specific salts, food-pairing uses, heat guidance, gift sets, Minnesota-made foods, and natural-language “which salt for…” questions, but only evidence-supported themes become targets. Pages do not compete through duplicated targeting, keyword stuffing, city-name swapping, or thin doorway copy.
+  - Homepage and PDP copy clearly explain what finishing salt is, how it differs from ordinary table or cooking salt, how much to start with, when to apply it, and what each flavor pairs with. Answers are concise enough to quote accurately while still sounding natural and useful to a shopper.
+  - Every product page has unique approved content covering flavor profile, heat level, pepper variety, ingredients/allergens, net weight, texture or format, suggested uses, starting amount, storage, shelf life, and relevant handling guidance. Missing facts remain absent or visibly pending rather than being inferred from another product.
+  - Collection and comparison content helps customers choose by heat, flavor family, food pairing, experience level, and gift/use case, then links directly to the most relevant products. Copy supports browsing and purchase decisions instead of adding long SEO text below the conversion path.
+  - Founder, business name, location, sourcing, pepper varieties, process, batch, and food-quality details appear consistently only when provided and approved by the business. Live social/profile links replace placeholders before being used as entity `sameAs` references.
   - Repetitive or vague `artisan`, `premium`, `sacred`, `bold`, and `refined` language is reduced in favor of useful evidence.
-  - Extreme-heat products include clear starting-amount and handling guidance approved by the business.
+  - Extreme-heat products include clear starting-amount and handling guidance approved by the business. Health, nutrition, dietary, sourcing, sustainability, locally grown, homegrown, safety, and comparative claims require specific support and are not created for search demand alone.
+  - Recipes and FAQs answer authentic customer questions, use descriptive headings, link contextually to relevant products and collections, and remain consistent with product labels and policies. Recipe or FAQ structured data is added only by WEB-049 when the visible page meets current eligibility requirements.
+  - A prioritized content backlog identifies the first ten guides, recipes, comparisons, or gift/usage resources with the clearest combination of customer value, first-party expertise, product relevance, and search opportunity. Nothing is mass-published: each item requires real testing or preparation observations, approved pairings, original media where practical, a responsible business reviewer/author, and a useful route into products without becoming an advertorial.
   - Homepage trust sections are consolidated and customer education, products, and bundle value precede the longer brand story.
+  - Page copy, product records, Merchant Center data, email claims, structured data, image descriptions, and visible price/availability do not contradict one another. Review excerpts remain verbatim and only published verified-review aggregates may support rating claims.
 - **Verification:**
-  - Owner-review every factual claim and compare PDP guidance with product labels and approved product records.
-  - Browser-check homepage and PDP information hierarchy on desktop and mobile.
-- **Notes / Links:** Requires business-provided facts and authentic process/founder media; implementation should not invent sourcing, production, safety, or founder details.
+  - Owner-review every factual claim and compare PDP guidance with product labels, recipes, policies, approved product records, and any Merchant Center fields.
+  - Review the page-and-query map for overlap, unsupported claims, thin pages, duplicated product descriptions, unnatural repetition, and unanswered purchase objections.
+  - Browser-check homepage, collections, PDPs, Recipes, and FAQ information hierarchy and conversion paths on desktop and mobile; confirm useful content is visible rather than hidden solely for crawlers.
+  - Coordinate with WEB-049 to compare rendered copy against titles, descriptions, canonicals, structured data, internal links, and merchant-feed output before indexation.
+- **Notes / Links:** Requires business-provided facts and authentic process/founder media; implementation must not invent sourcing, production, safety, founder, location, certification, or customer claims. This story owns evidence-based messaging and search-intent coverage; WEB-049 owns rendering, metadata, crawl controls, schema, feeds, crawler access, and search-platform verification. Technical SEO can proceed before this wording is final, but product schema and launch indexing must use the approved final facts.
 
 ## Ready
 
@@ -67,9 +97,41 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
+### WEB-049 - Implement Technical SEO, Ecommerce Search, and AI Discovery
+
+- **Status:** Implemented locally on 2026-09-09. TypeScript, production build, image-budget audit (26 explicitly identified temporary assets remain over budget), 90 automated tests, and normal/Googlebot/Bingbot/OAI-SearchBot HTTP parity checks completed. Deployment verification and the credentialed post-launch checklist remain for owner review; prelaunch stays `noindex` until WEB-041 and WEB-048 facts are approved.
+- **Priority:** High
+- **Area:** storefront | content | analytics | infra
+- **Goal:** Make every approved public page reliably crawlable, understandable, indexable, and conversion-ready for Google, Bing, shopping surfaces, and AI-assisted search without relying on manipulative tactics or promising rankings.
+- **Acceptance Criteria:**
+  - A route-level baseline records HTTP status, indexability, initial HTML content, title, description, canonical URL, social metadata, structured data, internal-link discovery, and sitemap eligibility for every public template. Admin, checkout, checkout-success, order-status, review, email-preference, tokenized, preview, and other private/utility routes are explicitly excluded from indexing.
+  - Homepage, Shop, approved collection pages, product pages, bundles, About, Recipes, FAQ, Contact, and relevant policy pages expose meaningful page-specific content and metadata in the initial HTML through an appropriate server-rendering or prerendering strategy. Critical product names, prices, availability, descriptions, canonicals, and schema do not depend exclusively on a crawler executing the client application.
+  - Every indexable page has one concise, unique intent-aligned title and meta description, a self-referencing canonical derived from the approved `APP_URL`, correct Open Graph/Twitter metadata, an absolute representative image, and a single descriptive H1. Metadata never exposes draft products, private query parameters, tokens, customer data, or unapproved claims.
+  - Crawl controls include a production `robots.txt`, XML sitemap index or sitemap, honest `lastmod` values, and server-visible robots directives. Only active publish-ready products, active valid bundles, and approved content enter sitemaps or feeds. Removed URLs return the intended 404/410 or a directly relevant redirect instead of a soft 404.
+  - The Coming Soon state sends a server-level `X-Robots-Tag: noindex` or equivalent response on protected storefront pages. Launch removes all temporary `noindex` signals atomically before sitemap submission; `robots.txt` is never treated as access control.
+  - Shop search, sort, category, campaign, and tracking query combinations have a documented canonical/indexation policy that prevents duplicate and infinite faceted URLs. Search-demand-worthy collections receive stable crawlable landing URLs rather than indexing arbitrary filter combinations.
+  - Public URL conventions are short, lowercase, descriptive, and stable. The current `/product/:slug`, collection, bundle, recipe, policy, trailing-slash, and www/non-www behavior is evaluated before changing routes; any justified change ships with a one-hop permanent redirect, updated internal links, canonical, sitemap/feed URL, and regression coverage so established URLs are not broken for cosmetic consistency.
+  - JSON-LD is generated from the same approved records shown to customers: `Organization`, `WebSite`, `BreadcrumbList`, and, where eligible, `Product`/merchant-listing `Offer`, availability, price, brand, images, shipping, return policy, published aggregate rating, and published reviews. Approved recipe pages use eligible `Recipe` markup. Structured data is omitted when required facts are missing and never marks up hidden, placeholder, illustrative-as-photographic, or unsupported content.
+  - Product discovery is configured in Google Search Console, Bing Webmaster Tools, and Google Merchant Center/free listings as appropriate. Ownership, canonical host, sitemap submission, merchant feed or API data, shipping/return settings, and diagnostics are verified against the live catalog; feeds never contain draft or fake products. IndexNow is implemented if the deployment can securely notify only canonical added, materially updated, or deleted URLs without exposing its key or generating noisy submissions.
+  - AI-search crawlability is intentional: `OAI-SearchBot` and mainstream search crawlers can reach launch-approved pages without authentication, JavaScript challenges, or bot-blocking middleware. Search inclusion is treated separately from model-training access such as `GPTBot`, with the owner's chosen policy documented. No unsupported “AI schema,” doorway pages, or claim that `llms.txt` guarantees citations is introduced.
+  - Brand/entity signals use one approved business name, canonical domain, logo, contact details, founder/location facts, and live `sameAs` profile URLs across visible content and Organization markup. A private home address is never published merely to strengthen local SEO; Google Business Profile or local-business markup is used only if the business is eligible and the public details are approved.
+  - Technical quality covers mobile Core Web Vitals, crawlable internal links, descriptive image alternatives, indexable primary product images, correct lazy/eager loading, HTTPS/canonical redirects, compression/caching, broken-link detection, and JavaScript failures. Approved product media uses descriptive stable filenames, intrinsic dimensions, responsive modern formats, sufficient source resolution, and suitable aspect-ratio variants when genuinely available for Google Images, Lens, social sharing, and Merchant Center. SEO additions preserve the storefront's accessibility, visual quality, and purchase conversion path.
+  - Measurement establishes a prelaunch baseline and post-launch monitoring for Search Console impressions/clicks/CTR/queries/indexing, Merchant Center issues, Bing indexing/crawl data and AI Performance citations when available, organic landing-page conversion, AI-search referrals, crawl errors, rich-result validity, and unexpected indexation. Results inform iteration; no implementation is represented as guaranteeing a position in Google or an AI answer.
+  - The implementation handoff contains a dated pre-change audit prioritized as critical/high/nice-to-have; implemented file/change log; keyword-to-page map; title/description inventory; structured-data inventory; robots and sitemap strategy; redirect/canonical map; internal-link and performance changes; content/fact gaps; prioritized first ten evidence-backed content opportunities; Search Console, Bing/IndexNow, Merchant Center, and AI-discovery checklists; and every business fact still awaiting owner approval.
+- **Verification:**
+  - Add automated route/metadata/schema/sitemap tests and run `npm run lint`, `npm test`, and `npm run build`.
+  - Inspect raw source and rendered HTML for representative homepage, collection, product, recipe, and excluded utility URLs using normal, Googlebot, Bingbot, and OAI-SearchBot requests; confirm status, canonical, robots directives, content parity, and absence of private data.
+  - Validate eligible pages with Google Rich Results Test and Schema.org Validator; run mobile Lighthouse/PageSpeed checks for each public template and resolve material crawlability, accessibility, SEO, LCP, INP, and CLS regressions.
+  - After the gate is removed, use Search Console URL Inspection on the homepage and representative product, submit the sitemap, review Page Indexing and Merchant Center diagnostics, and confirm the production canonical host is what search engines selected.
+  - If IndexNow is adopted, verify its hosted key, submit representative added/updated/deleted canonical URLs, and confirm receipt in Bing Webmaster Tools without assuming submission guarantees crawling or indexation.
+  - Monitor indexing, structured-data errors, organic/AI referrals, and ecommerce conversion for at least the first 30 days, recording follow-up work instead of treating launch-day submission as final verification.
+- **Notes / Links:** The technical foundation can be implemented while final copy and photography are pending, but launch indexation, merchant feeds, and product schema depend on approved WEB-041 facts and WEB-048 production prices/configuration. Keep the current prelaunch noindex behavior until those dependencies are complete. Prefer durable crawlable HTML and standard search protocols; treat `llms.txt` as optional documentation only if a concrete consumer or measurable benefit emerges.
+
+## Done
+
 ### WEB-047 - Remediate Current Dependency Security Advisories
 
-- **Status:** Review / Verify — dependency remediation and local regression verification are complete; awaiting deployed checks of credential-backed integrations.
+- **Status:** Done — owner confirmed the patched deployment and credential-backed checkout, webhook, Admin, Firestore, email, analytics, and prelaunch regressions are verified.
 - **Priority:** High
 - **Area:** infra | security
 - **Goal:** Update vulnerable runtime and build dependencies without destabilizing checkout, webhooks, Firebase, or storefront routing.
@@ -82,10 +144,8 @@ This board is the working queue for website development. Keep cards actionable e
 - **Verification:**
   - Run `npm audit --omit=dev`, TypeScript validation, all automated tests, the production build, and focused deployed regression checks.
 - **Implementation Results:** Removed the unused GenAI production dependency; moved Vite and its React/Tailwind plugins to development-only dependencies; upgraded patched Express parser/rate-limit, Firebase client/Admin, React Router, Resend, Tailwind, and supporting packages; pinned patched `qs`, Firestore, and Cloud Storage transitives; added an explicit Node runtime floor and a narrow install-script allowlist. Firebase Admin remains on compatible 13.x because 14.x removes the namespace API used throughout the server. See `docs/dependency-security.md` for the complete finding and exposure map.
-- **Verification Results:** Both `npm audit --omit=dev` and the complete `npm audit` report 0 vulnerabilities without `--force`; TypeScript validation passes; all 81 automated tests pass; and the Vite 6.4.3 production build passes.
-- **Notes / Links:** Deploy, then verify one-time and subscription checkout, Stripe webhook handling, Admin Google sign-in and Firestore data, a transactional Resend email, GA4/Meta events, and prelaunch unlock/redirect behavior before moving this card to Done.
-
-## Done
+- **Verification Results:** Both `npm audit --omit=dev` and the complete `npm audit` report 0 vulnerabilities without `--force`; TypeScript validation passes; all 81 automated tests pass; and the Vite 6.4.3 production build passes. Owner confirmed the deployed credential-backed regressions.
+- **Notes / Links:** Completed September 8, 2026. Detailed remediation mapping and compatibility decisions remain in `docs/dependency-security.md`.
 
 ### WEB-016 - Add Order Filters, Saved Queues, Batch Actions, and Export
 

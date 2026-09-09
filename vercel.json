@@ -3,75 +3,58 @@
   "crons": [{ "path": "/api/cron/review-requests", "schedule": "0 15 * * *" }],
   "functions": {
     "api/index.ts": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": ".seo-build/storefront-shell.html"
     }
   },
+  "headers": [
+    { "source": "/admin/:path*", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }] },
+    { "source": "/checkout/:path*", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }] },
+    { "source": "/checkout-success/:path*", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }] },
+    { "source": "/success/:path*", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }] },
+    { "source": "/order-status/:path*", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }] },
+    { "source": "/review/:path*", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }] },
+    { "source": "/email-preferences/:path*", "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" }] }
+  ],
   "rewrites": [
-    { "source": "/review", "destination": "/index.html" },
-    { "source": "/email-preferences", "destination": "/index.html" },
+    { "source": "/robots.txt", "destination": "/api?path=seo/robots.txt" },
+    { "source": "/sitemap.xml", "destination": "/api?path=seo/sitemap.xml" },
+    { "source": "/review", "destination": "/api?path=seo&route=/review" },
+    { "source": "/email-preferences", "destination": "/api?path=seo&route=/email-preferences" },
     {
       "source": "/api/:path*",
       "destination": "/api?path=:path*"
     },
     {
       "source": "/admin/:path*",
-      "destination": "/index.html"
+      "destination": "/api?path=seo&route=/admin/:path*"
     },
-    {
-      "source": "/product/:path*",
-      "destination": "/index.html"
-    },
+    { "source": "/product/:slug", "destination": "/api?path=seo&route=/product/:slug" },
     {
       "source": "/checkout/:path*",
-      "destination": "/index.html"
+      "destination": "/api?path=seo&route=/checkout/:path*"
     },
     {
       "source": "/checkout-success",
-      "destination": "/index.html"
+      "destination": "/api?path=seo&route=/checkout-success"
     },
     {
       "source": "/success",
-      "destination": "/index.html"
+      "destination": "/api?path=seo&route=/success"
     },
-    {
-      "source": "/shop",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/about",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/recipes",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/faq",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/contact",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/bundles",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/returns",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/privacy",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/terms",
-      "destination": "/index.html"
-    },
+    { "source": "/", "destination": "/api?path=seo&route=/" },
+    { "source": "/shop", "destination": "/api?path=seo&route=/shop" },
+    { "source": "/about", "destination": "/api?path=seo&route=/about" },
+    { "source": "/recipes", "destination": "/api?path=seo&route=/recipes" },
+    { "source": "/faq", "destination": "/api?path=seo&route=/faq" },
+    { "source": "/contact", "destination": "/api?path=seo&route=/contact" },
+    { "source": "/bundles", "destination": "/api?path=seo&route=/bundles" },
+    { "source": "/returns", "destination": "/api?path=seo&route=/returns" },
+    { "source": "/privacy", "destination": "/api?path=seo&route=/privacy" },
+    { "source": "/terms", "destination": "/api?path=seo&route=/terms" },
     {
       "source": "/order-status",
-      "destination": "/index.html"
+      "destination": "/api?path=seo&route=/order-status"
     }
   ]
 }

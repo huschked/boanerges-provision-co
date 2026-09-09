@@ -14,6 +14,8 @@ import { trackAnalyticsEvent } from '@/src/lib/analytics';
 import { ORDER_DELIVERY_ESTIMATE_TEXT } from '@/src/config/fulfillment';
 import toast from 'react-hot-toast';
 import { ResponsiveImage } from '@/src/components/ResponsiveImage';
+import { SeoHead } from '@/src/components/SeoHead';
+import { productSeoPage } from '@/src/lib/seo';
 
 export const ProductDetail: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -111,6 +113,8 @@ export const ProductDetail: React.FC = () => {
   const selectedMedia = media[selectedImageIndex] || media[0];
 
   return (
+    <>
+    <SeoHead page={productSeoPage(product)} />
     <div className="pt-40 pb-48 lg:pb-32 animate-fade-in editorial-surface-dark relative overflow-hidden">
       <div className="absolute inset-0 opacity-70 surface-vignette-dark" />
       <div className="max-w-7xl mx-auto px-6 md:px-12 relative z-10">
@@ -292,5 +296,6 @@ export const ProductDetail: React.FC = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
