@@ -39,7 +39,7 @@ export interface AnalyticsEventPayload {
 }
 
 export interface TrackingConsent {
-  version: 1;
+  version: 2;
   analytics: boolean;
   advertising: boolean;
   updatedAt: string;
@@ -59,7 +59,8 @@ declare global {
 const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
 const GA_MEASUREMENT_ID = env?.VITE_GA_MEASUREMENT_ID?.trim() || '';
 const META_PIXEL_ID = env?.VITE_META_PIXEL_ID?.trim() || '';
-export const TRACKING_CONSENT_STORAGE_KEY = 'boanerges-tracking-consent-v1';
+export const TRACKING_CONSENT_STORAGE_KEY = 'boanerges-tracking-consent-v2';
+const LEGACY_TRACKING_CONSENT_STORAGE_KEY = 'boanerges-tracking-consent-v1';
 export const TRACKING_CONSENT_EVENT = 'boanerges:tracking-consent-changed';
 export const OPEN_COOKIE_PREFERENCES_EVENT = 'boanerges:open-cookie-preferences';
 
@@ -73,9 +74,9 @@ let lastPageView = '';
 export function normalizeTrackingConsent(value: unknown): TrackingConsent | null {
   if (!value || typeof value !== 'object') return null;
   const candidate = value as Partial<TrackingConsent>;
-  if (candidate.version !== 1 || typeof candidate.analytics !== 'boolean' || typeof candidate.advertising !== 'boolean') return null;
+  if (candidate.version !== 2 || typeof candidate.analytics !== 'boolean' || typeof candidate.advertising !== 'boolean') return null;
   return {
-    version: 1,
+    version: 2,
     analytics: candidate.analytics,
     advertising: candidate.advertising,
     updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : '',
@@ -93,9 +94,10 @@ export function getTrackingConsent(): TrackingConsent | null {
 
 export function saveTrackingConsent(input: Pick<TrackingConsent, 'analytics' | 'advertising'>): TrackingConsent {
   const previous = getTrackingConsent();
-  const consent: TrackingConsent = { version: 1, ...input, updatedAt: new Date().toISOString() };
+  const consent: TrackingConsent = { version: 2, ...input, updatedAt: new Date().toISOString() };
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(TRACKING_CONSENT_STORAGE_KEY, JSON.stringify(consent));
+    window.localStorage.removeItem(LEGACY_TRACKING_CONSENT_STORAGE_KEY);
     window.dispatchEvent(new CustomEvent(TRACKING_CONSENT_EVENT, { detail: consent }));
   }
   configureAnalyticsProviders(consent);
@@ -126,7 +128,7 @@ function appendScript(id: string, src: string) {
   document.head.appendChild(script);
 }
 
-function googleConsentParameters(consent: TrackingConsent) {
+export function googleConsentParameters(consent: TrackingConsent) {
   return {
     analytics_storage: consent.analytics ? 'granted' : 'denied',
     ad_storage: consent.advertising ? 'granted' : 'denied',

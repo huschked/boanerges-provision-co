@@ -1,12 +1,29 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isSensitiveTrackingPath, normalizeTrackingConsent, providerEventsFor, sanitizeAnalyticsEvent, sanitizeAnalyticsPath } from './analytics.ts';
+import { googleConsentParameters, isSensitiveTrackingPath, normalizeTrackingConsent, providerEventsFor, sanitizeAnalyticsEvent, sanitizeAnalyticsPath, TRACKING_CONSENT_STORAGE_KEY } from './analytics.ts';
 
 test('tracking consent accepts only the current explicit preference shape', () => {
+  assert.equal(TRACKING_CONSENT_STORAGE_KEY, 'boanerges-tracking-consent-v2');
   assert.equal(normalizeTrackingConsent(null), null);
-  assert.equal(normalizeTrackingConsent({ version: 1, analytics: true }), null);
-  assert.deepEqual(normalizeTrackingConsent({ version: 1, analytics: true, advertising: false, updatedAt: 'now' }), {
-    version: 1, analytics: true, advertising: false, updatedAt: 'now',
+  assert.equal(normalizeTrackingConsent({ version: 1, analytics: true, advertising: true, updatedAt: 'old' }), null);
+  assert.equal(normalizeTrackingConsent({ version: 2, analytics: true }), null);
+  assert.deepEqual(normalizeTrackingConsent({ version: 2, analytics: true, advertising: false, updatedAt: 'now' }), {
+    version: 2, analytics: true, advertising: false, updatedAt: 'now',
+  });
+});
+
+test('Google advertising signals require the separate advertising choice', () => {
+  assert.deepEqual(googleConsentParameters({ version: 2, analytics: true, advertising: false, updatedAt: 'now' }), {
+    analytics_storage: 'granted',
+    ad_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied',
+  });
+  assert.deepEqual(googleConsentParameters({ version: 2, analytics: true, advertising: true, updatedAt: 'now' }), {
+    analytics_storage: 'granted',
+    ad_storage: 'granted',
+    ad_user_data: 'granted',
+    ad_personalization: 'granted',
   });
 });
 

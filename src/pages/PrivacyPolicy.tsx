@@ -16,7 +16,7 @@ export const PrivacyPolicy: React.FC = () => (
       <header className="space-y-5 pb-12 border-b border-white/10">
         <span className="text-brand-gold text-[11px] uppercase tracking-[0.35em] font-black">Customer Privacy</span>
         <h1 className="text-5xl md:text-7xl font-serif text-brand-parchment">Privacy Policy</h1>
-        <p className="text-brand-parchment/50">Effective September 6, 2026</p>
+        <p className="text-brand-parchment/50">Effective September 14, 2026</p>
         <p className="text-lg leading-8 text-brand-parchment/70">
           This policy explains how Boanerges Provisions Co. collects, uses, and shares information when you shop with us, contact us, subscribe to email, or use this website.
         </p>
@@ -30,9 +30,12 @@ export const PrivacyPolicy: React.FC = () => (
         </Section>
 
         <Section title="Cookies, analytics, and advertising">
-          <p>Necessary browser storage supports the cart, checkout continuity, security, and your privacy choices. With your permission, Google Analytics measures visits and shopping behavior so we can understand and improve the storefront. If you separately allow advertising, Meta Pixel measures Facebook and Instagram campaign results and may support advertising audiences.</p>
+          <p>Necessary browser storage supports the cart, checkout continuity, security, and your privacy choices. With your Analytics permission, Google Analytics uses first-party cookies and identifiers to measure visits and shopping behavior so we can understand and improve the storefront. This choice alone does not enable Google advertising features.</p>
+          <p>If you separately allow Advertising, we enable Google Signals and Meta Pixel. Google Signals may allow Google to associate activity collected from this site with information from visitors who are signed in to a Google Account and have enabled Ads Personalization. We use the resulting aggregated information for cross-device measurement, demographic and interest reporting, campaign measurement, and advertising audiences. Meta Pixel measures Facebook and Instagram campaign results and may also support advertising audiences. Google, Meta, and Boanerges Provisions may use first-party cookies or identifiers together with Google or Meta cookies and identifiers for these purposes.</p>
+          <p>We do not currently send customer contact information through Google Analytics User-ID or user-provided data collection. Our analytics events are designed not to include your name, email, phone number, street address, or payment-card information.</p>
           <p>Analytics and advertising technologies are optional and are not loaded before the applicable choice. You can accept, decline, or change these settings at any time. Declining them does not prevent you from shopping.</p>
           <button type="button" onClick={openCookiePreferences} className="min-h-11 px-6 py-3 border border-brand-gold/40 text-brand-gold text-[10px] uppercase tracking-widest font-black hover:bg-brand-gold/10">Review Cookie Choices</button>
+          <p>You can also review or limit Google advertising personalization in <a className="text-brand-gold hover:text-brand-parchment underline underline-offset-4" href="https://adssettings.google.com/" target="_blank" rel="noreferrer">Google Ads Settings</a>, review associated activity in <a className="text-brand-gold hover:text-brand-parchment underline underline-offset-4" href="https://myactivity.google.com/" target="_blank" rel="noreferrer">Google My Activity</a>, or install the <a className="text-brand-gold hover:text-brand-parchment underline underline-offset-4" href="https://tools.google.com/dlpage/gaoptout" target="_blank" rel="noreferrer">Google Analytics opt-out browser add-on</a>. Learn more about <a className="text-brand-gold hover:text-brand-parchment underline underline-offset-4" href="https://policies.google.com/technologies/partner-sites" target="_blank" rel="noreferrer">how Google uses information from sites that use its services</a>.</p>
         </Section>
 
         <Section title="Product reviews">
@@ -46,6 +49,7 @@ export const PrivacyPolicy: React.FC = () => (
             <li>Send transactional messages about an order or inquiry.</li>
             <li>Send marketing email only when you have requested it, and maintain your communication preferences.</li>
             <li>Operate, troubleshoot, secure, measure, and improve the website and customer experience.</li>
+            <li>With your Advertising permission, measure campaigns and create or support advertising audiences using Google and Meta.</li>
             <li>Prevent fraud, enforce our terms, and meet legal, tax, accounting, or safety obligations.</li>
           </ul>
         </Section>

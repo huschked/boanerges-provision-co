@@ -50,11 +50,11 @@ export const CookiePreferences: React.FC = () => {
               <span className="shrink-0 text-[9px] uppercase tracking-widest text-brand-gold font-black">Always on</span>
             </div>
             <label className="py-5 flex items-start justify-between gap-5 cursor-pointer">
-              <div><span className="font-black text-brand-parchment">Analytics</span><p className="mt-1 text-sm leading-6 text-brand-parchment/55">Lets Google Analytics measure visits and shopping behavior so we can improve the site.</p></div>
+              <div><span className="font-black text-brand-parchment">Analytics</span><p className="mt-1 text-sm leading-6 text-brand-parchment/55">Lets Google Analytics measure visits and shopping behavior so we can improve the site. This choice does not enable Google advertising features.</p></div>
               <input type="checkbox" checked={analytics} onChange={event => setAnalytics(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-brand-gold" />
             </label>
             <label className="py-5 flex items-start justify-between gap-5 cursor-pointer">
-              <div><span className="font-black text-brand-parchment">Advertising</span><p className="mt-1 text-sm leading-6 text-brand-parchment/55">Lets Meta measure ads and build audiences based on storefront activity.</p></div>
+              <div><span className="font-black text-brand-parchment">Advertising</span><p className="mt-1 text-sm leading-6 text-brand-parchment/55">Lets Google Signals and Meta Pixel measure campaigns and support advertising audiences. Google may associate consented activity with signed-in Google users for aggregated cross-device, demographic, and interest reporting.</p></div>
               <input type="checkbox" checked={advertising} onChange={event => setAdvertising(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-brand-gold" />
             </label>
           </div>
@@ -74,7 +74,7 @@ export const CookiePreferences: React.FC = () => {
         <ShieldCheck className="hidden sm:block shrink-0 text-brand-gold" size={30} />
         <div className="flex-1 space-y-2">
           <h2 className="text-xl font-serif text-brand-parchment">Your privacy choices</h2>
-          <p className="text-sm leading-6 text-brand-parchment/60">We use necessary storage for the cart and checkout. With your permission, analytics helps improve the shop and advertising cookies help measure Meta campaigns. You can change this later from the footer.</p>
+          <p className="text-sm leading-6 text-brand-parchment/60">We use necessary storage for the cart and checkout. With your permission, analytics helps improve the shop, while advertising technologies from Google and Meta help measure campaigns and support audiences. You can change this later from the footer.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 shrink-0">
           <button type="button" onClick={() => setCustomizing(true)} className="min-h-11 px-5 py-3 border border-white/15 text-brand-parchment text-[9px] uppercase tracking-widest font-black hover:border-brand-gold/50">Customize</button>

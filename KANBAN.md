@@ -97,6 +97,24 @@ This board is the working queue for website development. Keep cards actionable e
 
 ## Review / Verify
 
+### WEB-050 - Add Google Signals Consent and Privacy Disclosures
+
+- **Status:** Implemented locally on September 14, 2026. TypeScript validation, 91 automated tests, and the production build passed; awaiting deployed consent and Google Tag Assistant verification before Google Signals is enabled.
+- **Priority:** High
+- **Area:** analytics | privacy | marketing
+- **Goal:** Add Google Signals without treating an earlier Meta-only advertising choice as informed consent for Google advertising features.
+- **Acceptance Criteria:**
+  - Cookie choices clearly distinguish ordinary Google Analytics measurement from the separate Advertising choice that enables Google Signals and Meta Pixel.
+  - Google Signals remains disabled unless Advertising consent is granted, including `ad_storage`, `ad_user_data`, `ad_personalization`, `allow_google_signals`, and ad-personalization signals.
+  - Existing version 1 consent is invalidated and returning visitors receive the expanded version 2 disclosure.
+  - The Privacy Policy identifies Google Signals, signed-in Google association, aggregated cross-device/demographic/interest reporting, identifier use, opt-out controls, and the fact that User-ID and user-provided data collection are not currently enabled.
+  - No customer email, name, phone, address, or payment information is added to analytics payloads.
+- **Verification:**
+  - Run `npm run lint`, `npm test`, and `npm run build`.
+  - In a browser with an old version 1 choice, confirm the banner appears again; verify Necessary only, Analytics only, and Advertising consent states in Google Tag Assistant.
+  - Confirm Google Signals is enabled in GA4 only after this deployment and that User-ID and user-provided data collection remain disabled.
+- **Notes / Links:** This is a privacy expansion of WEB-004. See `docs/analytics-and-ad-tracking.md`. This implementation is not legal advice; reevaluate regional consent requirements before advertising outside the intended market.
+
 ### WEB-049 - Implement Technical SEO, Ecommerce Search, and AI Discovery
 
 - **Status:** Implemented locally on 2026-09-09. TypeScript, production build, image-budget audit (26 explicitly identified temporary assets remain over budget), 90 automated tests, and normal/Googlebot/Bingbot/OAI-SearchBot HTTP parity checks completed. Deployment verification and the credentialed post-launch checklist remain for owner review; prelaunch stays `noindex` until WEB-041 and WEB-048 facts are approved.
